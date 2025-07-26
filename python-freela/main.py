@@ -19,10 +19,24 @@ CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-# Custom JSON encoder para lidar com tipos numpy
-class NumpyJSONEncoder(app.json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+# Custom JSON provider para lidar com tipos numpy (Flask 2.3+)
+from flask.json.provider import JSONProvider
+import json
+
+class NumpyJSONProvider(JSONProvider):
+    def dumps(self, obj, **kwargs):
+        return json.dumps(self._convert_numpy_types(obj), **kwargs)
+    
+    def loads(self, s, **kwargs):
+        return json.loads(s, **kwargs)
+    
+    def _convert_numpy_types(self, obj):
+        """Converte tipos numpy para tipos Python nativos"""
+        if isinstance(obj, dict):
+            return {str(k): self._convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
             return int(obj)
         elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
             return float(obj)
@@ -30,13 +44,19 @@ class NumpyJSONEncoder(app.json.JSONEncoder):
             return obj.tolist()
         elif isinstance(obj, np.bool_):
             return bool(obj)
-        elif pd.isna(obj):
+        elif isinstance(obj, np.bytes_):
+            return obj.decode('utf-8')
+        elif pd.isna(obj) or obj is None:
             return None
         elif hasattr(obj, 'item'):
             return obj.item()
-        return super().default(obj)
+        elif isinstance(obj, (pd.Period, pd.Timestamp)):
+            return str(obj)
+        else:
+            return obj
 
-app.json_encoder = NumpyJSONEncoder
+# Configurar o provider customizado
+app.json_provider_class = NumpyJSONProvider
 
 # Configuração da chave da API do OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY") 
