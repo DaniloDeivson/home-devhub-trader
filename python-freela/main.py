@@ -18,6 +18,26 @@ app = Flask(__name__)
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+# Custom JSON encoder para lidar com tipos numpy
+class NumpyJSONEncoder(app.json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif pd.isna(obj):
+            return None
+        elif hasattr(obj, 'item'):
+            return obj.item()
+        return super().default(obj)
+
+app.json_encoder = NumpyJSONEncoder
+
 # Configuração da chave da API do OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY") 
 
@@ -240,14 +260,20 @@ def make_json_serializable(obj):
         return [make_json_serializable(item) for item in obj]
     elif isinstance(obj, (pd.Period, pd.Timestamp)):
         return str(obj)
-    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+    elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
         return int(obj)
-    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
-    elif pd.isna(obj):
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.bytes_):
+        return obj.decode('utf-8')
+    elif pd.isna(obj) or obj is None:
         return None
+    elif hasattr(obj, 'item'):  # Para outros tipos numpy que têm método item()
+        return obj.item()
     else:
         return obj
 
@@ -1214,7 +1240,7 @@ def api_disciplina_completa():
             "total_registros_consolidados": len(df_consolidado)
         }
         
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1324,7 +1350,7 @@ def api_tabela_multipla():
             resultado['day_of_week'] = calcular_day_of_week(df_consolidado)
             resultado['monthly'] = calcular_monthly(df_consolidado)
         
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1451,7 +1477,7 @@ def api_tabela():
                 "total_registros_consolidados": len(df_consolidado)
             }
 
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1491,7 +1517,7 @@ def api_equity_curve():
             "total_pontos": len(dados)
         }
 
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1530,7 +1556,7 @@ def api_backtest_completo():
             }
         }
 
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1565,7 +1591,7 @@ def api_correlacao_data_direcao():
         # Calcular correlação por data e direção
         resultado = calcular_correlacao_por_data_e_direcao(arquivos_processados)
         
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1678,7 +1704,7 @@ def api_trades():
             }
         }
 
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1707,7 +1733,7 @@ def api_trades_summary():
             "total_records": len(df)
         }
 
-        return jsonify(resultado)
+        return jsonify(make_json_serializable(resultado))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1735,7 +1761,7 @@ def api_daily_metrics():
         if not metricas:
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
         
-        return jsonify(metricas)
+        return jsonify(make_json_serializable(metricas))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1771,14 +1797,19 @@ def api_metrics_from_data():
         if not metricas:
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
         
-        return jsonify(metricas)
+        return jsonify(make_json_serializable(metricas))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',
-            port=5000,
-            debug=False,
-            use_reloader=False)
+    try:
+        app.run(host='0.0.0.0',
+                port=5000,
+                debug=False,
+                use_reloader=False)
+    except Exception as e:
+        print(f"Erro ao iniciar servidor: {e}")
+        import traceback
+        traceback.print_exc()
