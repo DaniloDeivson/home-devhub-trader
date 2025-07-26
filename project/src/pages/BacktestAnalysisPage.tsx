@@ -352,21 +352,32 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       });
      
     // Implement your fetch emotional profile logic here
-    const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
-      method: 'POST', 
-      body: formData
-    })
- 
+    try {
+      const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
+        method: 'POST', 
+        body: formData
+      });
+      
       const responses = await fetch('https://api.devhubtrader.com.br//api/trades', {
           method: 'POST',
           body: formData
       });
 
       const datara = await responses.json();
-      const dataemocional = await wwx.json();
-      setEmocional(dataemocional);
-      setTrades(datara
-      );
+      
+      if (wwx.ok) {
+        const dataemocional = await wwx.json();
+        setEmocional(dataemocional);
+      } else {
+        console.warn('Failed to fetch emotional data:', wwx.status, wwx.statusText);
+        setEmocional(null);
+      }
+      
+      setTrades(datara);
+    } catch (error) {
+      console.error('Error fetching emotional data:', error);
+      setEmocional(null);
+    }
 
       if (!response.ok) {
         throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
@@ -431,19 +442,32 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         method: 'POST',
         body: formDataCorrelacao, // Mesmo FormData
       });
-      const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
-      method: 'POST', 
-      body: formDataCorrelacao
-    })
-    const dataemocional = await wwx.json();
-    const responses = await fetch('https://api.devhubtrader.com.br//api/trades', {
-          method: 'POST',
+      try {
+        const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
+          method: 'POST', 
           body: formDataCorrelacao
-      });
+        });
+        
+        const responses = await fetch('https://api.devhubtrader.com.br//api/trades', {
+            method: 'POST',
+            body: formDataCorrelacao
+        });
 
-      const datara = await responses.json();
-      setEmocional(dataemocional);
-      setTrades(datara);
+        const datara = await responses.json();
+        
+        if (wwx.ok) {
+          const dataemocional = await wwx.json();
+          setEmocional(dataemocional);
+        } else {
+          console.warn('Failed to fetch emotional data:', wwx.status, wwx.statusText);
+          setEmocional(null);
+        }
+        
+        setTrades(datara);
+      } catch (error) {
+        console.error('Error fetching emotional data:', error);
+        setEmocional(null);
+      }
       if (!consolidatedResponse.ok) {
         throw new Error('Erro na análise consolidada');
       }

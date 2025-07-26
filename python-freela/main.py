@@ -406,26 +406,49 @@ def calcular_metricas_diarias(df: pd.DataFrame) -> Dict[str, Any]:
     return daily_stats
 
 def calcular_metricas_diarias_corrigido(df: pd.DataFrame) -> pd.DataFrame:
-    """Calcula métricas diárias baseadas nas trades com drawdown correto"""
+    """
+    Calcula métricas diárias baseadas nas trades com drawdown correto
+    CORRIGIDO: Sempre agrupa por data antes de calcular métricas diárias
+    """
     if df.empty:
+        print("⚠️ DataFrame vazio para cálculo de métricas diárias")
         return pd.DataFrame()
+    
+    print(f"🔍 DEBUG - calcular_metricas_diarias_corrigido:")
+    print(f"  Total de trades: {len(df)}")
+    print(f"  Colunas disponíveis: {df.columns.tolist()}")
     
     # Filtrar trades válidas e ordenar por data
     df_valid = df.dropna(subset=['pnl', 'entry_date']).copy()
     df_valid = df_valid.sort_values('entry_date').reset_index(drop=True)
     
+    print(f"  Trades válidas após filtro: {len(df_valid)}")
+    
     if df_valid.empty:
+        print("⚠️ Nenhuma trade válida encontrada")
         return pd.DataFrame()
     
-    # Calcular saldo cumulativo (igual ao que fizemos nas outras funções)
+    # Verificar se temos as colunas necessárias
+    if 'pnl' not in df_valid.columns:
+        print("❌ Coluna 'pnl' não encontrada. Colunas disponíveis:", df_valid.columns.tolist())
+        return pd.DataFrame()
+    
+    if 'entry_date' not in df_valid.columns:
+        print("❌ Coluna 'entry_date' não encontrada. Colunas disponíveis:", df_valid.columns.tolist())
+        return pd.DataFrame()
+    
+    # CORREÇÃO 1: Garantir que sempre agrupamos por data
+    df_valid['date'] = pd.to_datetime(df_valid['entry_date']).dt.date
+    print(f"  Datas únicas encontradas: {df_valid['date'].nunique()}")
+    print(f"  Primeira data: {df_valid['date'].min()}")
+    print(f"  Última data: {df_valid['date'].max()}")
+    
+    # CORREÇÃO 2: Calcular saldo cumulativo por dia (não por trade)
     df_valid['saldo_cumulativo'] = df_valid['pnl'].cumsum()
     df_valid['saldo_maximo'] = df_valid['saldo_cumulativo'].cummax()
     df_valid['drawdown_trade'] = df_valid['saldo_cumulativo'] - df_valid['saldo_maximo']
     
-    # Agrupar por dia
-    df_valid['date'] = df_valid['entry_date'].dt.date
-    
-    # Calcular estatísticas diárias
+    # CORREÇÃO 3: Agrupar por dia ANTES de calcular estatísticas
     daily_stats = df_valid.groupby('date').agg({
         'pnl': ['sum', 'count', 'mean'],
         'saldo_cumulativo': 'last',  # Saldo final do dia
@@ -436,22 +459,28 @@ def calcular_metricas_diarias_corrigido(df: pd.DataFrame) -> pd.DataFrame:
     # Simplificar nomes das colunas
     daily_stats.columns = ['total_pnl', 'total_trades', 'avg_pnl', 'saldo_final', 'peak_final', 'drawdown_dia']
     
-    # Calcular win rate diário
-    win_rate_daily = df_valid.groupby('date')['pnl'].apply(
-        lambda x: (x > 0).sum() / len(x) * 100
-    ).round(2)
-    daily_stats['win_rate'] = win_rate_daily
-    
-    # Calcular drawdown correto para o dia (baseado no saldo final vs pico final)
-    daily_stats['drawdown'] = daily_stats['saldo_final'] - daily_stats['peak_final']
-    
-    # Adicionar colunas de controle
+    # CORREÇÃO 4: Calcular win rate diário baseado no PnL consolidado do dia
     daily_stats['is_winner'] = daily_stats['total_pnl'] > 0
     daily_stats['is_loser'] = daily_stats['total_pnl'] < 0
     
-    # Calcular máximo histórico e drawdown cumulativo por dia
+    # CORREÇÃO 5: Calcular drawdown correto para o dia (baseado no saldo final vs pico final)
+    daily_stats['drawdown'] = daily_stats['saldo_final'] - daily_stats['peak_final']
+    
+    # CORREÇÃO 6: Calcular máximo histórico e drawdown cumulativo por dia
     daily_stats['running_max'] = daily_stats['saldo_final'].cummax()
     daily_stats['drawdown_cumulativo'] = daily_stats['saldo_final'] - daily_stats['running_max']
+    
+    # Logs de debug detalhados
+    print(f"  Dias com resultado positivo: {len(daily_stats[daily_stats['total_pnl'] > 0])}")
+    print(f"  Dias com resultado negativo: {len(daily_stats[daily_stats['total_pnl'] < 0])}")
+    print(f"  Maior ganho diário: {daily_stats['total_pnl'].max()}")
+    print(f"  Maior perda diária: {daily_stats['total_pnl'].min()}")
+    print(f"  Média de trades por dia: {daily_stats['total_trades'].mean():.1f}")
+    print(f"  Total de dias operados: {len(daily_stats)}")
+    
+    # Verificar se os dados estão corretos
+    print(f"  Verificação - Soma de PnL diário: {daily_stats['total_pnl'].sum()}")
+    print(f"  Verificação - Soma de PnL original: {df_valid['pnl'].sum()}")
     
     return daily_stats.reset_index()
 
@@ -540,22 +569,34 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
     # Dias operados
     days_traded = len(daily_stats)
     
-    # Estatísticas diárias
+    # Estatísticas diárias CORRIGIDAS - baseadas em dias, não em operações
     winning_days = len(daily_stats[daily_stats['total_pnl'] > 0])
     losing_days = len(daily_stats[daily_stats['total_pnl'] < 0])
     daily_win_rate = (winning_days / days_traded * 100) if days_traded > 0 else 0
     
-    # Ganhos e perdas diárias
+    # Ganhos e perdas diárias CORRIGIDOS - baseados em dias, não em operações
     daily_avg_win = daily_stats[daily_stats['total_pnl'] > 0]['total_pnl'].mean() if winning_days > 0 else 0
-    daily_avg_loss = daily_stats[daily_stats['total_pnl'] < 0]['total_pnl'].mean() if losing_days > 0 else 0
-    daily_max_win = daily_stats['total_pnl'].max()
-    daily_max_loss = daily_stats['total_pnl'].min()
+    daily_avg_loss = abs(daily_stats[daily_stats['total_pnl'] < 0]['total_pnl'].mean()) if losing_days > 0 else 0
+    daily_max_win = daily_stats['total_pnl'].max() if not daily_stats.empty else 0
+    daily_max_loss = daily_stats['total_pnl'].min() if not daily_stats.empty else 0  # Já é negativo
     
     # Média de operações por dia
     avg_trades_per_day = total_trades / days_traded if days_traded > 0 else 0
     
     # Sequências consecutivas
     consecutive_wins, consecutive_losses = calcular_sequencias_consecutivas(daily_stats)
+    
+    # Debug logs para verificar os cálculos
+    print(f"🔍 DEBUG - Métricas diárias:")
+    print(f"  Dias operados: {days_traded}")
+    print(f"  Dias vencedores: {winning_days}")
+    print(f"  Dias perdedores: {losing_days}")
+    print(f"  Taxa de acerto diária: {daily_win_rate}%")
+    print(f"  Ganho médio diário: {daily_avg_win}")
+    print(f"  Perda média diária: {daily_avg_loss}")
+    print(f"  Ganho máximo diário: {daily_max_win}")
+    print(f"  Perda máxima diária: {daily_max_loss}")
+    print(f"  Operações por dia: {avg_trades_per_day}")
     
     return {
         "metricas_principais": {
@@ -576,9 +617,9 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
         "ganhos_perdas": {
             "ganho_medio_diario": round(daily_avg_win, 2),
             "perda_media_diaria": round(daily_avg_loss, 2),
-            "payoff_diario": round(daily_avg_win / abs(daily_avg_loss) if daily_avg_loss != 0 else 0, 2),
+            "payoff_diario": round(daily_avg_win / daily_avg_loss if daily_avg_loss != 0 else 0, 2),
             "ganho_maximo_diario": round(daily_max_win, 2),
-            "perda_maxima_diaria": round(daily_max_loss, 2)
+            "perda_maxima_diaria": round(abs(daily_max_loss), 2)  # Valor absoluto para compatibilidade
         },
         "estatisticas_operacao": {
             "media_operacoes_dia": round(avg_trades_per_day, 1),

@@ -113,13 +113,13 @@ const indiceEmocionalTotal = calcularIndiceEmocional();
                 <h3 className="font-medium">Índice Disciplina Stop</h3>
               </div>
               <p className={`text-2xl font-bold ${
-                (emotionalMetrics.disciplina_operacao.indice_disciplina || 0) >= 90 
+                (emotionalMetrics?.disciplina_operacao?.indice_disciplina || 0) >= 90 
                   ? 'text-green-400' 
-                  : (emotionalMetrics.disciplina_operacao.indice_disciplina || 0) >= 70 
+                  : (emotionalMetrics?.disciplina_operacao?.indice_disciplina || 0) >= 70 
                     ? 'text-yellow-400' 
                     : 'text-red-400'
               }`}>
-                {emotionalMetrics.disciplina_operacao?.indice_disciplina.toFixed(2) || 'N/A'}%
+                {emotionalMetrics?.disciplina_operacao?.indice_disciplina?.toFixed(2) || 'N/A'}%
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Disciplina no uso de stop loss
@@ -132,13 +132,13 @@ const indiceEmocionalTotal = calcularIndiceEmocional();
                 <h3 className="font-medium">Índice Disciplina Perda/Dia</h3>
               </div>
               <p className={`text-2xl font-bold ${
-                (emotionalMetrics.disciplina_dia.indice_disciplina_diaria || 0) >= 90 
+                (emotionalMetrics?.disciplina_dia?.indice_disciplina_diaria || 0) >= 90 
                   ? 'text-green-400' 
-                  : (emotionalMetrics.disciplina_dia.indice_disciplina_diaria || 0) >= 70 
+                  : (emotionalMetrics?.disciplina_dia?.indice_disciplina_diaria || 0) >= 70 
                     ? 'text-yellow-400' 
                     : 'text-red-400'
               }`}>
-                {emotionalMetrics.disciplina_dia?.indice_disciplina_diaria.toFixed(2) || 'N/A'}%
+                {emotionalMetrics?.disciplina_dia?.indice_disciplina_diaria?.toFixed(2) || 'N/A'}%
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Controle de perdas diárias
@@ -151,13 +151,13 @@ const indiceEmocionalTotal = calcularIndiceEmocional();
                 <h3 className="font-medium">Índice Disciplina Alavancagem</h3>
               </div>
               <p className={`text-2xl font-bold ${
-                (emotionalMetrics.disciplina_alavancagem.indice_disciplina_alavancagem || 0) >= 90 
+                (emotionalMetrics?.disciplina_alavancagem?.indice_disciplina_alavancagem || 0) >= 90 
                   ? 'text-green-400' 
-                  : (emotionalMetrics.disciplina_alavancagem.indice_disciplina_alavancagem || 0) >= 70 
+                  : (emotionalMetrics?.disciplina_alavancagem?.indice_disciplina_alavancagem || 0) >= 70 
                     ? 'text-yellow-400' 
                     : 'text-red-400'
               }`}>
-                {emotionalMetrics.disciplina_alavancagem?.indice_disciplina_alavancagem.toFixed(2) || 'N/A'}%
+                {emotionalMetrics?.disciplina_alavancagem?.indice_disciplina_alavancagem?.toFixed(2) || 'N/A'}%
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Controle de alavancagem
@@ -170,13 +170,13 @@ const indiceEmocionalTotal = calcularIndiceEmocional();
                 <h3 className="font-medium">Probabilidade de Fúria</h3>
               </div>
               <p className={`text-2xl font-bold ${
-                (emotionalMetrics.resumo_comparativo.percentual_dias_furia || 0) <= 5 
+                (emotionalMetrics?.resumo_comparativo?.percentual_dias_furia || 0) <= 5 
                   ? 'text-green-400' 
-                  : (emotionalMetrics.resumo_comparativo.percentual_dias_furia || 0) <= 15 
+                  : (emotionalMetrics?.resumo_comparativo?.percentual_dias_furia || 0) <= 15 
                     ? 'text-yellow-400' 
                     : 'text-red-400'
               }`}>
-                {emotionalMetrics.resumo_comparativo.percentual_dias_furia?.toFixed(2) || 'N/A'}%
+                {emotionalMetrics?.resumo_comparativo?.percentual_dias_furia?.toFixed(2) || 'N/A'}%
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Risco de trading emocional
