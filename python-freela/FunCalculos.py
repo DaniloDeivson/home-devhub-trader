@@ -160,12 +160,16 @@ def calcular_day_of_week(df, cdi=0.12):
         lucro, pf, sharpe, sharpe_simp, trades = calcular_metrics(sub, cdi=cdi)
         wins = sub[sub['Res. Operação'] > 0]
         win_rate = len(wins) / trades * 100 if trades > 0 else 0
+        # Calcular rentabilidade individual (lucro por trade)
+        rentabilidade_por_trade = lucro / trades if trades > 0 else 0
+        
         stats[dia] = {
             "Trades": trades,
             "Net Profit": lucro,
             "Profit Factor": pf,
             "Win Rate (%)": round(win_rate, 2),
-            "Sharpe Ratio": sharpe_simp
+            "Sharpe Ratio": sharpe_simp,
+            "Rentabilidade ($)": round(rentabilidade_por_trade, 2)
         }
 
     dias_com_operacoes = {k: v for k, v in stats.items() if v["Trades"] > 0}
@@ -182,7 +186,8 @@ def calcular_day_of_week(df, cdi=0.12):
             "Net Profit": 0,
             "Profit Factor": 0,
             "Win Rate (%)": 0,
-            "Sharpe Ratio": 0
+            "Sharpe Ratio": 0,
+            "Rentabilidade ($)": 0
         }
 
     return {
@@ -225,6 +230,9 @@ def calcular_monthly(df, cdi=0.12):
             saldo_final_mes = sub['Saldo'].iloc[-1] if not sub['Saldo'].empty else 0
             drawdown_percentual = (abs(max_drawdown_mes) / saldo_final_mes * 100) if saldo_final_mes != 0 else 0
 
+            # Calcular rentabilidade individual (lucro por trade)
+            rentabilidade_por_trade = lucro / trades if trades > 0 else 0
+
             stats[calendar.month_name[m]] = {
                 "Trades": trades,
                 "Win Rate (%)": round(win_rate, 2),
@@ -232,7 +240,8 @@ def calcular_monthly(df, cdi=0.12):
                 "Profit Factor": pf,
                 "Sharpe Ratio": sharpe_simp,
                 "Max Drawdown ($)": round(max_drawdown_mes, 2),
-                "Max Drawdown (%)": round(drawdown_percentual, 2)
+                "Max Drawdown (%)": round(drawdown_percentual, 2),
+                "Rentabilidade ($)": round(rentabilidade_por_trade, 2)
             }
         else:
             stats[calendar.month_name[m]] = {
@@ -242,7 +251,8 @@ def calcular_monthly(df, cdi=0.12):
                 "Profit Factor": 0,
                 "Sharpe Ratio": 0,
                 "Max Drawdown ($)": 0.0,
-                "Max Drawdown (%)": 0.0
+                "Max Drawdown (%)": 0.0,
+                "Rentabilidade ($)": 0.0
             }
 
     # Filtrar apenas meses com operações para determinar melhor/pior
@@ -273,12 +283,19 @@ def calcular_weekly(df, cdi=0.12):
     for w in weeks:
         sub = df[df['WeekNum'] == w]
         lucro, pf, sharpe, sharpe_simp, trades = calcular_metrics(sub, cdi=cdi)
-        stats[f"Week {w}"] = {
+        wins = sub[sub['Res. Operação'] > 0]
+        win_rate = len(wins) / trades * 100 if trades > 0 else 0
+        # Calcular rentabilidade individual (lucro por trade)
+        rentabilidade_por_trade = lucro / trades if trades > 0 else 0
+        
+        stats[f"Semana {w}"] = {
             "Trades": trades,
             "Net Profit": lucro,
             "Profit Factor": pf,
             "Sharpe Ratio": sharpe,
-            "Sharpe DDx3": sharpe_simp
+            "Sharpe DDx3": sharpe_simp,
+            "Win Rate (%)": round(win_rate, 2),
+            "Rentabilidade ($)": round(rentabilidade_por_trade, 2)
         }
     best_week = max(stats.items(), key=lambda x: x[1]['Net Profit'])[0]
     worst_week = min((item for item in stats.items() if item[1]['Net Profit'] < 0), key=lambda x: x[1]['Net Profit'], default=(None, {}))[0]
