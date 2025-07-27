@@ -701,7 +701,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.p
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center">
                 <Clock className="w-5 h-5 text-blue-400 mr-2" />
-                <h3 className="text-lg font-medium">Duração dos Traes</h3>
+                <h3 className="text-lg font-medium">Duração dos Trades</h3>
               </div>
               <button 
                 onClick={() => setShowTradeDuration(!showTradeDuration)}

@@ -132,6 +132,28 @@ interface SavedAnalysis {
   availableStrategies: string[];
   availableAssets: string[];
   totalTrades: number;
+  // Dados adicionais para recuperação completa
+  files: File[];
+  fileResults: {[key: string]: BacktestResult};
+  individualAnalysisMode: boolean;
+  showConsolidated: boolean;
+  trades: Trade[];
+  filteredTrades: Trade[];
+  tradeSearch: string;
+  emocional: any;
+  analysisResult: any;
+  drata: any;
+  // Estados de visualização
+  showMetrics: boolean;
+  showDailyResults: boolean;
+  showDailyAnalysis: boolean;
+  showTrades: boolean;
+  showEquityCurve: boolean;
+  showSpecialEvents: boolean;
+  showCorrelation: boolean;
+  showEmotionalProfile: boolean;
+  showStrategySelector: boolean;
+  showChat: boolean;
 }
 
 export function BacktestAnalysisPage() {
@@ -217,19 +239,44 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         
         if (data && data.length > 0) {
           // Convert database format to our app format
-          const analyses: SavedAnalysis[] = data.map(item => ({
-            id: item.id,
-            name: item.analysis_data.name || `Análise ${item.id.slice(0, 8)}`,
-            createdAt: item.created_at,
-            updatedAt: item.created_at,
-            backtestResult: item.analysis_data.metrics || {},
-            selectedStrategy: null,
-            selectedAsset: null,
-            csvContent: null,
-            availableStrategies: [],
-            availableAssets: [],
-            totalTrades: item.analysis_data.metrics?.trades?.length || 0
-          }));
+          const analyses: SavedAnalysis[] = data.map(item => {
+            const analysisData = item.analysis_data || {};
+            return {
+              id: item.id,
+              name: analysisData.name || `Análise ${item.id.slice(0, 8)}`,
+              createdAt: item.created_at,
+              updatedAt: item.updated_at || item.created_at,
+              backtestResult: analysisData.metrics || {},
+              selectedStrategy: analysisData.selectedStrategy || null,
+              selectedAsset: analysisData.selectedAsset || null,
+              csvContent: analysisData.csvContent || null,
+              availableStrategies: analysisData.availableStrategies || [],
+              availableAssets: analysisData.availableAssets || [],
+              totalTrades: analysisData.trades?.length || analysisData.metrics?.trades?.length || analysisData.metrics?.["Performance Metrics"]?.["Total Trades"] || 0,
+              // Dados adicionais
+              files: analysisData.files || [],
+              fileResults: analysisData.fileResults || {},
+              individualAnalysisMode: analysisData.individualAnalysisMode ?? false,
+              showConsolidated: analysisData.showConsolidated ?? true,
+              trades: analysisData.trades || [],
+              filteredTrades: analysisData.filteredTrades || [],
+              tradeSearch: analysisData.tradeSearch || '',
+              emocional: analysisData.emocional || null,
+              analysisResult: analysisData.analysisResult || null,
+              drata: analysisData.drata || null,
+              // Estados de visualização
+              showMetrics: analysisData.showMetrics ?? true,
+              showDailyResults: analysisData.showDailyResults ?? false,
+              showDailyAnalysis: analysisData.showDailyAnalysis ?? true,
+              showTrades: analysisData.showTrades ?? false,
+              showEquityCurve: analysisData.showEquityCurve ?? true,
+              showSpecialEvents: analysisData.showSpecialEvents ?? false,
+              showCorrelation: analysisData.showCorrelation ?? false,
+              showEmotionalProfile: analysisData.showEmotionalProfile ?? false,
+              showStrategySelector: analysisData.showStrategySelector ?? true,
+              showChat: analysisData.showChat ?? true
+            };
+          });
           
           setSavedAnalyses(analyses);
         }
@@ -750,7 +797,10 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
 
   // Save system functions
   const handleSaveAnalysis = async () => {
-    if (!backtestResult) return;
+    if (!backtestResult) {
+      setError("Nenhum resultado de backtest disponível para salvar");
+      return;
+    }
     
     if (currentAnalysisId) {
       try {
@@ -758,15 +808,45 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("User not authenticated");
         
+        // Preparar dados completos para salvamento
+        const completeAnalysisData = {
+          name: savedAnalyses.find(a => a.id === currentAnalysisId)?.name,
+          metrics: backtestResult,
+          file_name: file?.name,
+          created_at: new Date().toISOString(),
+          // Dados adicionais para recuperação completa
+          files: files,
+          fileResults: fileResults,
+          individualAnalysisMode: individualAnalysisMode,
+          showConsolidated: showConsolidated,
+          trades: trades,
+          filteredTrades: filteredTrades,
+          tradeSearch: tradeSearch,
+          emocional: emocional,
+          analysisResult: analysisResult,
+          drata: drata,
+          selectedStrategy: selectedStrategy,
+          selectedAsset: selectedAsset,
+          csvContent: csvContent,
+          availableStrategies: availableStrategies,
+          availableAssets: availableAssets,
+          // Estados de visualização
+          showMetrics: showMetrics,
+          showDailyResults: showDailyResults,
+          showDailyAnalysis: showDailyAnalysis,
+          showTrades: showTrades,
+          showEquityCurve: showEquityCurve,
+          showSpecialEvents: showSpecialEvents,
+          showCorrelation: showCorrelation,
+          showEmotionalProfile: showEmotionalProfile,
+          showStrategySelector: showStrategySelector,
+          showChat: showChat
+        };
+        
         const { error } = await supabase
           .from("strategy_analyses")
           .update({ 
-            analysis_data: {
-              name: savedAnalyses.find(a => a.id === currentAnalysisId)?.name,
-              metrics: backtestResult,
-              file_name: file?.name,
-              created_at: new Date().toISOString(),
-            }
+            analysis_data: completeAnalysisData
           })
           .eq("id", currentAnalysisId);
 
@@ -783,10 +863,34 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
                 selectedAsset,
                 csvContent,
                 availableStrategies,
-                availableAssets
+                availableAssets,
+                totalTrades: trades.length || backtestResult.trades?.length || 0,
+                files,
+                fileResults,
+                individualAnalysisMode,
+                showConsolidated,
+                trades,
+                filteredTrades,
+                tradeSearch,
+                emocional,
+                analysisResult,
+                drata,
+                showMetrics,
+                showDailyResults,
+                showDailyAnalysis,
+                showTrades,
+                showEquityCurve,
+                showSpecialEvents,
+                showCorrelation,
+                showEmotionalProfile,
+                showStrategySelector,
+                showChat
               }
             : analysis
         ));
+        
+        setSuccess("Análise atualizada com sucesso!");
+        setTimeout(() => setSuccess(null), 3000);
       } catch (error) {
         console.error("Error updating analysis:", error);
         setError("Erro ao atualizar análise");
@@ -804,17 +908,47 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
       
+      // Preparar dados completos para salvamento
+      const completeAnalysisData = {
+        name: saveName.trim(),
+        metrics: backtestResult,
+        file_name: file?.name,
+        created_at: new Date().toISOString(),
+        // Dados adicionais para recuperação completa
+        files: files,
+        fileResults: fileResults,
+        individualAnalysisMode: individualAnalysisMode,
+        showConsolidated: showConsolidated,
+        trades: trades,
+        filteredTrades: filteredTrades,
+        tradeSearch: tradeSearch,
+        emocional: emocional,
+        analysisResult: analysisResult,
+        drata: drata,
+        selectedStrategy: selectedStrategy,
+        selectedAsset: selectedAsset,
+        csvContent: csvContent,
+        availableStrategies: availableStrategies,
+        availableAssets: availableAssets,
+        // Estados de visualização
+        showMetrics: showMetrics,
+        showDailyResults: showDailyResults,
+        showDailyAnalysis: showDailyAnalysis,
+        showTrades: showTrades,
+        showEquityCurve: showEquityCurve,
+        showSpecialEvents: showSpecialEvents,
+        showCorrelation: showCorrelation,
+        showEmotionalProfile: showEmotionalProfile,
+        showStrategySelector: showStrategySelector,
+        showChat: showChat
+      };
+      
       // Save to database
       const { data, error } = await supabase
         .from("strategy_analyses")
         .insert({
           user_id: user.id,
-          analysis_data: {
-            name: saveName.trim(),
-            metrics: backtestResult,
-            file_name: file?.name,
-            created_at: new Date().toISOString(),
-          }
+          analysis_data: completeAnalysisData
         })
         .select()
         .single();
@@ -833,16 +967,40 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         csvContent,
         availableStrategies,
         availableAssets,
-        totalTrades: backtestResult.trades?.length || 0
+        totalTrades: trades.length || backtestResult.trades?.length || 0,
+        // Dados adicionais
+        files,
+        fileResults,
+        individualAnalysisMode,
+        showConsolidated,
+        trades,
+        filteredTrades,
+        tradeSearch,
+        emocional,
+        analysisResult,
+        drata,
+        // Estados de visualização
+        showMetrics,
+        showDailyResults,
+        showDailyAnalysis,
+        showTrades,
+        showEquityCurve,
+        showSpecialEvents,
+        showCorrelation,
+        showEmotionalProfile,
+        showStrategySelector,
+        showChat
       };
       
       setSavedAnalyses(prev => [...prev, newAnalysis]);
       setCurrentAnalysisId(newAnalysis.id);
       setShowSaveModal(false);
       setSaveName('');
+      setSuccess("Relatório salvo com sucesso!");
+      setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
       console.error("Error saving analysis:", error);
-      setError("Erro ao salvar análise");
+      setError("Erro ao salvar relatório");
     }
   };
 
@@ -858,24 +1016,78 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
           
         if (error) throw error;
         
-        if (data && data.analysis_data && data.analysis_data.metrics) {
-          // Update the backtestResult with the loaded metrics
-          analysis.backtestResult = data.analysis_data.metrics;
+        if (data && data.analysis_data) {
+          // Restaurar todos os dados salvos
+          const savedData = data.analysis_data;
+          
+          // Dados principais
+          setBacktestResult(savedData.metrics || analysis.backtestResult);
+          setSelectedStrategy(savedData.selectedStrategy || analysis.selectedStrategy);
+          setSelectedAsset(savedData.selectedAsset || analysis.selectedAsset);
+          setCsvContent(savedData.csvContent || analysis.csvContent);
+          setAvailableStrategies(savedData.availableStrategies || analysis.availableStrategies || []);
+          setAvailableAssets(savedData.availableAssets || analysis.availableAssets || []);
+          
+          // Dados adicionais
+          setFiles(savedData.files || analysis.files || []);
+          setFileResults(savedData.fileResults || analysis.fileResults || {});
+          setIndividualAnalysisMode(savedData.individualAnalysisMode ?? analysis.individualAnalysisMode ?? false);
+          setShowConsolidated(savedData.showConsolidated ?? analysis.showConsolidated ?? true);
+          setTrades(savedData.trades || analysis.trades || []);
+          setFilteredTrades(savedData.filteredTrades || analysis.filteredTrades || []);
+          setTradeSearch(savedData.tradeSearch || analysis.tradeSearch || '');
+          setEmocional(savedData.emocional || analysis.emocional || null);
+          setAnalysisResult(savedData.analysisResult || analysis.analysisResult || null);
+          setDrata(savedData.drata || analysis.drata || null);
+          
+          // Estados de visualização
+          setShowMetrics(savedData.showMetrics ?? analysis.showMetrics ?? true);
+          setShowDailyResults(savedData.showDailyResults ?? analysis.showDailyResults ?? false);
+          setShowDailyAnalysis(savedData.showDailyAnalysis ?? analysis.showDailyAnalysis ?? true);
+          setShowTrades(savedData.showTrades ?? analysis.showTrades ?? false);
+          setShowEquityCurve(savedData.showEquityCurve ?? analysis.showEquityCurve ?? true);
+          setShowSpecialEvents(savedData.showSpecialEvents ?? analysis.showSpecialEvents ?? false);
+          setShowCorrelation(savedData.showCorrelation ?? analysis.showCorrelation ?? false);
+          setShowEmotionalProfile(savedData.showEmotionalProfile ?? analysis.showEmotionalProfile ?? false);
+          setShowStrategySelector(savedData.showStrategySelector ?? analysis.showStrategySelector ?? true);
+          setShowChat(savedData.showChat ?? analysis.showChat ?? true);
         }
+      } else {
+        // Restaurar dados do objeto analysis (para análises já carregadas)
+        setBacktestResult(analysis.backtestResult);
+        setSelectedStrategy(analysis.selectedStrategy);
+        setSelectedAsset(analysis.selectedAsset);
+        setCsvContent(analysis.csvContent);
+        setAvailableStrategies(analysis.availableStrategies || []);
+        setAvailableAssets(analysis.availableAssets || []);
+        
+        // Dados adicionais
+        setFiles(analysis.files || []);
+        setFileResults(analysis.fileResults || {});
+        setIndividualAnalysisMode(analysis.individualAnalysisMode ?? false);
+        setShowConsolidated(analysis.showConsolidated ?? true);
+        setTrades(analysis.trades || []);
+        setFilteredTrades(analysis.filteredTrades || []);
+        setTradeSearch(analysis.tradeSearch || '');
+        setEmocional(analysis.emocional || null);
+        setAnalysisResult(analysis.analysisResult || null);
+        setDrata(analysis.drata || null);
+        
+        // Estados de visualização
+        setShowMetrics(analysis.showMetrics ?? true);
+        setShowDailyResults(analysis.showDailyResults ?? false);
+        setShowDailyAnalysis(analysis.showDailyAnalysis ?? true);
+        setShowTrades(analysis.showTrades ?? false);
+        setShowEquityCurve(analysis.showEquityCurve ?? true);
+        setShowSpecialEvents(analysis.showSpecialEvents ?? false);
+        setShowCorrelation(analysis.showCorrelation ?? false);
+        setShowEmotionalProfile(analysis.showEmotionalProfile ?? false);
+        setShowStrategySelector(analysis.showStrategySelector ?? true);
+        setShowChat(analysis.showChat ?? true);
       }
       
-      // Set the backtestResult state with the loaded data
-      setBacktestResult(analysis.backtestResult);
-      setSelectedStrategy(analysis.selectedStrategy);
-      setSelectedAsset(analysis.selectedAsset);
-      setCsvContent(analysis.csvContent);
-      
-      // Fix for loading saved files - ensure these arrays are properly set
-      setAvailableStrategies(analysis.availableStrategies || []);
-      setAvailableAssets(analysis.availableAssets || []);
-      
-      // Create a File object from the saved CSV content if available
-      if (analysis.csvContent) {
+      // Create a File object from the saved CSV content if no files were restored
+      if (analysis.csvContent && (!analysis.files || analysis.files.length === 0)) {
         try {
           const blob = new Blob([analysis.csvContent], { type: 'text/csv' });
           const file = new File([blob], `${analysis.name}.csv`, { type: 'text/csv' });
@@ -888,16 +1100,13 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       
       setCurrentAnalysisId(analysis.id);
       setShowUploadForm(false);
-      setShowChat(true);
       setShowLoadModal(false);
       
-      // Set filtered trades
-      if (analysis.backtestResult.trades) {
-        setFilteredTrades(analysis.backtestResult.trades);
-      }
+      setSuccess("Relatório carregado com sucesso!");
+      setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
       console.error("Error loading analysis:", error);
-      setError("Erro ao carregar análise");
+      setError("Erro ao carregar relatório");
     }
   };
 
@@ -1059,7 +1268,16 @@ const handleResetFilters = () => {
   }, 100);
 };
 const reloadFilteredData = async () => {
-  if (files.length === 0) return;
+  // Não recarregar se estiver carregando uma análise salva
+  if (currentAnalysisId) {
+    console.log('Skipping reloadFilteredData - loading saved analysis');
+    return;
+  }
+  
+  if (files.length === 0) {
+    console.log('Skipping reloadFilteredData - no files available');
+    return;
+  }
   
   try {
     setIsLoading(true);
@@ -1143,8 +1361,8 @@ const reloadFilteredData = async () => {
 
 // 2. Adicione este useEffect para reagir a mudanças nos filtros de arquivo:
 useEffect(() => {
-  // Só recarrega se não estiver em upload e houver arquivos
-  if (!showUploadForm && files.length > 0) {
+  // Só recarrega se não estiver em upload, houver arquivos e não for um carregamento de análise salva
+  if (!showUploadForm && files.length > 0 && !currentAnalysisId) {
     // Delay para evitar muitas chamadas seguidas
     const timeoutId = setTimeout(() => {
       reloadFilteredData();
@@ -1152,7 +1370,7 @@ useEffect(() => {
     
     return () => clearTimeout(timeoutId);
   }
-}, [showConsolidated, selectedFiles, files.length]);
+}, [showConsolidated, selectedFiles, files.length, currentAnalysisId]);
 
   return (
     <div className="min-h-screen bg-[#1E1E1E] text-white">
@@ -1211,11 +1429,11 @@ useEffect(() => {
             {!showUploadForm && (
               <>
                 <button
-                  onClick={() => setShowSaveModal(true)}
+                  onClick={handleSaveAnalysis}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-md flex items-center"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Baixar Relatório
+                  <Save className="w-4 h-4 mr-2" />
+                  Salvar Relatório
                 </button>
                 
                 <button

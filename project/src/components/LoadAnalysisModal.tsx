@@ -13,6 +13,28 @@ interface SavedAnalysis {
   availableStrategies: string[];
   availableAssets: string[];
   totalTrades: number;
+  // Dados adicionais para recuperação completa
+  files?: File[];
+  fileResults?: {[key: string]: any};
+  individualAnalysisMode?: boolean;
+  showConsolidated?: boolean;
+  trades?: any[];
+  filteredTrades?: any[];
+  tradeSearch?: string;
+  emocional?: any;
+  analysisResult?: any;
+  drata?: any;
+  // Estados de visualização
+  showMetrics?: boolean;
+  showDailyResults?: boolean;
+  showDailyAnalysis?: boolean;
+  showTrades?: boolean;
+  showEquityCurve?: boolean;
+  showSpecialEvents?: boolean;
+  showCorrelation?: boolean;
+  showEmotionalProfile?: boolean;
+  showStrategySelector?: boolean;
+  showChat?: boolean;
 }
 
 interface LoadAnalysisModalProps {
@@ -97,7 +119,7 @@ export function LoadAnalysisModal({
                 </div>
                 <div className="text-sm text-gray-400 mb-3">
                   <div>Criado: {new Date(analysis.createdAt).toLocaleDateString()}</div>
-                  <div>Trades: {analysis.totalTrades || 'N/A'}</div>
+                  <div>Trades: {analysis.backtestResult?.trades?.length || analysis.trades?.length || analysis.totalTrades || 'N/A'}</div>
                 </div>
                 <button
                   onClick={() => handleLoadAnalysis(analysis)}

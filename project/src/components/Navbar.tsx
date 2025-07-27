@@ -34,19 +34,7 @@ export function Navbar() {
 
   const menuItems = [
     { path: '/robots', label: t('nav.robots'), icon: <Code2 className="w-5 h-5" />, external: false },
-    { 
-      path: 'https://profitestrategista.com.br/login', 
-      label: t('nav.community'), 
-      icon: <Users className="w-5 h-5" />, 
-      external: true 
-    },
     { path: '/experts', label: t('nav.experts'), icon: <Briefcase className="w-5 h-5" />, external: false },
-    { 
-      path: 'https://profitestrategista.com.br/mesa-proprietaria', 
-      label: 'Mesa Proprietária', 
-      icon: <Building className="w-5 h-5" />, 
-      external: true 
-    },
     { path: '/backtest-analysis', label: 'Backtest Analysis', icon: <FileSpreadsheet className="w-5 h-5" />, external: false },
   ];
 
