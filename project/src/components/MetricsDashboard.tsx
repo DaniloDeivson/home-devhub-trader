@@ -326,7 +326,10 @@ export function MetricsDashboard({ metrics,tradeObject }: MetricsDashboardProps)
     const numValue = Number(value);
 
     if (isCurrency) {
-      return `R$ ${numValue.toFixed(2)}`;
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(numValue);
     }
 
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
@@ -652,19 +655,19 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.p
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trade Médio</td>
                     <td className="py-2 text-right">
-                    {((animatedMetrics.averageWin || 0) - Math.abs(animatedMetrics.averageLoss || 0)).toFixed(2)}
+                    {formatMetric(((animatedMetrics.averageWin || 0) - Math.abs(animatedMetrics.averageLoss || 0)), false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Ganho</td>
                     <td className="py-2 text-right text-green-500">
-                      {maiorGanho.toFixed(2)}
+                      {formatMetric(maiorGanho, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {maiorPerda.toFixed(2)}
+                      {formatMetric(maiorPerda, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
@@ -794,7 +797,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.p
                               </span>
                             </td>
                             <td className={`px-3 py-2 text-right ${item.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              R$ {item.result.toFixed(2)}
+                              {formatMetric(item.result, false, true)}
                             </td>
                           </tr>
                         ))}

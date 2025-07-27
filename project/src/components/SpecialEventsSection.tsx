@@ -494,7 +494,10 @@ export function SpecialEventsSection({
                 </div>
                 <div className="bg-gray-700 p-3 rounded-lg text-center">
                   <div className={`text-2xl font-bold ${totalSpecialProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {totalSpecialProfit >= 0 ? '+' : ''}R$ {totalSpecialProfit.toFixed(0)}
+                    {totalSpecialProfit >= 0 ? '+' : ''}{new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    }).format(totalSpecialProfit)}
                   </div>
                   <div className="text-xs text-gray-400">Resultado Total</div>
                 </div>
@@ -552,7 +555,10 @@ export function SpecialEventsSection({
                         </td>
                         <td className="px-4 py-2 text-right">
                           <div className={`font-medium ${event.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {event.result > 0 ? '+' : ''}R$ {event.result.toFixed(2)}
+                            {event.result > 0 ? '+' : ''}{new Intl.NumberFormat('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL'
+                            }).format(event.result)}
                           </div>
                         </td>
                         <td className="px-4 py-2 text-center">
@@ -588,7 +594,10 @@ export function SpecialEventsSection({
                   <div>
                     <div className="text-gray-300 mb-1">Maior Impacto:</div>
                     <div className={`font-medium ${specialEvents.length > 0 && specialEvents[0].result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {specialEvents.length > 0 ? `R$ ${Math.abs(specialEvents[0].result).toFixed(2)}` : 'N/A'}
+                      {specialEvents.length > 0 ? new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL'
+                      }).format(Math.abs(specialEvents[0].result)) : 'N/A'}
                     </div>
                   </div>
                   <div>

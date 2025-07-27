@@ -46,8 +46,11 @@ export function ActiveFilesInfo({
               </div>
               
               <div className="text-gray-300">
-                P&L: <span className={netProfit >= 0 ? 'text-green-400' : 'text-red-400'}>
-                  R$ {netProfit?.toFixed(2)}
+                P&L:                 <span className={netProfit >= 0 ? 'text-green-400' : 'text-red-400'}>
+                  {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }).format(netProfit || 0)}
                 </span>
               </div>
               

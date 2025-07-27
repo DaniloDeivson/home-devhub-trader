@@ -149,7 +149,7 @@ export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps
               <span className="text-gray-300">Drawdown Máximo</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {metrics.metricas_principais.drawdown_maximo.toFixed(2)}
+              {formatCurrency(metrics.metricas_principais.drawdown_maximo)}
             </span>
           </div>
           <div className="flex items-center justify-between">

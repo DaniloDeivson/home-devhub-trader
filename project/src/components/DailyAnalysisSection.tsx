@@ -173,7 +173,10 @@ export function DailyAnalysisSection({
     const numValue = Number(value);
 
     if (isCurrency) {
-      return `R$ ${numValue.toFixed(2)}`;
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(numValue);
     }
 
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);

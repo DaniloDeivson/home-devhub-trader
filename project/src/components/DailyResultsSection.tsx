@@ -43,7 +43,10 @@ export function DailyResultsSection({
                 Ganho Médio
               </h3>
               <div className="text-2xl font-bold text-green-400">
-                R$ {backtestResult["Performance Metrics"]["Average Win"]?.toFixed(2) || "0.00"}
+                {new Intl.NumberFormat('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL'
+                }).format(backtestResult["Performance Metrics"]["Average Win"] || 0)}
               </div>
             </div>
             
@@ -53,7 +56,10 @@ export function DailyResultsSection({
                 Perda Média
               </h3>
               <div className="text-2xl font-bold text-red-400">
-                R$ {backtestResult["Performance Metrics"]["Average Loss"]?.toFixed(2) || "0.00"}
+                {new Intl.NumberFormat('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL'
+                }).format(backtestResult["Performance Metrics"]["Average Loss"] || 0)}
               </div>
             </div>
             

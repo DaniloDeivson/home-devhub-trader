@@ -82,7 +82,10 @@ export function TradeDurationSection({
                       <td className="px-3 py-2">{item.duration}</td>
                       <td className="px-3 py-2 text-center">{item.count}</td>
                       <td className={`px-3 py-2 text-right ${item.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        R$ {item.result.toFixed(2)}
+                        {new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL'
+                        }).format(item.result)}
                       </td>
                     </tr>
                   ))}
