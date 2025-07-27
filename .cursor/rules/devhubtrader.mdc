@@ -1,0 +1,492 @@
+# DEVHUB TRADER - REGRAS E DIRETRIZES
+
+## 🎯 REGRAS GERAIS DE DESENVOLVIMENTO
+
+### 1. Padrões de Código
+
+#### Frontend (React/TypeScript)
+- **TypeScript**: Usar tipagem forte em todos os componentes
+- **Hooks**: Preferir hooks funcionais sobre classes
+- **Estado**: Usar Zustand para estado global, useState para estado local
+- **Componentes**: Componentes funcionais com nomes em PascalCase
+- **Props**: Interface TypeScript para todas as props
+- **Imports**: Imports organizados (React, bibliotecas externas, internos)
+
+#### Backend (Python/Flask)
+- **PEP 8**: Seguir padrões de estilo Python
+- **Type Hints**: Usar type hints em todas as funções
+- **Docstrings**: Documentar todas as funções públicas
+- **Error Handling**: Try/catch com mensagens específicas
+- **Logging**: Usar logging apropriado para debug
+
+### 2. Estrutura de Arquivos
+
+#### Organização de Componentes
+```
+src/components/
+├── [Feature]/           # Agrupar por funcionalidade
+│   ├── ComponentName.tsx
+│   ├── ComponentName.test.tsx
+│   └── index.ts
+├── common/              # Componentes reutilizáveis
+└── layouts/             # Layouts da aplicação
+```
+
+#### Organização de Páginas
+```
+src/pages/
+├── [Feature]Page.tsx    # Páginas principais
+├── [Feature]Modal.tsx   # Modais específicos
+└── [Feature]Section.tsx # Seções de páginas
+```
+
+### 3. Convenções de Nomenclatura
+
+#### Frontend
+- **Componentes**: PascalCase (ex: `MetricsDashboard`)
+- **Funções**: camelCase (ex: `handleFileUpload`)
+- **Constantes**: UPPER_SNAKE_CASE (ex: `API_ENDPOINTS`)
+- **Interfaces**: PascalCase com prefixo I (ex: `ITradeData`)
+- **Arquivos**: kebab-case (ex: `backtest-analysis.tsx`)
+
+#### Backend
+- **Funções**: snake_case (ex: `calcular_metrics`)
+- **Classes**: PascalCase (ex: `BacktestEngine`)
+- **Constantes**: UPPER_SNAKE_CASE (ex: `DEFAULT_CAPITAL`)
+- **Arquivos**: snake_case (ex: `fun_calculos.py`)
+
+## 📊 REGRAS ESPECÍFICAS PARA CÁLCULOS
+
+### 1. Cálculos de Trading
+
+#### Métricas Básicas
+```python
+# Sempre validar dados de entrada
+def calcular_metrics(df: pd.DataFrame, cdi: float = 0.12) -> Dict:
+    if df.empty:
+        return {"error": "DataFrame vazio"}
+    
+    # Cálculos com tratamento de erro
+    try:
+        pnl = df['Res. Operação']
+        lucro = pnl.sum()
+        # ... resto dos cálculos
+    except Exception as e:
+        return {"error": f"Erro no cálculo: {str(e)}"}
+```
+
+#### Validação de Dados
+- **CSV**: Sempre verificar encoding (latin1 para dados brasileiros)
+- **Datas**: Converter para datetime com timezone
+- **Números**: Tratar vírgulas como separador decimal
+- **Valores nulos**: Usar `pd.to_numeric(..., errors='coerce')`
+
+### 2. Processamento de CSV
+
+#### Padrão de Carregamento
+```python
+def carregar_csv(file) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(
+            file, 
+            skiprows=5, 
+            sep=';', 
+            encoding='latin1', 
+            decimal=','
+        )
+        
+        # Conversões obrigatórias
+        df['Abertura'] = pd.to_datetime(df['Abertura'], format="%d/%m/%Y %H:%M:%S")
+        df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S")
+        df['Res. Operação'] = pd.to_numeric(df['Res. Operação'], errors='coerce')
+        
+        return df
+    except Exception as e:
+        raise ValueError(f"Erro ao processar CSV: {e}")
+```
+
+### 3. Cálculos Avançados
+
+#### Análise de Correlação
+- Sempre verificar se há dados suficientes (mínimo 2 arquivos)
+- Tratar casos onde não há sobreposição de datas
+- Retornar métricas de correlação padronizadas
+
+#### Múltiplos Arquivos
+- Processar cada arquivo individualmente
+- Consolidar dados com `pd.concat()`
+- Manter rastreabilidade dos arquivos originais
+
+## 🎨 REGRAS DE INTERFACE
+
+### 1. Componentes React
+
+#### Estrutura Padrão
+```typescript
+interface ComponentProps {
+  data: TradeData[];
+  onUpdate?: (data: TradeData) => void;
+  isLoading?: boolean;
+}
+
+export const ComponentName: React.FC<ComponentProps> = ({
+  data,
+  onUpdate,
+  isLoading = false
+}) => {
+  // Hooks no topo
+  const [state, setState] = useState();
+  
+  // Handlers
+  const handleAction = useCallback(() => {
+    // Lógica
+  }, []);
+  
+  // Render
+  return (
+    <div className="component-container">
+      {/* JSX */}
+    </div>
+  );
+};
+```
+
+### 2. Estados de Loading
+
+#### Padrão de Loading
+```typescript
+// Sempre mostrar estado de loading
+{isLoading ? (
+  <div className="loading-spinner">
+    <Spinner />
+  </div>
+) : (
+  <ComponentContent />
+)}
+```
+
+### 3. Tratamento de Erros
+
+#### Error Boundaries
+```typescript
+// Sempre capturar erros de API
+const handleApiCall = async () => {
+  try {
+    setLoading(true);
+    const result = await apiCall();
+    setData(result);
+  } catch (error) {
+    setError(ErrorLogService.formatErrorMessage(error));
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+## 🔧 REGRAS DE API
+
+### 1. Endpoints Flask
+
+#### Estrutura Padrão
+```python
+@app.route('/api/endpoint', methods=['POST'])
+def api_endpoint():
+    try:
+        # Validação de entrada
+        if 'file' not in request.files:
+            return jsonify({"error": "Arquivo não fornecido"}), 400
+        
+        # Processamento
+        result = process_data(request.files['file'])
+        
+        # Resposta
+        return jsonify(result), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+```
+
+### 2. Serialização JSON
+
+#### Tratamento de Tipos NumPy
+```python
+class NumpyJSONProvider(JSONProvider):
+    def _convert_numpy_types(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        # ... outros tipos
+```
+
+### 3. Validação de Dados
+
+#### Padrão de Validação
+```python
+def validate_csv_data(df: pd.DataFrame) -> bool:
+    required_columns = ['Abertura', 'Fechamento', 'Res. Operação']
+    
+    for col in required_columns:
+        if col not in df.columns:
+            return False
+    
+    if df.empty:
+        return False
+    
+    return True
+```
+
+## 🗄️ REGRAS DE BANCO DE DADOS
+
+### 1. Supabase
+
+#### Queries
+```typescript
+// Sempre usar try/catch
+const loadData = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('table')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    ErrorLogService.logError(error, 'loadData');
+    throw error;
+  }
+};
+```
+
+### 2. Migrations
+
+#### Padrão de Migration
+```sql
+-- Sempre incluir rollback
+BEGIN;
+  -- Alterações
+  ALTER TABLE table_name ADD COLUMN new_column TYPE;
+COMMIT;
+
+-- Rollback (se necessário)
+-- ALTER TABLE table_name DROP COLUMN new_column;
+```
+
+## 📊 REGRAS DE MÉTRICAS
+
+### 1. Cálculos de Performance
+
+#### Métricas Obrigatórias
+- **Net Profit**: Sempre calcular
+- **Win Rate**: Percentual de trades vencedores
+- **Profit Factor**: Lucro bruto / Prejuízo bruto
+- **Max Drawdown**: Maior queda consecutiva
+- **Sharpe Ratio**: Retorno ajustado ao risco
+
+#### Validações
+```python
+def validate_metrics(metrics: Dict) -> bool:
+    required_keys = ['net_profit', 'win_rate', 'profit_factor']
+    
+    for key in required_keys:
+        if key not in metrics:
+            return False
+    
+    return True
+```
+
+### 2. Análise Temporal
+
+#### Padrões de Agrupamento
+- **Dia da Semana**: Segunda a Domingo
+- **Mês**: Janeiro a Dezembro
+- **Ano**: Ano completo
+- **Período**: Datas específicas
+
+## 🧠 REGRAS DE IA
+
+### 1. Integração OpenAI
+
+#### Padrão de Prompt
+```python
+def generate_analysis_prompt(data: Dict) -> str:
+    return f"""
+    Analise os dados de trading fornecidos:
+    - Net Profit: {data.get('net_profit')}
+    - Win Rate: {data.get('win_rate')}%
+    - Profit Factor: {data.get('profit_factor')}
+    
+    Forneça insights sobre:
+    1. Pontos fortes da estratégia
+    2. Áreas de melhoria
+    3. Recomendações específicas
+    """
+```
+
+### 2. Tratamento de Respostas
+
+#### Validação de IA
+```python
+def validate_ai_response(response: str) -> bool:
+    if not response or len(response) < 50:
+        return False
+    
+    # Verificar se contém insights úteis
+    useful_keywords = ['recomendo', 'melhorar', 'forte', 'fraco']
+    return any(keyword in response.lower() for keyword in useful_keywords)
+```
+
+## 🔒 REGRAS DE SEGURANÇA
+
+### 1. Autenticação
+
+#### Verificação de Sessão
+```typescript
+// Sempre verificar autenticação
+const { session } = useAuthStore();
+
+if (!session) {
+  return <Navigate to="/login" />;
+}
+```
+
+### 2. Validação de Entrada
+
+#### Sanitização de Dados
+```python
+def sanitize_input(data: str) -> str:
+    # Remover caracteres perigosos
+    return data.strip().replace('<', '').replace('>', '')
+```
+
+### 3. Controle de Acesso
+
+#### Verificação de Permissões
+```typescript
+// Verificar limites do plano
+const { robotLimit } = useRobotStore();
+
+if (robots.length >= robotLimit) {
+  return <PlanRestrictedSection />;
+}
+```
+
+## 📈 REGRAS DE PERFORMANCE
+
+### 1. Otimização Frontend
+
+#### Lazy Loading
+```typescript
+// Usar lazy loading para componentes pesados
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+// Suspense wrapper
+<Suspense fallback={<Spinner />}>
+  <HeavyComponent />
+</Suspense>
+```
+
+### 2. Otimização Backend
+
+#### Cache de Cálculos
+```python
+# Cache para cálculos pesados
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def calculate_complex_metrics(data_hash: str) -> Dict:
+    # Cálculos complexos
+    pass
+```
+
+### 3. Limpeza de Memória
+
+#### Cleanup de Componentes
+```typescript
+useEffect(() => {
+  // Setup
+  return () => {
+    // Cleanup
+    clearInterval(interval);
+  };
+}, []);
+```
+
+## 🐛 REGRAS DE DEBUG
+
+### 1. Logging
+
+#### Padrão de Log
+```typescript
+// Usar ErrorLogService
+ErrorLogService.logError(error, 'componentName');
+```
+
+### 2. Console Debug
+
+#### Debug Condicional
+```typescript
+if (process.env.NODE_ENV === 'development') {
+  console.log('Debug info:', data);
+}
+```
+
+## 📝 REGRAS DE DOCUMENTAÇÃO
+
+### 1. Comentários
+
+#### Padrão de Comentários
+```typescript
+/**
+ * Calcula métricas de performance de trading
+ * @param trades - Array de trades
+ * @param capital - Capital inicial
+ * @returns Objeto com métricas calculadas
+ */
+function calculateMetrics(trades: Trade[], capital: number): Metrics {
+  // Implementação
+}
+```
+
+### 2. README
+
+#### Estrutura de README
+- Visão geral do projeto
+- Instalação e setup
+- Uso básico
+- Contribuição
+- Licença
+
+## 🚀 REGRAS DE DEPLOY
+
+### 1. Variáveis de Ambiente
+
+#### Configuração
+```bash
+# .env.local
+VITE_SUPABASE_URL=your_url
+VITE_SUPABASE_ANON_KEY=your_key
+OPENAI_API_KEY=your_key
+```
+
+### 2. Build
+
+#### Scripts de Build
+```json
+{
+  "scripts": {
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  }
+}
+```
+
+Estas regras garantem consistência, qualidade e manutenibilidade do código em todo o projeto DevHub Trader. ---
+description:
+globs:
+alwaysApply: false
+---

@@ -45,6 +45,10 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Estados para paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+
   // Extrair trades do objeto ou usar array diretamente
   const trades = Array.isArray(sampleTrades) ? sampleTrades : (sampleTrades?.trades || []);
 
@@ -148,6 +152,17 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
     return filtered;
   }, [trades, tradeSearch, selectedAsset, selectedStrategy, selectedDirection, dateFilter, sortField, sortDirection]);
 
+  // Calcular dados de paginação
+  const totalPages = Math.ceil(filteredTrades.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentTrades = filteredTrades.slice(startIndex, endIndex);
+
+  // Resetar página quando filtros mudam
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tradeSearch, selectedAsset, selectedStrategy, selectedDirection, dateFilter]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -163,6 +178,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
     setSelectedStrategy(null);
     setSelectedDirection(null);
     setDateFilter('all');
+    setCurrentPage(1);
   };
 
   const formatDuration = (hours: number) => {
@@ -322,7 +338,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
               
               {/* Tabela */}
               <div className="overflow-x-auto rounded-lg border border-gray-700">
-                {filteredTrades.length > 0 ? (
+                {currentTrades.length > 0 ? (
                   <table className="w-full text-sm">
                     <thead className="bg-gray-700">
                       <tr>
@@ -382,7 +398,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredTrades.slice(0, 100).map((trade, index) => (
+                      {currentTrades.map((trade, index) => (
                         <tr 
                           key={trade.id || index} 
                           className={`border-b border-gray-700 hover:bg-gray-700 hover:bg-opacity-50 transition-colors ${
@@ -465,9 +481,91 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
                 )}
               </div>
               
-              {filteredTrades.length > 100 && (
-                <div className="mt-4 text-center text-gray-400 text-sm bg-gray-700 bg-opacity-30 rounded-lg py-3">
-                  Mostrando 100 de {filteredTrades.length} operações
+              {/* Controles de paginação */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 bg-gray-700 rounded-lg mt-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-300">Itens por página:</span>
+                      <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                    <div className="text-sm text-gray-300">
+                      Mostrando {startIndex + 1} a {Math.min(endIndex, filteredTrades.length)} de {filteredTrades.length} operações
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 rounded transition-colors"
+                    >
+                      Primeira
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 hover:bg-gray-600 disabled:bg-gray-700 disabled:text-gray-500 rounded transition-colors"
+                    >
+                      <ChevronUp className="w-4 h-4 text-gray-400" />
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`px-3 py-1 text-sm rounded transition-colors ${
+                              currentPage === pageNum
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 hover:bg-gray-600 disabled:bg-gray-700 disabled:text-gray-500 rounded transition-colors"
+                    >
+                      <ChevronDown className="w-4 h-4 text-gray-400" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 rounded transition-colors"
+                    >
+                      Última
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

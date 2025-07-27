@@ -200,14 +200,21 @@ def carregar_csv_safe(file_path_or_file):
     except Exception as e:
         raise ValueError(f"Erro ao processar CSV: {e}")
 
-def processar_trades(df: pd.DataFrame) -> List[Dict]:
+def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = None) -> List[Dict]:
     """Converte DataFrame em lista de trades para o frontend"""
     trades = []
     
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         if pd.isna(row.get('entry_date')) or pd.isna(row.get('exit_date')):
             continue
-            
+        
+        # Determinar a estratégia baseada no arquivo de origem
+        strategy = "Manual"  # Default
+        if arquivo_para_indices and idx in arquivo_para_indices:
+            # Extrair nome do arquivo sem extensão como estratégia
+            filename = arquivo_para_indices[idx]
+            strategy = filename.replace('.csv', '').replace('.CSV', '')
+        
         trade = {
             "entry_date": row['entry_date'].isoformat() if pd.notna(row['entry_date']) else None,
             "exit_date": row['exit_date'].isoformat() if pd.notna(row['exit_date']) else None,
@@ -217,7 +224,7 @@ def processar_trades(df: pd.DataFrame) -> List[Dict]:
             "pnl_pct": float(row.get('pnl_pct', 0)) if pd.notna(row.get('pnl_pct')) else 0,
             "direction": row.get('direction', 'long'),
             "symbol": str(row.get('symbol', 'N/A')),
-            "strategy": "Manual",  # Pode ser extraído de outros campos se disponível
+            "strategy": strategy,  # Usar estratégia baseada no arquivo
             "quantity_total": int(row.get('qty_buy'))+int(row.get('qty_sell')) if pd.notna(row.get('qty_buy')) and pd.notna(row.get('qty_sell')) else 0,
             "quantity_compra": int(row.get('qty_buy', 0)) if pd.notna(row.get('qty_buy')) else 0,
             "quantity_venda": int(row.get('qty_sell', 0)) if pd.notna(row.get('qty_sell')) else 0,
@@ -283,6 +290,9 @@ def make_json_serializable(obj):
     elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+        # Tratar valores infinitos
+        if np.isinf(obj):
+            return None  # Retornar None em vez de Infinity
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -293,7 +303,16 @@ def make_json_serializable(obj):
     elif pd.isna(obj) or obj is None:
         return None
     elif hasattr(obj, 'item'):  # Para outros tipos numpy que têm método item()
-        return obj.item()
+        item_value = obj.item()
+        # Tratar valores infinitos também aqui
+        if isinstance(item_value, float) and np.isinf(item_value):
+            return None
+        return item_value
+    elif isinstance(obj, float):
+        # Tratar valores infinitos para floats Python também
+        if np.isinf(obj):
+            return None
+        return obj
     else:
         return obj
 
@@ -331,7 +350,7 @@ def calcular_estatisticas_gerais(df: pd.DataFrame) -> Dict[str, Any]:
     # Profit Factor
     gross_profit = df_valid[df_valid['pnl'] > 0]['pnl'].sum()
     gross_loss = abs(df_valid[df_valid['pnl'] < 0]['pnl'].sum())
-    profit_factor = gross_profit / gross_loss if gross_loss != 0 else float('inf')
+    profit_factor = gross_profit / gross_loss if gross_loss != 0 else None
     
     # Expectativa
     expectancy = (win_rate/100 * avg_win) + ((100-win_rate)/100 * avg_loss)
@@ -352,7 +371,7 @@ def calcular_estatisticas_gerais(df: pd.DataFrame) -> Dict[str, Any]:
         "avg_trade": float(round(avg_trade, 2)),
         "best_trade": float(round(best_trade, 2)),
         "worst_trade": float(round(worst_trade, 2)),
-        "profit_factor": float(round(profit_factor, 2)) if profit_factor != float('inf') else None,
+        "profit_factor": float(round(profit_factor, 2)) if profit_factor is not None else None,
         "expectancy": float(round(expectancy, 2)),
         "gross_profit": float(round(gross_profit, 2)),
         "gross_loss": float(round(gross_loss, 2)),
@@ -451,7 +470,7 @@ def calcular_metricas_diarias(df: pd.DataFrame) -> Dict[str, Any]:
 
     return daily_stats
 
-def calcular_metricas_diarias_corrigido(df: pd.DataFrame) -> pd.DataFrame:
+def calcular_metricas_diarias(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula métricas diárias baseadas nas trades com drawdown correto
     CORRIGIDO: Sempre agrupa por data antes de calcular métricas diárias
@@ -460,7 +479,7 @@ def calcular_metricas_diarias_corrigido(df: pd.DataFrame) -> pd.DataFrame:
         print("⚠️ DataFrame vazio para cálculo de métricas diárias")
         return pd.DataFrame()
     
-    print(f"🔍 DEBUG - calcular_metricas_diarias_corrigido:")
+    print(f"🔍 DEBUG - calcular_metricas_diarias:")
     print(f"  Total de trades: {len(df)}")
     print(f"  Colunas disponíveis: {df.columns.tolist()}")
     
@@ -541,7 +560,7 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
         return {}
     
     # Usar a função de métricas diárias corrigida
-    daily_stats = calcular_metricas_diarias_corrigido(df)
+    daily_stats = calcular_metricas_diarias(df)
     
     if daily_stats.empty:
         return {}
@@ -566,7 +585,12 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
     avg_loss = abs(df_valid[df_valid['pnl'] < 0]['pnl'].mean()) if losing_trades > 0 else 0
     payoff_ratio = avg_win / avg_loss if avg_loss != 0 else 0
     
-    # Drawdown máximo usando a mesma lógica das outras funções
+    # PADRONIZADO: Drawdown máximo usando a mesma lógica do FunCalculos.py (trades individuais)
+    # Calcular equity curve trade por trade (igual ao FunCalculos.py)
+    df_valid['Saldo'] = df_valid['pnl'].cumsum()
+    df_valid['Saldo_Maximo'] = df_valid['Saldo'].cummax()
+    df_valid['Drawdown'] = df_valid['Saldo'] - df_valid['Saldo_Maximo']
+    
     max_drawdown = abs(df_valid['Drawdown'].min())  # Valor positivo (absoluto)
     max_drawdown_pct = (max_drawdown / df_valid['Saldo'].iloc[-1] * 100) if df_valid['Saldo'].iloc[-1] != 0 else 0
     
@@ -706,10 +730,10 @@ def calcular_sharpe_ratio_customizado(total_pnl: float, max_drawdown: float, per
     
     # Denominador: Risco (drawdown / 3x drawdown)
     drawdown_3x = max_drawdown * 3
-    risco_pct = (max_drawdown / drawdown_3x) * 100 if drawdown_3x > 0 else 100
+    risco_pct = (max_drawdown / drawdown_3x) * 100 if drawdown_3x > 0 else 33.33  # Valor padrão em vez de 100
     
     # Sharpe Ratio
-    sharpe_ratio = numerador / risco_pct if risco_pct != 0 else 0
+    sharpe_ratio = numerador / risco_pct if risco_pct != 0 and risco_pct != 33.33 else 0
     
     return {
         "sharpe_ratio": round(sharpe_ratio, 2),
@@ -1378,7 +1402,7 @@ def api_tabela_multipla():
 def gerar_equity_curve_data(df, capital_inicial=100000):
     """
     Função auxiliar para garantir que os dados da equity curve sejam gerados
-    caso não existam na função processar_backtest_completo
+    PADRONIZADO: Usa exatamente a mesma lógica do FunCalculos.py
     """
     try:
         # Encontrar coluna de resultado
@@ -1411,20 +1435,51 @@ def gerar_equity_curve_data(df, capital_inicial=100000):
         # Ordenar por data
         df_valid = df_valid.sort_values(data_col).reset_index(drop=True)
         
-        # Calcular equity curve
-        equity_curve = []
-        capital_atual = capital_inicial
+        # PADRONIZADO: Usar exatamente a mesma lógica do FunCalculos.py
+        # Calcular equity curve trade por trade (PADRONIZADO: apenas saldo cumulativo)
+        df_valid['Saldo'] = df_valid[resultado_col].cumsum()
+        df_valid['Saldo_Maximo'] = df_valid['Saldo'].cummax()
+        df_valid['Drawdown'] = df_valid['Saldo'] - df_valid['Saldo_Maximo']
         
+        # Calcular valor da carteira (para compatibilidade, mas não usado no drawdown)
+        df_valid['Valor_Carteira'] = capital_inicial + df_valid['Saldo']
+        df_valid['Peak_Carteira'] = capital_inicial + df_valid['Saldo_Maximo']
+        
+        # PADRONIZADO: Drawdown baseado apenas no saldo cumulativo (sem capital inicial)
+        df_valid['Drawdown_Carteira'] = df_valid['Drawdown']  # Usar o mesmo drawdown do saldo
+        df_valid['Drawdown_Percentual'] = (df_valid['Drawdown'] / df_valid['Saldo_Maximo'] * 100).fillna(0) if df_valid['Saldo_Maximo'].max() != 0 else 0
+        
+        # Preparar dados para o gráfico (igual ao FunCalculos.py)
+        equity_curve = []
+        
+        # Ponto inicial
+        equity_curve.append({
+            "date": df_valid[data_col].iloc[0].strftime('%Y-%m-%d'),
+            "fullDate": df_valid[data_col].iloc[0].strftime('%d/%m/%Y'),
+            "saldo": 0.0,  # Saldo inicial sempre 0
+            "valor": float(capital_inicial),  # Patrimônio inicial
+            "resultado": 0.0,  # Resultado inicial sempre 0
+            "drawdown": 0.0,
+            "drawdownPercent": 0.0,
+            "peak": float(capital_inicial),
+            "trades": 0,
+            "isStart": True
+        })
+        
+        # Dados para cada trade (igual ao FunCalculos.py)
         for i, row in df_valid.iterrows():
-            resultado = float(row[resultado_col])
-            capital_atual += resultado
-            
             equity_curve.append({
                 "date": row[data_col].strftime('%Y-%m-%d'),
-                "equity": round(capital_atual, 2),
-                "pnl": round(resultado, 2),
-                "trade_number": i + 1,
-                "drawdown": round(((capital_atual / max([e.get('equity', capital_inicial) for e in equity_curve] + [capital_inicial])) - 1) * 100, 2)
+                "fullDate": row[data_col].strftime('%d/%m/%Y %H:%M'),
+                "saldo": float(row['Saldo']),  # ESTE é o valor que você quer mostrar
+                "valor": float(row['Valor_Carteira']),  # Patrimônio total (saldo + capital)
+                "resultado": float(row['Saldo']),  # Mantém compatibilidade
+                "drawdown": float(abs(row['Drawdown_Carteira'])),  # Sempre positivo
+                "drawdownPercent": float(abs(row['Drawdown_Percentual'])),
+                "peak": float(row['Peak_Carteira']),
+                "trades": int(i + 1),
+                "trade_result": float(row[resultado_col]),  # Incluir mesmo se for 0
+                "isStart": False
             })
         
         return equity_curve
@@ -1586,8 +1641,25 @@ def api_backtest_completo():
 @app.route('/api/correlacao', methods=['POST'])
 def api_correlacao_data_direcao():
     try:
+        arquivos_processados = []
+        
+        # Verificar se recebeu dados JSON
+        if request.is_json:
+            data = request.get_json()
+            
+            # Verificar se tem dados de arquivos no JSON
+            if 'arquivo1' in data and 'arquivo2' in data:
+                # Processar dados JSON (quando frontend envia dados já processados)
+                try:
+                    # Aqui você pode processar os dados JSON se necessário
+                    # Por enquanto, vamos retornar um erro informativo
+                    return jsonify({"error": "API de correlação espera arquivos CSV, não dados JSON. Use FormData com arquivos."}), 400
+                except Exception as e:
+                    return jsonify({"error": f"Erro ao processar dados JSON: {str(e)}"}), 500
+        
+        # Verificar se recebeu arquivos
         if 'files' not in request.files:
-            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+            return jsonify({"error": "Nenhum arquivo enviado. Envie arquivos CSV via FormData."}), 400
         
         files = request.files.getlist('files')
         
@@ -1595,8 +1667,6 @@ def api_correlacao_data_direcao():
             return jsonify({"error": "Precisa de pelo menos 2 arquivos"}), 400
         
         # Processar cada arquivo
-        arquivos_processados = []
-        
         for file in files:
             try:
                 df = carregar_csv_safe(file)  # Usar função com encoding seguro
@@ -1652,6 +1722,8 @@ def api_trades():
         # Lista para armazenar todos os DataFrames
         dataframes = []
         arquivos_processados = []
+        arquivo_para_indices = {}  # Mapeamento de índice para nome do arquivo
+        current_index = 0
         
         # Verificar se tem arquivo único
         if 'file' in request.files:
@@ -1660,6 +1732,11 @@ def api_trades():
                 df = carregar_csv_trades(arquivo)
                 dataframes.append(df)
                 arquivos_processados.append(arquivo.filename)
+                
+                # Mapear índices para este arquivo
+                for i in range(len(df)):
+                    arquivo_para_indices[current_index + i] = arquivo.filename
+                current_index += len(df)
         
         # Verificar se tem múltiplos arquivos
         if 'files' in request.files:
@@ -1669,6 +1746,11 @@ def api_trades():
                     df = carregar_csv_trades(arquivo)
                     dataframes.append(df)
                     arquivos_processados.append(arquivo.filename)
+                    
+                    # Mapear índices para este arquivo
+                    for i in range(len(df)):
+                        arquivo_para_indices[current_index + i] = arquivo.filename
+                    current_index += len(df)
         
         # Verificar se tem caminho de arquivo
         if 'path' in request.form:
@@ -1678,6 +1760,11 @@ def api_trades():
             df = carregar_csv_trades(path)
             dataframes.append(df)
             arquivos_processados.append(os.path.basename(path))
+            
+            # Mapear índices para este arquivo
+            for i in range(len(df)):
+                arquivo_para_indices[current_index + i] = os.path.basename(path)
+            current_index += len(df)
         
         # Se não tem nenhum arquivo
         if not dataframes:
@@ -1686,8 +1773,8 @@ def api_trades():
         # Concatenar todos os DataFrames em um só
         df_consolidado = pd.concat(dataframes, ignore_index=True)
         
-        # Processar dados consolidados
-        trades = processar_trades(df_consolidado)
+        # Processar dados consolidados com mapeamento de arquivos
+        trades = processar_trades(df_consolidado, arquivo_para_indices)
         estatisticas_gerais = calcular_estatisticas_gerais(df_consolidado)
         estatisticas_por_ativo = calcular_estatisticas_por_ativo(df_consolidado)
         estatisticas_temporais = calcular_estatisticas_temporais(df_consolidado)
@@ -1695,7 +1782,8 @@ def api_trades():
         
         # Extrair listas únicas para filtros
         available_assets = sorted([str(symbol) for symbol in df_consolidado['symbol'].unique() if pd.notna(symbol)])
-        available_strategies = ["Manual"]  # Pode ser expandido conforme necessário
+        # Extrair estratégias únicas dos trades processados
+        available_strategies = sorted(list(set([trade['strategy'] for trade in trades if trade['strategy']])))
 
         resultado = {
             "trades": trades,
@@ -1826,7 +1914,7 @@ def api_metrics_from_data():
 if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0',
-                port=5000,
+                port=5002,
                 debug=False,
                 use_reloader=False)
     except Exception as e:

@@ -160,9 +160,9 @@ def analisar_correlacao_direcao(dados_processados, arquivos_df_list):
             "todas_ganharam_simultaneo": todas_ganharam,
             "todas_perderam_simultaneo": todas_perderam, 
             "resultados_mistos": mistas,
-            "pct_correlacao_positiva": round((todas_ganharam / total_ops_multiplas) * 100, 1),
-            "pct_correlacao_negativa": round((todas_perderam / total_ops_multiplas) * 100, 1),
-            "pct_diversificacao": round((mistas / total_ops_multiplas) * 100, 1)
+            "pct_correlacao_positiva": round((todas_ganharam / total_ops_multiplas) * 100, 1) if total_ops_multiplas > 0 else 0,
+            "pct_correlacao_negativa": round((todas_perderam / total_ops_multiplas) * 100, 1) if total_ops_multiplas > 0 else 0,
+            "pct_diversificacao": round((mistas / total_ops_multiplas) * 100, 1) if total_ops_multiplas > 0 else 0
         }
     else:
         resumo_direcao = {"erro": "Não há operações simultâneas na mesma direção"}
@@ -238,13 +238,13 @@ def analisar_correlacao_resultado(dados_processados, arquivos_df_list):
         "dias_todas_perderam": dias_todas_perderam,
         "dias_resultados_mistos": dias_mistos,
         "resposta_pergunta": {
-            "quando_uma_perde_outra_tambem_perde_pct": round((dias_todas_perderam / total_dias) * 100, 1),
-            "quando_uma_ganha_outra_tambem_ganha_pct": round((dias_todas_ganharam / total_dias) * 100, 1),
-            "dias_com_diversificacao_pct": round((dias_mistos / total_dias) * 100, 1)
+            "quando_uma_perde_outra_tambem_perde_pct": round((dias_todas_perderam / total_dias) * 100, 1) if total_dias > 0 else 0,
+            "quando_uma_ganha_outra_tambem_ganha_pct": round((dias_todas_ganharam / total_dias) * 100, 1) if total_dias > 0 else 0,
+            "dias_com_diversificacao_pct": round((dias_mistos / total_dias) * 100, 1) if total_dias > 0 else 0
         },
         "interpretacao": (
-            "Alta correlação" if (dias_todas_ganharam + dias_todas_perderam) / total_dias > 0.7 
-            else "Boa diversificação" if dias_mistos / total_dias > 0.5 
+            "Alta correlação" if total_dias > 0 and (dias_todas_ganharam + dias_todas_perderam) / total_dias > 0.7 
+            else "Boa diversificação" if total_dias > 0 and dias_mistos / total_dias > 0.5 
             else "Correlação moderada"
         )
     }

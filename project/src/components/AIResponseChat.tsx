@@ -51,7 +51,7 @@ export function AIResponseChat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { profile, updateTokenBalance } = useAuthStore();
 
-  const PYTHON_API_URL = "http://localhost:5000";
+  const PYTHON_API_URL = "http://localhost:5002";
 
   // Removed the useEffect for scrollToBottom to prevent automatic scrolling
 

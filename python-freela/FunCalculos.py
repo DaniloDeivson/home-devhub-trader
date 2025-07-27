@@ -123,6 +123,7 @@ def calcular_performance(df, cdi=0.12):
     max_trade_loss = pnl.min()
 
     return {
+        "Total Trades": total_trades,
         "Net Profit": net_profit,
         "Gross Profit": gross_profit,
         "Gross Loss": gross_loss,
@@ -290,7 +291,7 @@ def calcular_weekly(df, cdi=0.12):
 def calcular_dados_grafico(df, capital_inicial=100000):
     """
     Calcula dados para o gráfico baseado na abertura das operações.
-    Retorna dados trade por trade para construção da curva de equity.
+    PADRONIZADO: Usa apenas saldo cumulativo (sem capital inicial) para drawdown
     """
     if df.empty:
         return []
@@ -300,18 +301,18 @@ def calcular_dados_grafico(df, capital_inicial=100000):
     # Ordenar por data de abertura
     df = df.sort_values('Abertura').reset_index(drop=True)
     
-    # Calcular equity curve trade por trade
+    # Calcular equity curve trade por trade (PADRONIZADO: apenas saldo cumulativo)
     df['Saldo'] = df['Res. Operação'].cumsum()
     df['Saldo_Maximo'] = df['Saldo'].cummax()
     df['Drawdown'] = df['Saldo'] - df['Saldo_Maximo']
     
-    # Calcular valor da carteira
+    # Calcular valor da carteira (para compatibilidade, mas não usado no drawdown)
     df['Valor_Carteira'] = capital_inicial + df['Saldo']
     df['Peak_Carteira'] = capital_inicial + df['Saldo_Maximo']
-    df['Drawdown_Carteira'] = df['Peak_Carteira'] - df['Valor_Carteira']
     
-    # Calcular drawdown percentual
-    df['Drawdown_Percentual'] = (df['Drawdown_Carteira'] / df['Peak_Carteira'] * 100).fillna(0)
+    # PADRONIZADO: Drawdown baseado apenas no saldo cumulativo (sem capital inicial)
+    df['Drawdown_Carteira'] = df['Drawdown']  # Usar o mesmo drawdown do saldo
+    df['Drawdown_Percentual'] = (df['Drawdown'] / df['Saldo_Maximo'] * 100).fillna(0) if df['Saldo_Maximo'].max() != 0 else 0
     
     # Preparar dados para o gráfico
     grafico_dados = []
@@ -350,10 +351,10 @@ def calcular_dados_grafico(df, capital_inicial=100000):
     
     return grafico_dados
 
-def calcular_dados_grafico_agrupado(df, capital_inicial=100000, agrupar_por='dia'):
+def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
     """
     Calcula dados para o gráfico agrupados por período (dia, semana, mês).
-    CORRIGIDO: Compatível com versões antigas do pandas
+    PADRONIZADO: Usa apenas saldo cumulativo (sem capital inicial) para drawdown
     """
     if df.empty:
         return []
@@ -363,18 +364,18 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=100000, agrupar_por='dia
     # Ordenar por data de abertura
     df = df.sort_values('Abertura').reset_index(drop=True)
     
-    # Calcular equity curve trade por trade
+    # Calcular equity curve trade por trade (PADRONIZADO: apenas saldo cumulativo)
     df['Saldo'] = df['Res. Operação'].cumsum()
     df['Saldo_Maximo'] = df['Saldo'].cummax()
     df['Drawdown'] = df['Saldo'] - df['Saldo_Maximo']
     
-    # Calcular valor da carteira
+    # Calcular valor da carteira (para compatibilidade, mas não usado no drawdown)
     df['Valor_Carteira'] = capital_inicial + df['Saldo']
     df['Peak_Carteira'] = capital_inicial + df['Saldo_Maximo']
-    df['Drawdown_Carteira'] = df['Peak_Carteira'] - df['Valor_Carteira']
     
-    # Calcular drawdown percentual
-    df['Drawdown_Percentual'] = (df['Drawdown_Carteira'] / df['Peak_Carteira'] * 100).fillna(0)
+    # PADRONIZADO: Drawdown baseado apenas no saldo cumulativo (sem capital inicial)
+    df['Drawdown_Carteira'] = df['Drawdown']  # Usar o mesmo drawdown do saldo
+    df['Drawdown_Percentual'] = (df['Drawdown'] / df['Saldo_Maximo'] * 100).fillna(0) if df['Saldo_Maximo'].max() != 0 else 0
     
     if agrupar_por == 'trade':
         return calcular_dados_grafico(df, capital_inicial)

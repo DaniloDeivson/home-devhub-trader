@@ -46,6 +46,7 @@ interface Trade {
   pnl_pct: number;
   direction: 'long' | 'short';
   symbol?: string;
+  strategy?: string; // Added strategy field
 }
 
 interface DayOfWeekStats {
@@ -246,15 +247,9 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
     
     // Apply strategy filter
     if (selectedStrategy && selectedStrategy !== '') {
-      // Filtrar por estratégia usando o nome do arquivo como estratégia
-      const strategyFiles = files.filter(file => 
-        file.name.replace('.csv', '') === selectedStrategy
+      trades = trades.filter(trade => 
+        trade.strategy === selectedStrategy
       );
-      
-      if (strategyFiles.length > 0) {
-        // Em uma implementação real, você filtraria pelos trades da estratégia específica
-        // Por enquanto, mantemos todos os trades se a estratégia existe
-      }
     }
     
     // Apply asset filter
@@ -271,6 +266,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       const searchLower = tradeSearch.toLowerCase();
       trades = trades.filter(trade => 
         (trade.symbol && trade.symbol.toLowerCase().includes(searchLower)) ||
+        (trade.strategy && trade.strategy.toLowerCase().includes(searchLower)) ||
         trade.entry_date.toLowerCase().includes(searchLower) ||
         trade.exit_date.toLowerCase().includes(searchLower) ||
         trade.pnl.toString().includes(searchLower)
@@ -282,6 +278,22 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
     setFilteredTrades([]);
   }
 }, [backtestResult?.trades, selectedStrategy, selectedAsset, tradeSearch]);
+
+  // Atualizar estratégias disponíveis baseadas nos dados do backend
+  useEffect(() => {
+    if (backtestResult?.trades) {
+      const strategies = [...new Set(backtestResult.trades.map(trade => trade.strategy).filter(Boolean))];
+      setAvailableStrategies(strategies);
+    }
+  }, [backtestResult?.trades]);
+
+  // Atualizar ativos disponíveis baseadas nos dados do backend
+  useEffect(() => {
+    if (backtestResult?.trades) {
+      const assets = [...new Set(backtestResult.trades.map(trade => trade.symbol).filter(Boolean))];
+      setAvailableAssets(assets);
+    }
+  }, [backtestResult?.trades]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -346,19 +358,19 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       const formData = new FormData();
       formData.append('file', files[0]);
 
-      response = await fetch('https://api.devhubtrader.com.br//api/tabela', {
+      response = await fetch('http://localhost:5002/api/tabela', {
         method: 'POST',
         body: formData,
       });
      
     // Implement your fetch emotional profile logic here
     try {
-      const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
+      const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
         method: 'POST', 
         body: formData
       });
       
-      const responses = await fetch('https://api.devhubtrader.com.br//api/trades', {
+      const responses = await fetch('http://localhost:5002/api/trades', {
           method: 'POST',
           body: formData
       });
@@ -392,63 +404,58 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       let dateDirectionData = null;
       
       // 1. Correlação tradicional (apenas para 2 arquivos)
-      if (files.length === 2) {
-        // Análises individuais primeiro
-        const [response1, response2] = await Promise.all([
-          fetch('https://api.devhubtrader.com.br//api/tabela', {
-            method: 'POST',
-            body: createFormData(files[0])
-          }),
-          fetch('https://api.devhubtrader.com.br//api/tabela', {
-            method: 'POST', 
-            body: createFormData(files[1])
-          })
-        ]);
-
-        const [data1, data2] = await Promise.all([
-          response1.json(),
-          response2.json()
-        ]);
-
-        // Correlação principal
-        const correlationResponse = await fetch('https://api.devhubtrader.com.br//api/correlacao', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ arquivo1: data1, arquivo2: data2 })
-        });
-
-        if (correlationResponse.ok) {
-          correlationData = await correlationResponse.json();
-        }
-      }
-
-      // 2. Correlação por data/direção (para 2+ arquivos)
+      // Criar FormData para todos os casos
       const formDataCorrelacao = new FormData();
       files.forEach((file) => {
         formDataCorrelacao.append('files', file);
       });
 
-      const dateDirectionResponse = await fetch('https://api.devhubtrader.com.br//api/correlacao', {
-        method: 'POST',
-        body: formDataCorrelacao,
-      });
+      // Variáveis para dados individuais (para 2 arquivos)
+      let data1, data2;
 
-      if (dateDirectionResponse.ok) {
-        dateDirectionData = await dateDirectionResponse.json();
+      if (files.length === 2) {
+        // Análises individuais primeiro
+        const [response1, response2] = await Promise.all([
+          fetch('http://localhost:5002/api/tabela', {
+            method: 'POST',
+            body: createFormData(files[0])
+          }),
+          fetch('http://localhost:5002/api/tabela', {
+            method: 'POST', 
+            body: createFormData(files[1])
+          })
+        ]);
+
+        [data1, data2] = await Promise.all([
+          response1.json(),
+          response2.json()
+        ]);
+
+        // Correlação principal - usar FormData em vez de JSON
+        const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+          method: 'POST',
+          body: formDataCorrelacao
+        });
+
+        if (correlationResponse.ok) {
+          const correlationResult = await correlationResponse.json();
+          correlationData = correlationResult;
+          dateDirectionData = correlationResult;
+        }
       }
 
       // 3. Análise consolidada principal
-      const consolidatedResponse = await fetch('https://api.devhubtrader.com.br//api/tabela-multipla', {
+      const consolidatedResponse = await fetch('http://localhost:5002/api/tabela-multipla', {
         method: 'POST',
         body: formDataCorrelacao, // Mesmo FormData
       });
       try {
-        const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
+        const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
           method: 'POST', 
           body: formDataCorrelacao
         });
         
-        const responses = await fetch('https://api.devhubtrader.com.br//api/trades', {
+        const responses = await fetch('http://localhost:5002/api/trades', {
             method: 'POST',
             body: formDataCorrelacao
         });
@@ -491,9 +498,12 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         console.log(`📊 Análise para \${files.length} arquivos preparada`);
       }
 
+      // Adicionar dados de correlação por data/direção para todos os casos
       if (dateDirectionData) {
-        data.dateDirectionCorrelation = dateDirectionData;
-        console.log(`📅 Correlação data/direção adicionada (${files.length} arquivos)`);
+        if (data) {
+          data.dateDirectionCorrelation = dateDirectionData;
+          console.log(`📅 Correlação data/direção adicionada (${files.length} arquivos)`);
+        }
       }
 
       setCsvContent(`Análise de \${files.length} estratégias: ${files.map(f => f.name).join(', ')}`);
@@ -509,11 +519,23 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         formData.append('files', file);
       });
 
-      response = await fetch('https://api.devhubtrader.com.br//api/tabela-multipla', {
+      // Para 3+ arquivos, também fazer correlação
+      const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (correlationResponse.ok) {
+        const correlationResult = await correlationResponse.json();
+        correlationData = correlationResult;
+        dateDirectionData = correlationResult;
+      }
+
+      response = await fetch('http://localhost:5002/api/tabela-multipla', {
         method: 'POST',
         body: formData,
       });
-      const wwx = await fetch('https://api.devhubtrader.com.br//api/disciplina-completa', {
+      const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
       method: 'POST', 
       body: formData
     })
@@ -528,7 +550,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
     }
     
     // Add emotional analysis data if not present
-    if (!data.emotionalAnalysis) {
+    if (data && !data.emotionalAnalysis) {
       data.emotionalAnalysis = {
         stopDisciplineIndex: 85.7,
         dailyLossDisciplineIndex: 72.3,
@@ -538,22 +560,24 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
     }
     
     // Process and set the result
-    setBacktestResult(data);
-    setShowUploadForm(false);
-    setShowChat(true);
-    setCurrentAnalysisId(null);
-    
-    // Extract available assets from the data if possible
-    if (data.trades && data.trades.length > 0) {
-      const assets = Array.from(new Set(data.trades.map((trade) => trade.asset || trade.symbol || 'Unknown')));
-      if (assets.length > 0 && assets[0] !== 'Unknown') {
-        setAvailableAssets(assets);
+    if (data) {
+      setBacktestResult(data);
+      setShowUploadForm(false);
+      setShowChat(true);
+      setCurrentAnalysisId(null);
+      
+      // Extract available assets from the data if possible
+      if (data.trades && data.trades.length > 0) {
+        const assets = Array.from(new Set(data.trades.map((trade) => trade.asset || trade.symbol || 'Unknown')));
+        if (assets.length > 0 && assets[0] !== 'Unknown') {
+          setAvailableAssets(assets);
+        }
       }
-    }
-    
-    // Set filtered trades initially to all trades
-    if (data.trades) {
-      setFilteredTrades(data.trades);
+      
+      // Set filtered trades initially to all trades
+      if (data.trades) {
+        setFilteredTrades(data.trades);
+      }
     }
     
     // Update available strategies based on file names
@@ -569,8 +593,6 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
     if (correlationData && correlationData.correlation_analysis) {
       const summary = correlationData.correlation_analysis.resumo_executivo;
       const complementarity = correlationData.correlation_analysis.analise_complementaridade.resumo;
-      
-      
       
       // Optional: You could show a success message or notification here
       // For example, if you have a toast notification system:
@@ -1053,7 +1075,7 @@ const reloadFilteredData = async () => {
         const formData = new FormData();
         formData.append('file', files[0]);
         
-        response = await fetch('https://api.devhubtrader.com.br//api/tabela', {
+        response = await fetch('http://localhost:5002/api/tabela', {
           method: 'POST',
           body: formData,
         });
@@ -1064,7 +1086,7 @@ const reloadFilteredData = async () => {
           formData.append('files', file);
         });
         
-        response = await fetch('https://api.devhubtrader.com.br//api/tabela-multipla', {
+        response = await fetch('http://localhost:5002/api/tabela-multipla', {
           method: 'POST',
           body: formData,
         });
@@ -1087,7 +1109,7 @@ const reloadFilteredData = async () => {
         formData.append('files', file);
       });
       
-      response = await fetch('https://api.devhubtrader.com.br//api/tabela-multipla', {
+      response = await fetch('http://localhost:5002/api/tabela-multipla', {
         method: 'POST',
         body: formData,
       });
