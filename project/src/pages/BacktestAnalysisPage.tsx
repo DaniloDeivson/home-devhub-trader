@@ -444,6 +444,22 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
 
       data = await response.json();
       setDrata(data);
+      
+      // Para 1 arquivo, não há correlação, mas podemos definir dados vazios
+      data.dateDirectionCorrelation = {
+        correlacao_data_direcao: {
+          resumo: { erro: "Correlação requer pelo menos 2 arquivos" }
+        },
+        correlacao_data_resultado: {
+          resumo: { erro: "Correlação requer pelo menos 2 arquivos" }
+        },
+        info_arquivos: {
+          total_arquivos: 1,
+          nomes_arquivos: [files[0].name],
+          tipo_analise: "insuficiente"
+        }
+      };
+      
       console.log(JSON.stringify(data.EquityCurveData))
     } else if (files.length >= 2) {
     try {
@@ -538,11 +554,23 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
           file2: { name: files[1].name, data: data2 }
         };
         console.log('📊 Correlação tradicional adicionada (2 arquivos)');
-      } else if (files.length > 2) {
-        // Para 3+ arquivos, podemos ter uma correlação matricial no futuro
-        data.multipleFilesCount = files.length;
-        data.fileNames = files.map(f => f.name);
-        console.log(`📊 Análise para \${files.length} arquivos preparada`);
+      } else if (files.length >= 3) {
+        // Para 3+ arquivos, chamar API de correlação matricial
+        try {
+          const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+            method: 'POST',
+            body: formDataCorrelacao
+          });
+
+          if (correlationResponse.ok) {
+            const correlationResult = await correlationResponse.json();
+            data.correlationMatricial = correlationResult;
+            data.dateDirectionCorrelation = correlationResult;
+            console.log(`📊 Análise matricial adicionada (${files.length} arquivos)`);
+          }
+        } catch (error) {
+          console.error('Erro ao chamar API de correlação matricial:', error);
+        }
       }
 
       // Adicionar dados de correlação por data/direção para todos os casos
@@ -566,26 +594,53 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         formData.append('files', file);
       });
 
-      // Para 3+ arquivos, também fazer correlação
-      const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
-        method: 'POST',
-        body: formData
-      });
+      // Para 3+ arquivos, fazer correlação matricial
+      let correlationData = null;
+      try {
+        const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+          method: 'POST',
+          body: formData
+        });
 
-      if (correlationResponse.ok) {
-        const correlationResult = await correlationResponse.json();
-        correlationData = correlationResult;
-        dateDirectionData = correlationResult;
+        if (correlationResponse.ok) {
+          correlationData = await correlationResponse.json();
+          console.log('📊 Correlação matricial obtida para 3+ arquivos');
+        }
+      } catch (error) {
+        console.error('Erro ao chamar API de correlação:', error);
       }
 
       response = await fetch('http://localhost:5002/api/tabela-multipla', {
         method: 'POST',
         body: formData,
       });
-      const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
-      method: 'POST', 
-      body: formData
-    })
+      
+      try {
+        const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
+          method: 'POST', 
+          body: formData
+        });
+        
+        const responses = await fetch('http://localhost:5002/api/trades', {
+          method: 'POST',
+          body: formData
+        });
+
+        const datara = await responses.json();
+        
+        if (wwx.ok) {
+          const dataemocional = await wwx.json();
+          setEmocional(dataemocional);
+        } else {
+          console.warn('Failed to fetch emotional data:', wwx.status, wwx.statusText);
+          setEmocional(null);
+        }
+        
+        setTrades(datara);
+      } catch (error) {
+        console.error('Error fetching emotional data:', error);
+        setEmocional(null);
+      }
 
       if (!response.ok) {
         throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
@@ -593,6 +648,13 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
 
       data = await response.json();
       setDrata(data);
+      
+      // Adicionar dados de correlação matricial
+      if (correlationData) {
+        data.correlationMatricial = correlationData;
+        data.dateDirectionCorrelation = correlationData;
+      }
+      
       setCsvContent(`Análise consolidada de ${files.length} arquivos: ${files.map(f => f.name).join(', ')}`);
     }
     

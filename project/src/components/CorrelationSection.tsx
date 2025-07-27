@@ -25,6 +25,10 @@ export function SimpleCorrelationComponent({
 
   // Dados de correlação (vindos da API)
   const correlationData = backtestResult?.dateDirectionCorrelation;
+  const correlationMatricial = backtestResult?.correlationMatricial;
+  
+  // Verificar se é análise matricial (3+ arquivos)
+  const isMatricial = correlationMatricial?.info_arquivos?.tipo_analise === 'matricial';
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -293,6 +297,121 @@ export function SimpleCorrelationComponent({
     );
   };
 
+  const renderMatricialTab = () => {
+    if (!correlationMatricial?.correlacao_matricial?.resumo) return null;
+
+    const { resumo, detalhes } = correlationMatricial.correlacao_matricial;
+
+    return (
+      <div className="space-y-6">
+        {/* Cards principais - ANÁLISE MATRICIAL */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
+            <div className="text-center">
+              <Info className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-blue-400">
+                {resumo.total_pares_analisados}
+              </div>
+              <div className="text-sm text-blue-300">
+                Total de Pares
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-red-900 bg-opacity-20 p-4 rounded-lg border border-red-700">
+            <div className="text-center">
+              <TrendingDown className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-red-400">
+                {resumo.pct_alta_correlacao}%
+              </div>
+              <div className="text-sm text-red-300">
+                Alta Correlação
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
+            <div className="text-center">
+              <TrendingUp className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-green-400">
+                {resumo.pct_boa_diversificacao}%
+              </div>
+              <div className="text-sm text-green-300">
+                Boa Diversificação
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
+            <div className="text-center">
+              <ArrowUp className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-yellow-400">
+                {resumo.pct_correlacao_moderada}%
+              </div>
+              <div className="text-sm text-yellow-300">
+                Correlação Moderada
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recomendação */}
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <h4 className="text-lg font-medium mb-2">Recomendação do Portfólio</h4>
+          <div className="text-lg font-medium text-yellow-400 mb-2">
+            {resumo.recomendacao}
+          </div>
+          <div className="text-sm text-gray-300">
+            {resumo.recomendacao === "Portfólio bem diversificado" && 
+              "✅ As estratégias se complementam bem. Usar todas reduz o risco significativamente."
+            }
+            {resumo.recomendacao === "Portfólio com alta correlação" && 
+              "⚠️ As estratégias se movem juntas. Considere reduzir o número de estratégias."
+            }
+            {resumo.recomendacao === "Portfólio com correlação moderada" && 
+              "🔄 Correlação equilibrada. Monitore o desempenho regularmente."
+            }
+          </div>
+        </div>
+
+        {/* Detalhes dos pares */}
+        <div className="bg-gray-700 rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-gray-600">
+            <h4 className="text-lg font-medium">Análise Detalhada por Par</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-600">
+                <tr>
+                  <th className="px-4 py-3 text-left">Par de Estratégias</th>
+                  <th className="px-4 py-3 text-center">Tipo de Correlação</th>
+                  <th className="px-4 py-3 text-center">Operações Simultâneas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-600">
+                {detalhes?.slice(0, 10).map((par, index) => (
+                  <tr key={index} className="hover:bg-gray-600">
+                    <td className="px-4 py-3">
+                      <div className="font-medium">
+                        {par.par[0]} ↔ {par.par[1]}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {par.correlacao_resultado?.resumo?.interpretacao || 'N/A'}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {par.correlacao_direcao?.resumo?.total_operacoes_simultaneas || 0}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-700 flex items-center justify-between">
@@ -321,36 +440,67 @@ export function SimpleCorrelationComponent({
         <div className="p-4">
           {correlationData ? (
             <div>
-              {/* Tabs */}
-              <div className="flex space-x-1 mb-6 bg-gray-700 p-1 rounded-lg">
-                <button
-                  onClick={() => setActiveTab('resultado')}
-                  className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'resultado'
-                      ? 'bg-gray-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-600'
-                  }`}
-                >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Por Resultado
-                </button>
-                
-                <button
-                  onClick={() => setActiveTab('direcao')}
-                  className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'direcao'
-                      ? 'bg-gray-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-600'
-                  }`}
-                >
-                  <ArrowUp className="w-4 h-4 mr-2" />
-                  Por Direção
-                </button>
-              </div>
+              {/* Verificar se há erro na correlação */}
+              {correlationData.correlacao_data_direcao?.resumo?.erro ? (
+                <div className="bg-gray-700 p-4 rounded-lg text-center">
+                  <Info className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium mb-2">Correlação Indisponível</h3>
+                  <p className="text-gray-400 mb-4">
+                    {correlationData.correlacao_data_direcao.resumo.erro}
+                  </p>
+                  <div className="text-sm text-gray-300">
+                    <p>Para análise de correlação, faça upload de 2 ou mais arquivos CSV.</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {/* Tabs */}
+                  <div className="flex space-x-1 mb-6 bg-gray-700 p-1 rounded-lg">
+                    <button
+                      onClick={() => setActiveTab('resultado')}
+                      className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'resultado'
+                          ? 'bg-gray-600 text-white'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                      }`}
+                    >
+                      <TrendingUp className="w-4 h-4 mr-2" />
+                      Por Resultado
+                    </button>
+                    
+                    <button
+                      onClick={() => setActiveTab('direcao')}
+                      className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'direcao'
+                          ? 'bg-gray-600 text-white'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                      }`}
+                    >
+                      <ArrowUp className="w-4 h-4 mr-2" />
+                      Por Direção
+                    </button>
+                    
+                    {isMatricial && (
+                      <button
+                        onClick={() => setActiveTab('matricial')}
+                        className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          activeTab === 'matricial'
+                            ? 'bg-gray-600 text-white'
+                            : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                        }`}
+                      >
+                        <Info className="w-4 h-4 mr-2" />
+                        Matricial
+                      </button>
+                    )}
+                  </div>
 
-              {/* Conteúdo das tabs */}
-              {activeTab === 'resultado' && renderResultadoTab()}
-              {activeTab === 'direcao' && renderDirecaoTab()}
+                  {/* Conteúdo das tabs */}
+                  {activeTab === 'resultado' && renderResultadoTab()}
+                  {activeTab === 'direcao' && renderDirecaoTab()}
+                  {activeTab === 'matricial' && isMatricial && renderMatricialTab()}
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-gray-700 p-4 rounded-lg text-center">
