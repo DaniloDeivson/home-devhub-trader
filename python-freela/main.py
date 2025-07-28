@@ -15,7 +15,17 @@ dotenv.load_dotenv()
 
 # main.py
 app = Flask(__name__)
-CORS(app)
+
+# Configuração CORS para permitir acesso do frontend
+CORS(app, origins=[
+    'http://localhost:4173',  # Desenvolvimento local
+    'http://localhost:3000',  # Desenvolvimento local (alternativo)
+    'https://devhubtrader.com.br',  # Produção
+    'https://www.devhubtrader.com.br',  # Produção com www
+    'http://devhubtrader.com.br',  # Produção sem SSL
+    'http://www.devhubtrader.com.br'  # Produção sem SSL com www
+], supports_credentials=True)
+
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
@@ -60,6 +70,15 @@ app.json_provider_class = NumpyJSONProvider
 
 # Configuração da chave da API do OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY") 
+
+# ============ MIDDLEWARE PARA LOG ============
+@app.before_request
+def log_request_info():
+    """Log das requisições para debug"""
+    print(f"🌐 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {request.method} {request.path}")
+    print(f"   📍 Origin: {request.headers.get('Origin', 'N/A')}")
+    print(f"   🔗 Referer: {request.headers.get('Referer', 'N/A')}")
+    print(f"   🌍 Host: {request.headers.get('Host', 'N/A')}")
 
 # ============ ROTA RAIZ ============
 @app.route('/', methods=['GET'])
