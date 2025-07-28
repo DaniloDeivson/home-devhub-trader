@@ -136,6 +136,9 @@ server {
     return 301 https://$server_name$request_uri;
 }
 
+# Nota: O redirecionamento da porta 5002 é feito pelo próprio backend
+# O Nginx não precisa escutar na porta 5002, apenas redirecionar via domínio
+
 server {
     listen 443 ssl http2;
     server_name api.devhubtrader.com.br;

@@ -52,7 +52,7 @@ export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:5002/api/trades/metrics-from-data', {
+      const response = await fetch('https://api.devhubtrader.com.br/api/trades/metrics-from-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

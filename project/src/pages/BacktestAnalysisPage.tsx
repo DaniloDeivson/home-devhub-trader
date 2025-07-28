@@ -405,19 +405,19 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       const formData = new FormData();
       formData.append('file', files[0]);
 
-      response = await fetch('http://localhost:5002/api/tabela', {
+      response = await fetch('https://api.devhubtrader.com.br/api/tabela', {
         method: 'POST',
         body: formData,
       });
      
     // Implement your fetch emotional profile logic here
     try {
-      const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
+      const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
         method: 'POST', 
         body: formData
       });
       
-      const responses = await fetch('http://localhost:5002/api/trades', {
+      const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
           method: 'POST',
           body: formData
       });
@@ -479,11 +479,11 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       if (files.length === 2) {
         // Análises individuais primeiro
         const [response1, response2] = await Promise.all([
-          fetch('http://localhost:5002/api/tabela', {
+          fetch('https://api.devhubtrader.com.br/api/tabela', {
             method: 'POST',
             body: createFormData(files[0])
           }),
-          fetch('http://localhost:5002/api/tabela', {
+          fetch('https://api.devhubtrader.com.br/api/tabela', {
             method: 'POST', 
             body: createFormData(files[1])
           })
@@ -495,7 +495,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         ]);
 
         // Correlação principal - usar FormData em vez de JSON
-        const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+        const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
           method: 'POST',
           body: formDataCorrelacao
         });
@@ -508,17 +508,17 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       }
 
       // 3. Análise consolidada principal
-      const consolidatedResponse = await fetch('http://localhost:5002/api/tabela-multipla', {
+      const consolidatedResponse = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
         method: 'POST',
         body: formDataCorrelacao, // Mesmo FormData
       });
       try {
-        const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
+        const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
           method: 'POST', 
           body: formDataCorrelacao
         });
         
-        const responses = await fetch('http://localhost:5002/api/trades', {
+        const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
             method: 'POST',
             body: formDataCorrelacao
         });
@@ -557,10 +557,10 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       } else if (files.length >= 3) {
         // Para 3+ arquivos, chamar API de correlação matricial
         try {
-          const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
-            method: 'POST',
-            body: formDataCorrelacao
-          });
+                  const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
+          method: 'POST',
+          body: formDataCorrelacao
+        });
 
           if (correlationResponse.ok) {
             const correlationResult = await correlationResponse.json();
@@ -597,7 +597,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       // Para 3+ arquivos, fazer correlação matricial
       let correlationData = null;
       try {
-        const correlationResponse = await fetch('http://localhost:5002/api/correlacao', {
+        const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
           method: 'POST',
           body: formData
         });
@@ -610,18 +610,18 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         console.error('Erro ao chamar API de correlação:', error);
       }
 
-      response = await fetch('http://localhost:5002/api/tabela-multipla', {
+      response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
         method: 'POST',
         body: formData,
       });
       
       try {
-        const wwx = await fetch('http://localhost:5002/api/disciplina-completa', {
+        const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
           method: 'POST', 
           body: formData
         });
         
-        const responses = await fetch('http://localhost:5002/api/trades', {
+        const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
           method: 'POST',
           body: formData
         });
@@ -1355,7 +1355,7 @@ const reloadFilteredData = async () => {
         const formData = new FormData();
         formData.append('file', files[0]);
         
-        response = await fetch('http://localhost:5002/api/tabela', {
+        response = await fetch('https://api.devhubtrader.com.br/api/tabela', {
           method: 'POST',
           body: formData,
         });
@@ -1366,7 +1366,7 @@ const reloadFilteredData = async () => {
           formData.append('files', file);
         });
         
-        response = await fetch('http://localhost:5002/api/tabela-multipla', {
+        response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
           method: 'POST',
           body: formData,
         });
@@ -1389,7 +1389,7 @@ const reloadFilteredData = async () => {
         formData.append('files', file);
       });
       
-      response = await fetch('http://localhost:5002/api/tabela-multipla', {
+      response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
         method: 'POST',
         body: formData,
       });
