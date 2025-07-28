@@ -112,12 +112,12 @@ def testar_rentabilidade():
                     print(f"  {dia}:")
                     print(f"    Trades: {trades}")
                     print(f"    Net Profit: {net_profit}")
-                    print(f"    Rentabilidade ($): {rentabilidade}")
+                    print(f"    Rentabilidade Total ($): {rentabilidade}")
                     print(f"    Profit Factor: {stats.get('Profit Factor', 0)}")
                     print(f"    Win Rate (%): {stats.get('Win Rate (%)', 0)}")
                     print()
                 
-                print(f"💰 TOTAL RENTABILIDADE: R$ {total_rentabilidade:.2f}")
+                print(f"💰 TOTAL RENTABILIDADE (soma de todos os dias): R$ {total_rentabilidade:.2f}")
                 
                 # Verificar se há algum dia com rentabilidade zero mas trades > 0
                 dias_com_problema = []

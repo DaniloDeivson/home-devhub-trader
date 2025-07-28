@@ -95,7 +95,7 @@ def testar_rentabilidade_final():
             rentabilidade = stats.get('Rentabilidade ($)', 0)
             net_profit = stats.get('Net Profit', 0)
             if trades > 0:
-                print(f"    {day}: {trades} trades, Net Profit: {net_profit}, Rentabilidade: {rentabilidade}")
+                print(f"    {day}: {trades} trades, Net Profit: {net_profit}, Rentabilidade Total: {rentabilidade}")
         
         # Testar análise mensal
         print("\n📅 TESTANDO ANÁLISE MENSAL:")
@@ -107,7 +107,7 @@ def testar_rentabilidade_final():
             rentabilidade = stats.get('Rentabilidade ($)', 0)
             net_profit = stats.get('Net Profit', 0)
             if trades > 0:
-                print(f"    {month}: {trades} trades, Net Profit: {net_profit}, Rentabilidade: {rentabilidade}")
+                print(f"    {month}: {trades} trades, Net Profit: {net_profit}, Rentabilidade Total: {rentabilidade}")
         
         # Testar processamento de múltiplos arquivos
         print("\n📁 TESTANDO PROCESSAMENTO DE MÚLTIPLOS ARQUIVOS:")

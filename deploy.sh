@@ -210,6 +210,9 @@ curl -I http://localhost:4173 2>/dev/null | head -1 || echo "❌ Frontend não e
 echo "Testando backend (porta 5002):"
 curl -I http://localhost:5002 2>/dev/null | head -1 || echo "❌ Backend não está respondendo"
 
+echo "Testando rota raiz do backend:"
+curl -s http://localhost:5002/ 2>/dev/null | head -c 100 || echo "❌ Rota raiz não está respondendo"
+
 echo "Testando Nginx (porta 80):"
 curl -I http://localhost 2>/dev/null | head -1 || echo "❌ Nginx não está respondendo"
 

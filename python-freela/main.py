@@ -61,6 +61,38 @@ app.json_provider_class = NumpyJSONProvider
 # Configuração da chave da API do OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY") 
 
+# ============ ROTA RAIZ ============
+@app.route('/', methods=['GET'])
+def root():
+    """Rota raiz para verificar se o servidor está funcionando"""
+    return jsonify({
+        "status": "online",
+        "message": "DevHub Trader Backend API",
+        "version": "1.0.0",
+        "endpoints": [
+            "/api/tabela",
+            "/api/tabela-multipla", 
+            "/api/equity-curve",
+            "/api/backtest-completo",
+            "/api/correlacao",
+            "/api/disciplina-completa",
+            "/api/trades",
+            "/api/trades/summary",
+            "/api/trades/daily-metrics",
+            "/api/trades/metrics-from-data",
+            "/chat"
+        ]
+    })
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Rota de health check para monitoramento"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "devhub-backend"
+    })
+
 # ============ FUNÇÃO AUXILIAR PARA ENCODING ============
 
 def clean_numeric_value(value):
