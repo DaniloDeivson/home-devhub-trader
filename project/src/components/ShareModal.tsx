@@ -93,7 +93,7 @@ export function ShareModal({ isOpen, onClose, robotName }: ShareModalProps) {
       });
 
       // Generate invite link with proper domain
-      const baseUrl = "https://devhubtrader.com.br";
+      const baseUrl = import.meta.env.DEV ? "http://localhost:4173" : "https://devhubtrader.com.br";
       const inviteLink = `${baseUrl}/robots/${robotName}`;
 
       // Send the invitation email with retry logic
@@ -172,7 +172,7 @@ export function ShareModal({ isOpen, onClose, robotName }: ShareModalProps) {
       if (error) throw error;
       
       // Use the new domain for the share URL
-      const baseUrl = "https://devhubtrader.com.br";
+      const baseUrl = import.meta.env.DEV ? "http://localhost:4173" : "https://devhubtrader.com.br";
       const shareUrl = `${baseUrl}/shared/${data.data.token}`;
       setShareUrl(shareUrl);
       setShowLinkSection(true);

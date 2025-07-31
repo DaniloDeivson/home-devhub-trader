@@ -272,7 +272,7 @@ function extractStructuredData(text: string): StrategyAnalysisResult {
   }
 
   const positionSizingMatch = text.match(
-    /dimensionamento\s*de\s*posição|tamanho\s*de\s*posição:?\s*([^\n]+)/i
+    /dimensionamento\s*de\s*posição|tamanho\s*de\s*posição|position\s*sizing:?\s*([^\n]+)/i
   );
   if (positionSizingMatch && positionSizingMatch[1]) {
     result.tradingPlan.positionSizing = positionSizingMatch[1].trim();
@@ -340,7 +340,7 @@ function extractStructuredData(text: string): StrategyAnalysisResult {
   }
 
   if (!result.tradingPlan.positionSizing) {
-    result.tradingPlan.positionSizing = "Utilizar 1-2% do capital por operação";
+    result.tradingPlan.positionSizing = "Aplicar regra de 2% de risco por trade: Position Size = Account Risk ÷ Trade Risk. Máximo 1% de risco por operação para gestão conservadora.";
   }
 
   if (!result.tradingPlan.timeManagement) {
@@ -477,6 +477,12 @@ Por favor, forneça uma análise estruturada com seções claras para:
 4. Sugestões de otimização
 5. Plano de trading (regras de entrada, regras de saída, dimensionamento de posição, gerenciamento de tempo)
 
+IMPORTANTE sobre Position Sizing:
+- Aplique a regra de 2% de risco por trade: Position Size = Account Risk ÷ Trade Risk
+- Recomende máximo 1% de risco por operação para gestão conservadora
+- Considere o tipo de ativo (ações vs futuros) para determinar o tamanho da posição
+- Inclua considerações sobre leverage e margem
+
 NÃO retorne um objeto JSON. Apenas forneça uma análise de texto clara e bem estruturada com seções.`,
       });
 
@@ -604,6 +610,12 @@ Por favor, forneça uma análise estruturada com seções claras para:
 3. Análise de risco (nível, riscos principais, estratégias de mitigação)
 4. Sugestões de otimização
 5. Plano de trading (regras de entrada, regras de saída, dimensionamento de posição, gerenciamento de tempo)
+
+IMPORTANTE sobre Position Sizing:
+- Aplique a regra de 2% de risco por trade: Position Size = Account Risk ÷ Trade Risk
+- Recomende máximo 1% de risco por operação para gestão conservadora
+- Considere o tipo de ativo (ações vs futuros) para determinar o tamanho da posição
+- Inclua considerações sobre leverage e margem
 
 NÃO retorne um objeto JSON. Apenas forneça uma análise de texto clara e bem estruturada com seções.`;
 

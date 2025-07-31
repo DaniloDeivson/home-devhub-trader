@@ -4,6 +4,7 @@ import {
   DollarSign, Percent, Target, Activity, ArrowUp, ArrowDown,
   CheckCircle, XCircle, Calendar, Maximize, Minimize, Loader2
 } from 'lucide-react';
+import { buildApiUrl } from '../config/api';
 
 interface DailyMetrics {
   metricas_principais: {
@@ -52,7 +53,7 @@ export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps
     setError(null);
 
     try {
-      const response = await fetch('https://api.devhubtrader.com.br/api/trades/metrics-from-data', {
+      const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -149,7 +150,7 @@ export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps
               <span className="text-gray-300">Drawdown Máximo</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.metricas_principais.drawdown_maximo)}
+              {formatCurrency(metrics.metricas_principais.drawdown_maximo_padronizado || metrics.metricas_principais.drawdown_maximo)}
             </span>
           </div>
           <div className="flex items-center justify-between">

@@ -1,0 +1,62 @@
+# Equity Curve - Filtros Dinâmicos
+
+## Contexto
+O gráfico de equity curve deve ser **dinâmico** e responder aos filtros de "Estratégia" e "Ativo" selecionados pelo usuário.
+
+## Problema Identificado
+- **Gráfico retilíneo**: Quando uma estratégia é selecionada, o gráfico mostra dados simulados em vez dos dados reais
+- **Legenda não atualizada**: Não reflete os dados específicos da estratégia selecionada
+- **Dados simulados**: Usa `generateChartDataFromMetrics` que cria dados artificiais
+
+## Solução Necessária
+1. **Usar dados reais** de cada CSV individual
+2. **Mapear estratégias** para arquivos CSV específicos
+3. **Atualizar legenda** com dados reais da estratégia selecionada
+4. **Manter dados individuais** disponíveis para filtros
+
+## Comportamento Esperado
+
+### 1. Filtros Disponíveis
+- **Estratégia**: Filtra trades por estratégia específica (nome do arquivo CSV)
+- **Ativo**: Filtra trades por ativo específico (WINFUT, WDOFUT, PETR4, etc.)
+
+### 2. Fonte de Dados
+- **Dados reais**: Usar equity curve data de cada CSV individual
+- **Mapeamento**: Estratégia = Nome do arquivo CSV
+- **Fallback**: Se não encontrar dados específicos, usar dados consolidados
+
+### 3. Fluxo de Dados Corrigido
+```
+Filtros Selecionados → Buscar CSV Específico → Equity Curve Data Real → Gráfico Atualizado
+```
+
+### 4. Implementação Necessária
+1. **Detectar estratégia selecionada** (nome do arquivo)
+2. **Buscar dados reais** do CSV correspondente
+3. **Usar equity curve data** em vez de dados simulados
+4. **Atualizar legenda** com métricas reais
+5. **Manter compatibilidade** com dados consolidados
+
+### 5. Estrutura de Dados
+```typescript
+interface FileResults {
+  [fileName: string]: {
+    "Performance Metrics": {...},
+    "Equity Curve Data": {
+      "trade_by_trade": [...],
+      "daily": [...],
+      "weekly": [...],
+      "monthly": [...]
+    }
+  }
+}
+```
+
+## Arquivos Principais
+- [EquityCurveSection.tsx](mdc:project/src/components/EquityCurveSection.tsx)
+- [BacktestAnalysisPage.tsx](mdc:project/src/pages/BacktestAnalysisPage.tsx)
+- [StrategySelector.tsx](mdc:project/src/components/StrategySelector.tsx)
+description:
+globs:
+alwaysApply: false
+---

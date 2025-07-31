@@ -4,7 +4,7 @@ from flask_cors import CORS
 import openai
 from FunMultiCalculos import processar_multiplos_arquivos, processar_multiplos_arquivos_comparativo
 from Correlacao import *
-from FunCalculos import carregar_csv, calcular_performance, calcular_day_of_week, calcular_monthly, processar_backtest_completo
+from FunCalculos import carregar_csv, calcular_performance, calcular_day_of_week, calcular_monthly, processar_backtest_completo, calcular_dados_grafico
 import dotenv
 import pandas as pd
 import numpy as np
@@ -19,6 +19,7 @@ app = Flask(__name__)
 # Configuração CORS para permitir acesso do frontend
 CORS(app, origins=[
     'http://localhost:4173',  # Desenvolvimento local
+    'http://localhost:5173',  # Vite dev server
     'http://localhost:3000',  # Desenvolvimento local (alternativo)
     'https://devhubtrader.com.br',  # Produção
     'https://www.devhubtrader.com.br',  # Produção com www
@@ -164,9 +165,11 @@ def carregar_csv_trades(file_path_or_file):
             # É um caminho de arquivo
             df = pd.read_csv(file_path_or_file, skiprows=5, sep=';', encoding='latin1', decimal=',')
         
-        # Processar datas conforme função original
-        df['Abertura']   = pd.to_datetime(df['Abertura'],   format="%d/%m/%Y %H:%M:%S", errors='coerce')
-        df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+        # Processar datas conforme função original - com verificação de colunas
+        if 'Abertura' in df.columns:
+            df['Abertura']   = pd.to_datetime(df['Abertura'],   format="%d/%m/%Y %H:%M:%S", errors='coerce')
+        if 'Fechamento' in df.columns:
+            df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
         
         # Usar função de limpeza para valores numéricos
         numeric_columns = ['Res. Operação', 'Res. Operação (%)', 'Preço Compra', 'Preço Venda', 
@@ -236,15 +239,63 @@ def carregar_csv_safe(file_path_or_file):
             # É um caminho de arquivo
             df = pd.read_csv(file_path_or_file, skiprows=5, sep=';', encoding='latin1', decimal=',')
         
-        # Processar datas conforme função original
-        df['Abertura']   = pd.to_datetime(df['Abertura'],   format="%d/%m/%Y %H:%M:%S", errors='coerce')
-        df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+        # Processar datas conforme função original - com verificação de colunas
+        if 'Abertura' in df.columns:
+            df['Abertura']   = pd.to_datetime(df['Abertura'],   format="%d/%m/%Y %H:%M:%S", errors='coerce')
+        if 'Fechamento' in df.columns:
+            df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
         
         # Usar função de limpeza para valores numéricos
-        numeric_columns = ['Res. Operação', 'Res. Operação (%)']
+        numeric_columns = ['Res. Operação', 'Res. Operação (%)', 'Preço Compra', 'Preço Venda', 
+                          'Preço de Mercado', 'Médio', 'Res. Intervalo', 'Res. Intervalo (%)',
+                          'Drawdown', 'Ganho Max.', 'Perda Max.', 'Qtd Compra', 'Qtd Venda']
+        
         for col in numeric_columns:
             if col in df.columns:
                 df[col] = df[col].apply(clean_numeric_value)
+        
+        # Renomear colunas para padronizar
+        column_mapping = {
+            'Ativo': 'symbol',
+            'Abertura': 'entry_date',
+            'Fechamento': 'exit_date',
+            'Tempo Operação': 'duration_str',
+            'Qtd Compra': 'qty_buy',
+            'Qtd Venda': 'qty_sell',
+            'Lado': 'direction',
+            'Preço Compra': 'entry_price',
+            'Preço Venda': 'exit_price',
+            'Preço de Mercado': 'market_price',
+            'Médio': 'avg_price',
+            'Res. Intervalo': 'pnl',
+            'Res. Intervalo (%)': 'pnl_pct',
+            'Número Operação': 'trade_number',
+            'Res. Operação': 'operation_result',
+            'Res. Operação (%)': 'operation_result_pct',
+            'Drawdown': 'drawdown',
+            'Ganho Max.': 'max_gain',
+            'Perda Max.': 'max_loss',
+            'TET': 'tet',
+            'Total': 'total'
+        }
+        
+        # Renomear colunas existentes
+        df = df.rename(columns=column_mapping)
+        
+        # Converter direção para formato padrão
+        if 'direction' in df.columns:
+            df['direction'] = df['direction'].map({'C': 'long', 'V': 'short'}).fillna('long')
+        
+        # Usar os resultados já processados (agora com valores limpos)
+        if 'operation_result' in df.columns:
+            df['pnl'] = df['operation_result']
+        if 'operation_result_pct' in df.columns:
+            df['pnl_pct'] = df['operation_result_pct']
+        
+        # Calcular duração em horas se não existir
+        if 'entry_date' in df.columns and 'exit_date' in df.columns:
+            if df['entry_date'].notna().any() and df['exit_date'].notna().any():
+                df['duration_hours'] = (df['exit_date'] - df['entry_date']).dt.total_seconds() / 3600
         
         return df
                 
@@ -255,8 +306,27 @@ def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = No
     """Converte DataFrame em lista de trades para o frontend"""
     trades = []
     
+    print(f"🔍 Processando trades - DataFrame shape: {df.shape}")
+    print(f"📅 Colunas disponíveis: {list(df.columns)}")
+    
+    # Verificar se as colunas necessárias existem
+    required_columns = ['entry_date', 'exit_date']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        print(f"⚠️ Colunas faltando: {missing_columns}")
+        return trades
+    
+    processed_count = 0
+    skipped_count = 0
+    
     for idx, row in df.iterrows():
-        if pd.isna(row.get('entry_date')) or pd.isna(row.get('exit_date')):
+        # Verificar se as datas são válidas (não NaT)
+        entry_date = row.get('entry_date')
+        exit_date = row.get('exit_date')
+        
+        if (pd.isna(entry_date) or pd.isna(exit_date) or 
+            pd.isna(entry_date) or pd.isna(exit_date)):
+            skipped_count += 1
             continue
         
         # Determinar a estratégia baseada no arquivo de origem
@@ -267,8 +337,8 @@ def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = No
             strategy = filename.replace('.csv', '').replace('.CSV', '')
         
         trade = {
-            "entry_date": row['entry_date'].isoformat() if pd.notna(row['entry_date']) else None,
-            "exit_date": row['exit_date'].isoformat() if pd.notna(row['exit_date']) else None,
+            "entry_date": row['entry_date'].isoformat() if pd.notna(row['entry_date']) and not pd.isna(row['entry_date']) else None,
+            "exit_date": row['exit_date'].isoformat() if pd.notna(row['exit_date']) and not pd.isna(row['exit_date']) else None,
             "entry_price": float(row.get('entry_price', 0)) if pd.notna(row.get('entry_price')) else 0,
             "exit_price": float(row.get('exit_price', 0)) if pd.notna(row.get('exit_price')) else 0,
             "pnl": float(row.get('pnl', 0)) if pd.notna(row.get('pnl')) else 0,
@@ -285,7 +355,9 @@ def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = No
             "max_loss": float(row.get('max_loss', 0)) if pd.notna(row.get('max_loss')) else 0
         }
         trades.append(trade)
+        processed_count += 1
     
+    print(f"✅ Trades processados: {processed_count}, pulados: {skipped_count}")
     return trades
 
 def calcular_estatisticas_temporais(df: pd.DataFrame) -> Dict[str, Any]:
@@ -586,6 +658,16 @@ def calcular_metricas_diarias(df: pd.DataFrame) -> pd.DataFrame:
     daily_stats['running_max'] = daily_stats['saldo_final'].cummax()
     daily_stats['drawdown_cumulativo'] = daily_stats['saldo_final'] - daily_stats['running_max']
     
+    # PADRONIZAÇÃO: Usar função centralizada para calcular drawdown
+    drawdown_data = calcular_drawdown_padronizado(df)
+    max_drawdown_trades = drawdown_data["max_drawdown"]
+    max_drawdown_pct_trades = drawdown_data["max_drawdown_pct"]
+    
+    # Logs de debug para verificar padronização
+    print(f"  PADRONIZAÇÃO - Drawdown máximo (trades): R$ {max_drawdown_trades:.2f} ({max_drawdown_pct_trades:.2f}%)")
+    print(f"  PADRONIZAÇÃO - Drawdown máximo (dias): R$ {abs(daily_stats['drawdown_cumulativo'].min()):.2f}")
+    print(f"  PADRONIZAÇÃO - Verificação: valores devem ser iguais")
+    
     # Logs de debug detalhados
     print(f"  Dias com resultado positivo: {len(daily_stats[daily_stats['total_pnl'] > 0])}")
     print(f"  Dias com resultado negativo: {len(daily_stats[daily_stats['total_pnl'] < 0])}")
@@ -636,14 +718,12 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
     avg_loss = abs(df_valid[df_valid['pnl'] < 0]['pnl'].mean()) if losing_trades > 0 else 0
     payoff_ratio = avg_win / avg_loss if avg_loss != 0 else 0
     
-    # PADRONIZADO: Drawdown máximo usando a mesma lógica do FunCalculos.py (trades individuais)
-    # Calcular equity curve trade por trade (igual ao FunCalculos.py)
-    df_valid['Saldo'] = df_valid['pnl'].cumsum()
-    df_valid['Saldo_Maximo'] = df_valid['Saldo'].cummax()
-    df_valid['Drawdown'] = df_valid['Saldo'] - df_valid['Saldo_Maximo']
-    
-    max_drawdown = abs(df_valid['Drawdown'].min())  # Valor positivo (absoluto)
-    max_drawdown_pct = (max_drawdown / df_valid['Saldo'].iloc[-1] * 100) if df_valid['Saldo'].iloc[-1] != 0 else 0
+    # PADRONIZADO: Usar função centralizada para calcular drawdown
+    drawdown_data = calcular_drawdown_padronizado(df)
+    max_drawdown = drawdown_data["max_drawdown"]
+    max_drawdown_pct = drawdown_data["max_drawdown_pct"]
+    saldo_final = drawdown_data["saldo_final"]
+    capital_inicial = drawdown_data["capital_inicial"]
     
     # CAPITAL INICIAL CORRIGIDO
     # Se não fornecido, calcular baseado no drawdown máximo
@@ -727,6 +807,12 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
             "drawdown_maximo_pct": round(max_drawdown_pct, 2),
             "dias_operados": int(days_traded),
             "resultado_liquido": round(total_pnl, 2),
+            # PADRONIZAÇÃO: Usar drawdown calculado com trades individuais (mesmo valor do original)
+            "drawdown_maximo_padronizado": round(-max_drawdown, 2),  # Negativo para compatibilidade
+            "drawdown_maximo_pct_padronizado": round(max_drawdown_pct, 2),
+            # PADRONIZAÇÃO: Valores para API (positivos)
+            "max_drawdown_padronizado": round(max_drawdown, 2),  # Valor positivo para API
+            "max_drawdown_pct_padronizado": round(max_drawdown_pct, 2),  # Percentual para API
             # Campos adicionais para debug/transparência
             "periodo_meses": round(periodo_meses, 1),
             "taxa_juros_periodo": round(taxa_juros_periodo * 100, 2),
@@ -869,17 +955,17 @@ def calcular_disciplina_completa(df: pd.DataFrame, fator_disciplina: float = 0.2
     data_col = None
     quantidade_col = None
     
-    for col_name in ['Res. Operação', 'pnl', 'operation_result', 'resultado']:
+    for col_name in ['operation_result', 'pnl', 'resultado']:
         if col_name in df.columns:
             resultado_col = col_name
             break
     
-    for col_name in ['Abertura', 'entry_date', 'data_abertura', 'data']:
+    for col_name in ['entry_date', 'data_abertura', 'data']:
         if col_name in df.columns:
             data_col = col_name
             break
     
-    for col_name in ['Qtd Compra', 'Quantidade', 'qtd', 'qty', 'volume', 'contratos', 'acoes', 'size']:
+    for col_name in ['qty_buy', 'Quantidade', 'qtd', 'qty', 'volume', 'contratos', 'acoes', 'size']:
         if col_name in df.columns:
             quantidade_col = col_name
             break
@@ -1421,31 +1507,103 @@ def api_tabela_multipla():
         capital_inicial = float(request.form.get('capital_inicial', 100000))
         cdi = float(request.form.get('cdi', 0.12))
         
-        # Concatenar todos os DataFrames em um só
+        # Processar cada arquivo individualmente
+        resultados_individuais = {}
+        print(f"🔍 Processando {len(dataframes)} arquivos individualmente:")
+        for i, (df, nome_arquivo) in enumerate(zip(dataframes, arquivos_processados)):
+            try:
+                print(f"  📁 Arquivo {i+1}/{len(dataframes)}: {nome_arquivo}")
+                print(f"     📊 Registros: {len(df)}")
+                print(f"     📅 Colunas: {list(df.columns)}")
+                
+                # DEBUG: Verificar padronização do drawdown
+                debug_drawdown_calculation(df)
+                
+                resultado_individual = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+                
+                if 'equity_curve_data' not in resultado_individual:
+                    print(f"     ⚡ Gerando equity curve data para {nome_arquivo}")
+                    equity_data = gerar_equity_curve_data(df, capital_inicial)
+                    resultado_individual['equity_curve_data'] = equity_data
+                
+                # Processar trades individuais para este arquivo
+                print(f"     📊 Processando trades para {nome_arquivo}")
+                print(f"        📋 DataFrame shape: {df.shape}")
+                print(f"        📅 Colunas disponíveis: {list(df.columns)}")
+                trades_individual = processar_trades(df, {i: nome_arquivo})
+                print(f"        ✅ Trades processados: {len(trades_individual)}")
+                resultado_individual['trades'] = trades_individual
+                
+                resultado_individual['info_arquivo'] = {
+                    "nome_arquivo": nome_arquivo,
+                    "total_registros": len(df)
+                }
+                
+                resultados_individuais[nome_arquivo] = make_json_serializable(resultado_individual)
+                print(f"     ✅ Processado com sucesso: {nome_arquivo}")
+                
+            except Exception as e:
+                print(f"❌ Erro ao processar arquivo {nome_arquivo}: {str(e)}")
+                resultados_individuais[nome_arquivo] = {
+                    "error": f"Erro ao processar arquivo: {str(e)}",
+                    "info_arquivo": {
+                        "nome_arquivo": nome_arquivo,
+                        "total_registros": len(df)
+                    }
+                }
+        
+        print(f"📋 Resultados individuais processados: {list(resultados_individuais.keys())}")
+        
+        # Concatenar todos os DataFrames em um só para análise consolidada
+        print(f"🔗 Processando dados consolidados:")
+        print(f"   📊 Total de registros consolidados: {sum(len(df) for df in dataframes)}")
+        
         df_consolidado = pd.concat(dataframes, ignore_index=True)
+        print(f"   📋 DataFrame consolidado criado com {len(df_consolidado)} registros")
         
-        # Processar backtest completo no DataFrame consolidado
-        resultado = processar_backtest_completo(df_consolidado, capital_inicial=capital_inicial, cdi=cdi)
-        
-        # Verificar se equity_curve_data existe, se não, gerar
-        if 'equity_curve_data' not in resultado:
-            # Gerar equity curve data se não existir
+        resultado_consolidado = processar_backtest_completo(df_consolidado, capital_inicial=capital_inicial, cdi=cdi)
+        if 'equity_curve_data' not in resultado_consolidado:
+            print(f"   ⚡ Gerando equity curve data consolidada")
             equity_data = gerar_equity_curve_data(df_consolidado, capital_inicial)
-            resultado['equity_curve_data'] = equity_data
+            resultado_consolidado['equity_curve_data'] = equity_data
         
-        # Adicionar informações dos arquivos processados
-        resultado['info_arquivos'] = {
+        # Processar trades consolidados
+        print(f"   📊 Processando trades consolidados")
+        arquivo_para_indices = {}
+        for i, nome_arquivo in enumerate(arquivos_processados):
+            arquivo_para_indices[i] = nome_arquivo
+        trades_consolidados = processar_trades(df_consolidado, arquivo_para_indices)
+        resultado_consolidado['trades'] = trades_consolidados
+        
+        resultado_consolidado['info_arquivos'] = {
             "total_arquivos": len(arquivos_processados),
             "nomes_arquivos": arquivos_processados,
             "total_registros_consolidados": len(df_consolidado)
         }
+        print(f"   ✅ Dados consolidados processados com sucesso")
         
-        # Adicionar análises complementares
+        # Adicionar análises complementares ao consolidado
         if len(arquivos_processados) > 1:
-            resultado['day_of_week'] = calcular_day_of_week(df_consolidado)
-            resultado['monthly'] = calcular_monthly(df_consolidado)
+            resultado_consolidado['day_of_week'] = calcular_day_of_week(df_consolidado)
+            resultado_consolidado['monthly'] = calcular_monthly(df_consolidado)
         
-        return jsonify(make_json_serializable(resultado))
+        # Retornar estrutura com dados individuais e consolidados
+        resultado_final = {
+            "consolidado": make_json_serializable(resultado_consolidado),
+            "individuais": resultados_individuais,
+            "info_geral": {
+                "total_arquivos": len(arquivos_processados),
+                "nomes_arquivos": arquivos_processados,
+                "modo_analise": "individual_e_consolidado"
+            }
+        }
+        
+        print(f"🎯 Resposta final preparada:")
+        print(f"   📊 Arquivos individuais: {len(resultados_individuais)}")
+        print(f"   🔗 Dados consolidados: ✅")
+        print(f"   📋 Estrutura: {list(resultado_final.keys())}")
+        
+        return jsonify(resultado_final)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1460,12 +1618,12 @@ def gerar_equity_curve_data(df, capital_inicial=100000):
         resultado_col = None
         data_col = None
         
-        for col_name in ['Res. Operação', 'pnl', 'operation_result', 'resultado']:
+        for col_name in ['operation_result', 'pnl', 'resultado']:
             if col_name in df.columns:
                 resultado_col = col_name
                 break
         
-        for col_name in ['Abertura', 'entry_date', 'data_abertura', 'data']:
+        for col_name in ['entry_date', 'data_abertura', 'data']:
             if col_name in df.columns:
                 data_col = col_name
                 break
@@ -1677,8 +1835,8 @@ def api_backtest_completo():
             "capital_inicial": capital_inicial,
             "cdi": cdi,
             "periodo": {
-                "inicio": df['Abertura'].min().isoformat() if not df.empty and 'Abertura' in df.columns else None,
-                "fim": df['Abertura'].max().isoformat() if not df.empty and 'Abertura' in df.columns else None
+                "inicio": df['entry_date'].min().isoformat() if not df.empty and 'entry_date' in df.columns else None,
+                "fim": df['entry_date'].max().isoformat() if not df.empty and 'entry_date' in df.columns else None
             }
         }
 
@@ -1961,6 +2119,401 @@ def api_metrics_from_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/position-sizing', methods=['POST'])
+def api_position_sizing():
+    """Endpoint específico para calcular métricas de position sizing"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "Nenhum arquivo selecionado"}), 400
+        
+        # Carregar CSV
+        print(f"📊 Processando arquivo: {file.filename}")
+        
+        # Carregar CSV com headers corretos
+        try:
+            df = pd.read_csv(file, skiprows=5, sep=';', encoding='latin1', decimal=',', header=None)
+            
+            # Definir headers corretos
+            expected_headers = [
+                'Ativo', 'Abertura', 'Fechamento', 'Tempo Operação', 'Qtd Compra', 'Qtd Venda',
+                'Lado', 'Preço Compra', 'Preço Venda', 'Preço de Mercado', 'Médio',
+                'Res. Intervalo', 'Res. Intervalo (%)', 'Número Operação', 'Res. Operação', 'Res. Operação (%)',
+                'Drawdown', 'Ganho Max.', 'Perda Max.', 'TET', 'Total'
+            ]
+            
+            if len(df.columns) == len(expected_headers):
+                df.columns = expected_headers
+                print(f"📊 Headers atribuídos corretamente")
+            else:
+                print(f"⚠️ Número de colunas ({len(df.columns)}) não corresponde aos headers esperados ({len(expected_headers)})")
+                return jsonify({"error": f"Formato de CSV inválido. Esperado {len(expected_headers)} colunas, encontrado {len(df.columns)}"}), 400
+            
+            # Processar datas com tratamento de NaT
+            print(f"📊 Processando datas - DataFrame shape inicial: {df.shape}")
+            
+            if 'Abertura' in df.columns:
+                print(f"📊 Processando coluna 'Abertura'")
+                print(f"📊 Amostra de valores 'Abertura': {df['Abertura'].head(3).tolist()}")
+                df['Abertura'] = pd.to_datetime(df['Abertura'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+                print(f"📊 Após conversão - valores NaT: {df['Abertura'].isna().sum()}")
+                # Remover linhas com datas inválidas
+                df_antes = len(df)
+                df = df.dropna(subset=['Abertura'])
+                df_depois = len(df)
+                print(f"📊 Linhas removidas de 'Abertura': {df_antes - df_depois}")
+                
+            if 'Fechamento' in df.columns:
+                print(f"📊 Processando coluna 'Fechamento'")
+                df['Fechamento'] = pd.to_datetime(df['Fechamento'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+                # Remover linhas com datas inválidas
+                df_antes = len(df)
+                df = df.dropna(subset=['Fechamento'])
+                df_depois = len(df)
+                print(f"📊 Linhas removidas de 'Fechamento': {df_antes - df_depois}")
+            
+            print(f"📊 DataFrame após processamento de datas: {df.shape}")
+            
+            # Limpar valores numéricos
+            numeric_columns = ['Res. Operação', 'Res. Operação (%)', 'Preço Compra', 'Preço Venda', 
+                              'Preço de Mercado', 'Médio', 'Res. Intervalo', 'Res. Intervalo (%)',
+                              'Drawdown', 'Ganho Max.', 'Perda Max.', 'Qtd Compra', 'Qtd Venda']
+            
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = df[col].apply(clean_numeric_value)
+            
+            # Renomear colunas
+            column_mapping = {
+                'Ativo': 'symbol', 'Abertura': 'entry_date', 'Fechamento': 'exit_date',
+                'Tempo Operação': 'duration_str', 'Qtd Compra': 'qty_buy', 'Qtd Venda': 'qty_sell',
+                'Lado': 'direction', 'Preço Compra': 'entry_price', 'Preço Venda': 'exit_price',
+                'Preço de Mercado': 'market_price', 'Médio': 'avg_price', 'Res. Intervalo': 'pnl',
+                'Res. Intervalo (%)': 'pnl_pct', 'Número Operação': 'trade_number',
+                'Res. Operação': 'operation_result', 'Res. Operação (%)': 'operation_result_pct',
+                'Drawdown': 'drawdown', 'Ganho Max.': 'max_gain', 'Perda Max.': 'max_loss',
+                'TET': 'tet', 'Total': 'total'
+            }
+            df = df.rename(columns=column_mapping)
+            
+            # Converter direção
+            if 'direction' in df.columns:
+                df['direction'] = df['direction'].map({'C': 'long', 'V': 'short'}).fillna('long')
+            
+            # Usar operation_result como pnl
+            if 'operation_result' in df.columns:
+                df['pnl'] = df['operation_result']
+            
+            print(f"📊 DataFrame processado - Shape: {df.shape}, Colunas: {list(df.columns)}")
+            
+        except Exception as e:
+            print(f"❌ Erro ao processar CSV: {e}")
+            return jsonify({"error": f"Erro ao processar CSV: {e}"}), 400
+        
+        # Processar trades
+        trades = processar_trades(df)
+        print(f"📊 Trades processados: {len(trades)}")
+        
+        if not trades:
+            print(f"❌ Nenhum trade válido encontrado")
+            print(f"📊 DataFrame info:")
+            print(f"   - Shape: {df.shape}")
+            print(f"   - Colunas: {list(df.columns)}")
+            print(f"   - Primeiras linhas:")
+            if not df.empty:
+                print(df.head(3).to_string())
+            return jsonify({
+                "error": "Nenhum trade válido encontrado",
+                "debug": {
+                    "dataframe_shape": df.shape,
+                    "dataframe_columns": list(df.columns),
+                    "sample_data": df.head(3).to_dict('records') if not df.empty else []
+                }
+            }), 400
+        
+        print(f"📊 Calculando position sizing para {len(trades)} trades")
+        
+        # Extrair dados de posição
+        position_data = []
+        for trade in trades:
+            # Tentar diferentes campos de quantidade
+            quantity = (trade.get('quantity_total', 0) or 
+                       trade.get('quantity_compra', 0) or 
+                       trade.get('quantity_venda', 0) or
+                       trade.get('qty_buy', 0) or 
+                       trade.get('qty_sell', 0) or 0)
+            
+            if quantity > 0:
+                position_data.append({
+                    'quantity': quantity,
+                    'pnl': trade.get('pnl', 0),
+                    'entry_price': trade.get('entry_price', 0),
+                    'exit_price': trade.get('exit_price', 0)
+                })
+        
+        print(f"📊 Dados de posição encontrados: {len(position_data)} trades com quantidade")
+        
+        if not position_data:
+            return jsonify({
+                "error": "Nenhum dado de posição encontrado nos trades",
+                "available_fields": list(trades[0].keys()) if trades else []
+            }), 400
+        
+        # Calcular estatísticas de posição
+        quantities = [p['quantity'] for p in position_data]
+        max_position = max(quantities) if quantities else 0
+        avg_position = sum(quantities) / len(quantities) if quantities else 0
+        median_position = sorted(quantities)[len(quantities)//2] if quantities else 0
+        
+        # Calcular risco por trade (baseado na perda média)
+        losses = [abs(p['pnl']) for p in position_data if p['pnl'] < 0]
+        avg_trade_risk = sum(losses) / len(losses) if losses else 0
+        
+        # Calcular account risk (2% do capital total)
+        total_pnl = sum(t['pnl'] for t in trades)
+        account_risk = max(0, total_pnl) * 0.02  # 2% rule
+        
+        # Calcular posição recomendada
+        recommended_position = int(account_risk / avg_trade_risk) if avg_trade_risk > 0 else 0
+        
+        # Determinar tipo de ativo (ações vs futuros) com lógica melhorada
+        avg_trade_value = abs(sum(t['pnl'] for t in trades) / len(trades))
+        
+        # Lógica melhorada para determinar se é ações ou futuros
+        # Se tem posições > 100 ou trade value > 1000, provavelmente é ações
+        is_stocks = avg_position > 100 or avg_trade_value > 1000
+        
+        # Se não tem dados de posição, usar trade value como critério
+        if avg_position == 0:
+            is_stocks = avg_trade_value > 500  # Se trade value > 500, provavelmente ações
+        
+        # Calcular dados para AMBOS os tipos de ativo (sempre)
+        # Para Ações - usar dados reais ou estimar baseado no trade value
+        stocks_avg_position = avg_position if is_stocks else max(1, int(avg_trade_value * 10))  # Estimativa para ações
+        stocks_max_position = max_position if is_stocks else stocks_avg_position * 2
+        stocks_median_position = median_position if is_stocks else stocks_avg_position
+        stocks_recommended = recommended_position if is_stocks else max(1, int(account_risk / (avg_trade_risk * 10)))  # Ações têm menor risco
+        
+        print(f"📊 Análise de tipo de ativo:")
+        print(f"   - Posição média: {avg_position}")
+        print(f"   - Trade value médio: {avg_trade_value}")
+        print(f"   - Tipo determinado: {'Ações' if is_stocks else 'Futuros'}")
+        print(f"📊 Cálculos para Ações:")
+        print(f"   - Posição média estimada: {stocks_avg_position}")
+        print(f"   - Posição máxima: {stocks_max_position}")
+        print(f"   - Posição recomendada: {stocks_recommended}")
+        print(f"📊 Cálculos para Futuros:")
+        print(f"   - Posição média real: {avg_position}")
+        print(f"   - Posição máxima: {max_position}")
+        print(f"   - Posição recomendada: {recommended_position}")
+        
+        # Calcular posições abertas máximas
+        trades_by_date = {}
+        for trade in trades:
+            # Usar entry_date que já foi renomeado de 'Abertura'
+            entry_date = trade.get('entry_date', '')
+            if entry_date:
+                date = entry_date[:10]  # YYYY-MM-DD
+                if date not in trades_by_date:
+                    trades_by_date[date] = []
+                trades_by_date[date].append(trade)
+        
+        max_open_positions = max(len(trades) for trades in trades_by_date.values()) if trades_by_date else 0
+        
+        stocks_data = {
+            "maxPositionPerTrade": stocks_max_position,
+            "avgPositionPerTrade": round(stocks_avg_position),
+            "medianPositionPerTrade": stocks_median_position,
+            "avgLeverage": 0.85,
+            "recommendedPosition": stocks_recommended,
+            "riskPerTrade": round(avg_trade_risk * 10, 2)  # Ações têm risco por trade maior
+        }
+        
+        # Para Futuros - usar dados reais
+        futures_data = {
+            "maxPositionPerTrade": max_position if not is_stocks else max_position,
+            "avgPositionPerTrade": round(avg_position) if not is_stocks else avg_position,
+            "medianPositionPerTrade": median_position if not is_stocks else median_position,
+            "avgLeverage": 3.2,
+            "recommendedPosition": recommended_position if not is_stocks else recommended_position,
+            "riskPerTrade": round(avg_trade_risk, 2)
+        }
+        
+        # Se não há dados de posição, estimar para ambos
+        if avg_position == 0:
+            # Estimar posição baseada no trade value
+            estimated_position = max(1, int(avg_trade_value / 100))
+            
+            # Para ações - estimativa mais conservadora
+            stocks_estimated = max(1, int(avg_trade_value * 5))
+            stocks_data.update({
+                "maxPositionPerTrade": stocks_estimated * 2,
+                "avgPositionPerTrade": stocks_estimated,
+                "medianPositionPerTrade": stocks_estimated,
+                "recommendedPosition": max(1, int(account_risk / (avg_trade_risk * 5)))
+            })
+            
+            # Para futuros - estimativa baseada no trade value
+            futures_data.update({
+                "maxPositionPerTrade": estimated_position * 2,
+                "avgPositionPerTrade": estimated_position,
+                "medianPositionPerTrade": estimated_position,
+                "recommendedPosition": estimated_position
+            })
+        
+        result = {
+            "stocks": stocks_data,
+            "futures": futures_data,
+            "general": {
+                "maxOpenPositions": max_open_positions,
+                "setupsMaximosPorDia": max_open_positions,
+                "accountRisk": round(account_risk, 2),
+                "maxRiskPerTrade": round(account_risk * 0.5, 2)  # 1% rule
+            },
+            "debug": {
+                "totalTrades": len(trades),
+                "tradesWithPosition": len(position_data),
+                "assetType": "Stocks" if is_stocks else "Futures",
+                "avgTradeValue": round(avg_trade_value, 2),
+                "avgPosition": round(avg_position, 2),
+                "isStocks": is_stocks,
+                "hasPositionData": len(position_data) > 0
+            }
+        }
+        
+        print(f"📊 Position sizing calculado: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Erro em api_position_sizing: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def debug_drawdown_calculation(df: pd.DataFrame) -> Dict[str, float]:
+    """
+    Função de debug para verificar se todos os cálculos de drawdown estão padronizados
+    """
+    if df.empty:
+        return {}
+    
+    print("🔍 DEBUG - Verificação de padronização do drawdown:")
+    
+    # Método 1: FunCalculos.py (trades individuais)
+    df_valid = df.dropna(subset=['pnl', 'entry_date']).copy()
+    df_valid = df_valid.sort_values('entry_date').reset_index(drop=True)
+    
+    equity = df_valid['pnl'].cumsum()
+    peak = equity.cummax()
+    dd_ser = equity - peak
+    max_dd_funcalculos = abs(dd_ser.min()) if not dd_ser.empty else 0
+    pct_dd_funcalculos = (max_dd_funcalculos / equity.iloc[-1] * 100) if equity.iloc[-1] != 0 else 0
+    
+    print(f"  FunCalculos.py: R$ {max_dd_funcalculos:.2f} ({pct_dd_funcalculos:.2f}%)")
+    
+    # Método 2: Análise diária (dias consolidados)
+    df_valid['date'] = pd.to_datetime(df_valid['entry_date']).dt.date
+    daily_stats = df_valid.groupby('date').agg({
+        'pnl': ['sum', 'count', 'mean'],
+    }).round(2)
+    
+    daily_stats.columns = ['total_pnl', 'total_trades', 'avg_pnl']
+    daily_stats['cumulative_pnl'] = daily_stats['total_pnl'].cumsum()
+    daily_stats['running_max'] = daily_stats['cumulative_pnl'].expanding().max()
+    daily_stats['drawdown'] = daily_stats['cumulative_pnl'] - daily_stats['running_max']
+    
+    max_dd_daily = abs(daily_stats['drawdown'].min()) if not daily_stats['drawdown'].empty else 0
+    pct_dd_daily = (max_dd_daily / daily_stats['cumulative_pnl'].iloc[-1] * 100) if daily_stats['cumulative_pnl'].iloc[-1] != 0 else 0
+    
+    print(f"  Análise Diária: R$ {max_dd_daily:.2f} ({pct_dd_daily:.2f}%)")
+    
+    # Método 3: Gráfico (calcular_dados_grafico)
+    grafico_data = calcular_dados_grafico(df_valid)
+    if grafico_data:
+        drawdowns_grafico = [abs(item['drawdown']) for item in grafico_data if not item.get('isStart', False)]
+        max_dd_grafico = max(drawdowns_grafico) if drawdowns_grafico else 0
+        print(f"  Gráfico: R$ {max_dd_grafico:.2f}")
+    else:
+        print(f"  Gráfico: N/A")
+    
+    # Verificar se todos os métodos produzem o mesmo resultado
+    methods = [
+        ("FunCalculos.py", max_dd_funcalculos),
+        ("Análise Diária", max_dd_daily),
+        ("Gráfico", max_dd_grafico if 'max_dd_grafico' in locals() else 0)
+    ]
+    
+    all_equal = len(set(method[1] for method in methods)) == 1
+    print(f"  ✅ Todos os métodos iguais: {all_equal}")
+    
+    if not all_equal:
+        print("  ⚠️ DIFERENÇAS ENCONTRADAS:")
+        for method_name, value in methods:
+            print(f"    {method_name}: R$ {value:.2f}")
+    
+    return {
+        "funcalculos": max_dd_funcalculos,
+        "daily": max_dd_daily,
+        "grafico": max_dd_grafico if 'max_dd_grafico' in locals() else 0,
+        "all_equal": all_equal
+    }
+
+def calcular_drawdown_padronizado(df: pd.DataFrame) -> Dict[str, float]:
+    """
+    Função centralizada para calcular drawdown de forma padronizada
+    Usada em todas as seções para garantir consistência
+    """
+    if df.empty:
+        return {
+            "max_drawdown": 0.0,
+            "max_drawdown_pct": 0.0,
+            "saldo_final": 0.0,
+            "capital_inicial": 0.0
+        }
+    
+    # Filtrar trades válidas
+    df_valid = df.dropna(subset=['pnl', 'entry_date']).copy()
+    df_valid = df_valid.sort_values('entry_date').reset_index(drop=True)
+    
+    if df_valid.empty:
+        return {
+            "max_drawdown": 0.0,
+            "max_drawdown_pct": 0.0,
+            "saldo_final": 0.0,
+            "capital_inicial": 0.0
+        }
+    
+    # Calcular equity curve trade por trade (PADRONIZADO)
+    df_valid['equity'] = df_valid['pnl'].cumsum()
+    df_valid['peak'] = df_valid['equity'].cummax()
+    df_valid['drawdown'] = df_valid['equity'] - df_valid['peak']
+    
+    # Drawdown máximo (valor positivo)
+    max_drawdown = abs(df_valid['drawdown'].min()) if not df_valid['drawdown'].empty else 0.0
+    
+    # Saldo final
+    saldo_final = df_valid['equity'].iloc[-1] if not df_valid['equity'].empty else 0.0
+    
+    # Capital inicial estimado (baseado no pico máximo)
+    capital_inicial = df_valid['peak'].max() if not df_valid['peak'].empty else 0.0
+    
+    # Percentual do drawdown (baseado no capital inicial)
+    max_drawdown_pct = (max_drawdown / capital_inicial * 100) if capital_inicial != 0 else 0.0
+    
+    # Logs de debug
+    print(f"🔍 DEBUG - Drawdown Padronizado:")
+    print(f"  Max Drawdown: R$ {max_drawdown:.2f}")
+    print(f"  Max Drawdown %: {max_drawdown_pct:.2f}%")
+    print(f"  Saldo Final: R$ {saldo_final:.2f}")
+    print(f"  Capital Inicial: R$ {capital_inicial:.2f}")
+    
+    return {
+        "max_drawdown": max_drawdown,
+        "max_drawdown_pct": max_drawdown_pct,
+        "saldo_final": saldo_final,
+        "capital_inicial": capital_inicial
+    }
 
 if __name__ == '__main__':
     try:

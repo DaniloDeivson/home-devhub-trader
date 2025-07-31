@@ -1,0 +1,121 @@
+# Equity Curve Dynamic Filters Implementation
+
+## Overview
+This implementation allows the equity curve chart to dynamically update based on "Strategy" and "Asset" filter selections, using real data from individual CSV files instead of consolidated data.
+
+## Key Components
+
+### Backend Processing ([python-freela/main.py](mdc:python-freela/main.py))
+- **Individual CSV Processing**: Each uploaded CSV file is processed separately using `processar_backtest_completo()`
+- **Consolidated Processing**: All CSVs are also concatenated for consolidated analysis
+- **Response Structure**: API returns both individual and consolidated results:
+  ```json
+  {
+    "consolidado": {...},
+    "individuais": {
+      "file1.csv": {...},
+      "file2.csv": {...}
+    },
+    "info_geral": {...}
+  }
+  ```
+
+### Frontend State Management ([project/src/pages/BacktestAnalysisPage.tsx](mdc:project/src/pages/BacktestAnalysisPage.tsx))
+- **fileResults State**: Stores individual analysis results for each CSV file
+- **Filter Props**: Passes `selectedStrategy`, `selectedAsset`, and `fileResults` to `EquityCurveSection`
+- **Strategy Population**: `availableStrategies` uses full file names (including .csv extension) for correct lookup
+
+### Chart Component ([project/src/components/EquityCurveSection.tsx](mdc:project/src/components/EquityCurveSection.tsx))
+- **Dynamic Data Selection**: `chartData` useMemo conditionally uses real equity curve data from `fileResults[selectedStrategy]` when a strategy is selected
+- **Dependencies**: `useMemo` includes `selectedStrategy`, `selectedAsset`, and `fileResults` in dependencies array
+- **Stats Calculation**: `stats` useMemo calculates metrics from actual chart data, prioritizing strategy-specific Performance Metrics
+- **Visual Indicators**: Shows filter status in legend when filters are active
+
+## Data Flow
+
+1. **Upload**: Multiple CSV files uploaded to backend
+2. **Processing**: Backend processes each file individually + consolidated
+3. **Response**: Frontend receives structured JSON with individual and consolidated results
+4. **Storage**: `fileResults` state stores individual results indexed by filename
+5. **Filtering**: User selects strategy/asset in `StrategySelector`
+6. **Chart Update**: `EquityCurveSection` uses real equity curve data from selected strategy
+7. **Stats Update**: Legend metrics reflect actual chart data
+
+## Key Implementation Details
+
+### Backend Individual Processing
+```python
+# Process each file individually
+resultados_individuais = {}
+for df, nome_arquivo in zip(dataframes, arquivos_processados):
+    resultado_individual = processar_backtest_completo(df, capital_inicial, cdi)
+    resultados_individuais[nome_arquivo] = resultado_individual
+```
+
+### Frontend Chart Data Selection
+```typescript
+const chartData = useMemo(() => {
+  if (selectedStrategy && fileResults) {
+    const strategyData = fileResults[selectedStrategy];
+    if (strategyData && strategyData["Equity Curve Data"]) {
+      // Use real equity curve data from selected strategy
+      return processRealEquityData(strategyData["Equity Curve Data"]);
+    }
+  }
+  // Fallback to consolidated data
+  return processConsolidatedData(data["Equity Curve Data"]);
+}, [data, timeRange, startDate, endDate, selectedStrategy, selectedAsset, fileResults]);
+```
+
+### Stats Calculation from Real Data
+```typescript
+const stats = useMemo(() => {
+  if (selectedStrategy && fileResults && fileResults[selectedStrategy]) {
+    const strategyData = fileResults[selectedStrategy];
+    const metrics = strategyData["Performance Metrics"];
+    
+    // Calculate stats from actual chart data
+    const dadosValidos = chartData.filter(item => !item.isStart);
+    const ultimoValor = chartData[chartData.length - 1];
+    const resultadoGrafico = ultimoValor ? (ultimoValor.saldo || ultimoValor.resultado || 0) : 0;
+    
+    return {
+      resultado: resultadoGrafico,
+      maxDrawdown: calculateMaxDrawdown(dadosValidos),
+      // ... other metrics from real chart data
+    };
+  }
+}, [chartData, selectedStrategy, fileResults]);
+```
+
+## Filter Behavior
+
+- **Scope**: Filters only affect the equity curve chart and its legend
+- **Data Source**: When strategy selected → uses individual CSV equity curve data
+- **Fallback**: When no strategy selected → uses consolidated equity curve data
+- **Visual Feedback**: Legend shows filter status with 📊 icon and text
+
+## Debug Logging
+
+The implementation includes comprehensive debug logging to trace:
+- Props received by `EquityCurveSection`
+- `chartData` useMemo execution
+- Data availability and processing
+- Filter state changes
+
+## Error Handling
+
+- **Missing Data**: Graceful fallback to consolidated data
+- **Invalid Strategy**: Returns empty chart data
+- **Processing Errors**: Individual file errors don't affect other files
+- **Type Safety**: Proper TypeScript interfaces for all data structures
+
+## Performance Considerations
+
+- **Memoization**: Both `chartData` and `stats` are memoized with proper dependencies
+- **Conditional Processing**: Only processes individual data when strategy is selected
+- **Efficient Updates**: Chart only re-renders when relevant props change
+description:
+globs:
+alwaysApply: false
+---

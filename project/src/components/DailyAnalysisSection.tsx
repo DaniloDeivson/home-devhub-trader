@@ -385,6 +385,18 @@ export function DailyAnalysisSection({
                   <p className="text-sm font-bold text-white">{trades}</p>
                 </div>
                 <div className="bg-gray-800 bg-opacity-50 p-2 rounded">
+                  <p className="text-xs text-gray-400">Média Ganho</p>
+                  <p className="text-sm font-bold text-green-300">
+                    {formatMetric(data["Average Win"], false, true)}
+                  </p>
+                </div>
+                <div className="bg-gray-800 bg-opacity-50 p-2 rounded">
+                  <p className="text-xs text-gray-400">Média Perda</p>
+                  <p className="text-sm font-bold text-red-300">
+                    {formatMetric(data["Average Loss"], false, true)}
+                  </p>
+                </div>
+                <div className="bg-gray-800 bg-opacity-50 p-2 rounded">
                   <p className="text-xs text-gray-400">Rentabilidade</p>
                   <p className={`text-sm font-bold ${
                     (data["Rentabilidade ($)"] || 0) > 0 ? "text-green-300" : 
@@ -580,28 +592,42 @@ export function DailyAnalysisSection({
               {dayTranslations[bestDay.Day?.toLowerCase()] ||
                 bestDay.Day}
             </h4>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">Trades</p>
-                <p className="text-lg font-medium">{bestDay.Trades || "0"}</p>
-              </div>
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">
-                  Taxa de Acerto
-                </p>
-                <p className="text-lg font-medium text-green-400">
-                  {formatMetric(bestDay["Win Rate (%)"], true)}
-                </p>
-              </div>
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">
-                  Fator de Lucro
-                </p>
-                <p className="text-lg font-medium text-green-400">
-                  {formatMetric(bestDay["Profit Factor"])}
-                </p>
-              </div>
-            </div>
+                                  <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Trades</p>
+                          <p className="text-lg font-medium">{bestDay.Trades || "0"}</p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">
+                            Taxa de Acerto
+                          </p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(bestDay["Win Rate (%)"], true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">
+                            Fator de Lucro
+                          </p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(bestDay["Profit Factor"])}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(bestDay["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(bestDay["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
           </div>
         )}
 
@@ -613,30 +639,44 @@ export function DailyAnalysisSection({
               {dayTranslations[worstDay.Day?.toLowerCase()] ||
                 worstDay.Day}
             </h4>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">Trades</p>
-                <p className="text-lg font-medium">
-                  {worstDay.Trades || "0"}
-                </p>
-              </div>
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">
-                  Taxa de Acerto
-                </p>
-                <p className="text-lg font-medium text-red-400">
-                  {formatMetric(worstDay["Win Rate (%)"], true)}
-                </p>
-              </div>
-              <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">
-                  Fator de Lucro
-                </p>
-                <p className="text-lg font-medium text-red-400">
-                  {formatMetric(worstDay["Profit Factor"])}
-                </p>
-              </div>
-            </div>
+                                  <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Trades</p>
+                          <p className="text-lg font-medium">
+                            {worstDay.Trades || "0"}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">
+                            Taxa de Acerto
+                          </p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(worstDay["Win Rate (%)"], true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">
+                            Fator de Lucro
+                          </p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(worstDay["Profit Factor"])}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(worstDay["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(worstDay["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
           </div>
         )}
       </div>
@@ -655,6 +695,12 @@ export function DailyAnalysisSection({
                 </th>
                 <th className="px-4 py-3 text-center">
                   Fator de Lucro
+                </th>
+                <th className="px-4 py-3 text-center">
+                  Média Ganho
+                </th>
+                <th className="px-4 py-3 text-center">
+                  Média Perda
                 </th>
                 <th className="px-4 py-3 text-center rounded-r-lg">
                   Rentabilidade
@@ -729,19 +775,29 @@ export function DailyAnalysisSection({
                         {formatMetric(data["Profit Factor"])}
                       </span>
                     </td>
-                              <td className="px-4 py-3 text-center">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    (data["Rentabilidade ($)"] || 0) > 0
-                                      ? "bg-green-900 text-green-300"
-                                      : (data["Rentabilidade ($)"] || 0) < 0
-                                      ? "bg-red-900 text-red-300"
-                                      : "bg-gray-900 text-gray-300"
-                                  }`}
-                                >
-                                  {formatMetric(data["Rentabilidade ($)"], false, true)}
-                                </span>
-                              </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-300">
+                        {formatMetric(data["Average Win"], false, true)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-900 text-red-300">
+                        {formatMetric(data["Average Loss"], false, true)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          (data["Rentabilidade ($)"] || 0) > 0
+                            ? "bg-green-900 text-green-300"
+                            : (data["Rentabilidade ($)"] || 0) < 0
+                            ? "bg-red-900 text-red-300"
+                            : "bg-gray-900 text-gray-300"
+                        }`}
+                      >
+                        {formatMetric(data["Rentabilidade ($)"], false, true)}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
@@ -819,6 +875,20 @@ export function DailyAnalysisSection({
                           </p>
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(bestMonth["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(bestMonth["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -854,6 +924,20 @@ export function DailyAnalysisSection({
                           </p>
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(worstMonth["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(worstMonth["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -873,6 +957,12 @@ export function DailyAnalysisSection({
                             <th className="px-4 py-3 text-center">
                             Fator de Lucro
                           </th>
+                            <th className="px-4 py-3 text-center">
+                              Média Ganho
+                            </th>
+                            <th className="px-4 py-3 text-center">
+                              Média Perda
+                            </th>
                             <th className="px-4 py-3 text-center rounded-r-lg">
                               Rentabilidade
                             </th>
@@ -948,6 +1038,16 @@ export function DailyAnalysisSection({
                                   }`}
                                 >
                                   {formatMetric(data["Profit Factor"])}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-300">
+                                  {formatMetric(data["Average Win"], false, true)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-900 text-red-300">
+                                  {formatMetric(data["Average Loss"], false, true)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center">
@@ -1036,6 +1136,20 @@ export function DailyAnalysisSection({
                           </p>
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(bestWeek["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(bestWeek["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1067,6 +1181,20 @@ export function DailyAnalysisSection({
                           </p>
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Ganho</p>
+                          <p className="text-lg font-medium text-green-400">
+                            {formatMetric(worstWeek["Average Win"], false, true)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-1">Média Perda</p>
+                          <p className="text-lg font-medium text-red-400">
+                            {formatMetric(worstWeek["Average Loss"], false, true)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1085,6 +1213,12 @@ export function DailyAnalysisSection({
                           </th>
                           <th className="px-4 py-3 text-center">
                             Fator de Lucro
+                          </th>
+                          <th className="px-4 py-3 text-center">
+                            Média Ganho
+                          </th>
+                          <th className="px-4 py-3 text-center">
+                            Média Perda
                           </th>
                           <th className="px-4 py-3 text-center rounded-r-lg">
                             Rentabilidade
@@ -1135,6 +1269,16 @@ export function DailyAnalysisSection({
                                   }`}
                                 >
                                   {formatMetric(data["Profit Factor"])}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-300">
+                                  {formatMetric(data["Average Win"], false, true)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-900 text-red-300">
+                                  {formatMetric(data["Average Loss"], false, true)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center">

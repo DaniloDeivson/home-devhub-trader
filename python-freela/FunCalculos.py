@@ -40,7 +40,22 @@ def _format_timedelta(td: timedelta, portuguese: bool = True, keep_seconds: bool
         return str(td)
 
 def calcular_metrics(sub, cdi=0.12):
-    pnl = sub['Res. Operação']
+    # Determinar qual coluna usar para PnL
+    if 'operation_result' in sub.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in sub.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in sub.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        # Fallback para primeira coluna numérica
+        numeric_cols = sub.select_dtypes(include=[np.number]).columns
+        pnl_col = numeric_cols[0] if len(numeric_cols) > 0 else None
+    
+    if pnl_col is None:
+        return 0, 0, 0, 0, 0
+    
+    pnl = sub[pnl_col]
     lucro = pnl.sum()
     trades = len(sub)
     gross_profit = pnl[pnl > 0].sum()
@@ -61,14 +76,30 @@ def calcular_metrics(sub, cdi=0.12):
 
 def calcular_performance(df, cdi=0.12):
     total_trades = len(df)
-    pnl = df['Res. Operação']
+    
+    # Determinar qual coluna usar para PnL
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        # Fallback para primeira coluna numérica
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        pnl_col = numeric_cols[0] if len(numeric_cols) > 0 else None
+    
+    if pnl_col is None:
+        return {}
+    
+    pnl = df[pnl_col]
     net_profit = pnl.sum()
     profit_trades = df[pnl > 0]
     loss_trades = df[pnl < 0]
-    gross_profit = profit_trades['Res. Operação'].sum()
-    gross_loss = loss_trades['Res. Operação'].sum()
-    avg_win = profit_trades['Res. Operação'].mean() or 0
-    avg_loss = loss_trades['Res. Operação'].mean() or 0
+    gross_profit = profit_trades[pnl_col].sum()
+    gross_loss = loss_trades[pnl_col].sum()
+    avg_win = profit_trades[pnl_col].mean() or 0
+    avg_loss = loss_trades[pnl_col].mean() or 0
     avg_per_trade = net_profit / total_trades if total_trades > 0 else 0
     win_rate = len(profit_trades) / total_trades * 100 if total_trades > 0 else 0
     profit_factor = gross_profit / abs(gross_loss) if gross_loss != 0 else 0
@@ -78,14 +109,26 @@ def calcular_performance(df, cdi=0.12):
     mean_return = np.mean(returns)
     std_return = np.std(returns, ddof=1)
     sharpe_ratio = ((mean_return - cdi) / std_return) if std_return != 0 else 0
-    dias_com_operacoes = df['Abertura'].dt.date.nunique()
+    # Determinar coluna de data
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        date_col = None
+    
+    if date_col is None:
+        dias_com_operacoes = 1
+    else:
+        dias_com_operacoes = df[date_col].dt.date.nunique()
     media_operacoes_por_dia = total_trades / dias_com_operacoes if dias_com_operacoes > 0 else 0
 
+    # PADRONIZADO: Calcular drawdown usando método centralizado
     equity = pnl.cumsum()
     peak = equity.cummax()
     dd_ser = equity - peak
-    max_dd = float(dd_ser.min()) if not dd_ser.empty else 0
-    pct_dd = abs(max_dd) / equity.iloc[-1] * 100 if equity.iloc[-1] != 0 else 0
+    max_dd = abs(dd_ser.min()) if not dd_ser.empty else 0  # Valor positivo
+    pct_dd = (max_dd / peak.max() * 100) if peak.max() != 0 else 0  # Baseado no pico máximo
 
     recovery = net_profit / abs(max_dd) if max_dd != 0 else None
     recovery_3x = net_profit / (3 * abs(max_dd)) if max_dd != 0 else None
@@ -114,10 +157,23 @@ def calcular_performance(df, cdi=0.12):
             cw = 0
             max_seq_loss_cnt = max(max_seq_loss_cnt, cl)
 
-    durations = df['Fechamento'] - df['Abertura']
-    avg_dur = durations.mean() if total_trades > 0 else timedelta(0)
-    dur_win = (profit_trades['Fechamento'] - profit_trades['Abertura']).mean() if len(profit_trades) > 0 else timedelta(0)
-    dur_loss = (loss_trades['Fechamento'] - loss_trades['Abertura']).mean() if len(loss_trades) > 0 else timedelta(0)
+    # Determinar colunas de data
+    if 'entry_date' in df.columns and 'exit_date' in df.columns:
+        entry_col = 'entry_date'
+        exit_col = 'exit_date'
+    elif 'Abertura' in df.columns and 'Fechamento' in df.columns:
+        entry_col = 'Abertura'
+        exit_col = 'Fechamento'
+    else:
+        entry_col = exit_col = None
+    
+    if entry_col and exit_col:
+        durations = df[exit_col] - df[entry_col]
+        avg_dur = durations.mean() if total_trades > 0 else timedelta(0)
+        dur_win = (profit_trades[exit_col] - profit_trades[entry_col]).mean() if len(profit_trades) > 0 else timedelta(0)
+        dur_loss = (loss_trades[exit_col] - loss_trades[entry_col]).mean() if len(loss_trades) > 0 else timedelta(0)
+    else:
+        avg_dur = dur_win = dur_loss = timedelta(0)
 
     max_trade_gain = pnl.max()
     max_trade_loss = pnl.min()
@@ -139,6 +195,8 @@ def calcular_performance(df, cdi=0.12):
         "Max Consecutive Losses": max_seq_loss_cnt,
         "Max Drawdown ($)": max_dd,
         "Max Drawdown (%)": pct_dd,
+        "Max Drawdown Padronizado ($)": max_dd,  # Valor padronizado
+        "Max Drawdown Padronizado (%)": pct_dd,  # Percentual padronizado
         "Max Trade Drawdown ($)": trade_dd,
         "Max Trade Drawdown (%)": trade_dd_pct,
         "Average Trade Duration": _format_timedelta(avg_dur),
@@ -152,14 +210,39 @@ def calcular_performance(df, cdi=0.12):
 
 def calcular_day_of_week(df, cdi=0.12):
     df = df.copy()
-    df['DayOfWeek'] = df['Abertura'].dt.day_name()
+    
+    # Determinar coluna de data
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        return {}
+    
+    # Determinar coluna de PnL
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        return {}
+    
+    df['DayOfWeek'] = df[date_col].dt.day_name()
     dias = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     stats = {}
     for dia in dias:
         sub = df[df['DayOfWeek'] == dia]
         lucro, pf, sharpe, sharpe_simp, trades = calcular_metrics(sub, cdi=cdi)
-        wins = sub[sub['Res. Operação'] > 0]
+        wins = sub[sub[pnl_col] > 0]
+        losses = sub[sub[pnl_col] < 0]
         win_rate = len(wins) / trades * 100 if trades > 0 else 0
+        
+        # Calcular média de ganho e perda
+        avg_win = wins[pnl_col].mean() if len(wins) > 0 else 0
+        avg_loss = abs(losses[pnl_col].mean()) if len(losses) > 0 else 0
+        
         # Calcular rentabilidade total (lucro total do período)
         rentabilidade_total = lucro
         
@@ -169,6 +252,8 @@ def calcular_day_of_week(df, cdi=0.12):
             "Profit Factor": pf,
             "Win Rate (%)": round(win_rate, 2),
             "Sharpe Ratio": sharpe_simp,
+            "Average Win": round(avg_win, 2),
+            "Average Loss": round(avg_loss, 2),
             "Rentabilidade ($)": round(rentabilidade_total, 2)
         }
 
@@ -199,17 +284,34 @@ def calcular_day_of_week(df, cdi=0.12):
 def calcular_monthly(df, cdi=0.12):
     df = df.copy()
     
+    # Determinar colunas
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        return {}
+    
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        return {}
+    
     # Ordenar por data de abertura para cálculo correto do drawdown
-    df = df.sort_values('Abertura').reset_index(drop=True)
+    df = df.sort_values(date_col).reset_index(drop=True)
     
     # Calcular equity curve global para drawdown correto
-    df['Saldo'] = df['Res. Operação'].cumsum()
+    df['Saldo'] = df[pnl_col].cumsum()
     df['Saldo_Maximo'] = df['Saldo'].cummax()
     df['Drawdown'] = df['Saldo'] - df['Saldo_Maximo']
     
-    df['MonthNum'] = df['Abertura'].dt.month
-    df['Year'] = df['Abertura'].dt.year
-    df['YearMonth'] = df['Abertura'].dt.to_period('M')
+    df['MonthNum'] = df[date_col].dt.month
+    df['Year'] = df[date_col].dt.year
+    df['YearMonth'] = df[date_col].dt.to_period('M')
     
     stats = {}
 
@@ -220,8 +322,13 @@ def calcular_monthly(df, cdi=0.12):
             lucro, pf, sharpe, sharpe_simp, trades = calcular_metrics(sub, cdi=cdi)
 
             # Taxa de acerto
-            wins = sub[sub['Res. Operação'] > 0]
+            wins = sub[sub[pnl_col] > 0]
+            losses = sub[sub[pnl_col] < 0]
             win_rate = len(wins) / trades * 100 if trades > 0 else 0
+            
+            # Calcular média de ganho e perda
+            avg_win = wins[pnl_col].mean() if len(wins) > 0 else 0
+            avg_loss = abs(losses[pnl_col].mean()) if len(losses) > 0 else 0
             
             # Calcular drawdown máximo do mês
             max_drawdown_mes = sub['Drawdown'].min() if not sub['Drawdown'].empty else 0
@@ -239,6 +346,8 @@ def calcular_monthly(df, cdi=0.12):
                 "Net Profit": lucro,
                 "Profit Factor": pf,
                 "Sharpe Ratio": sharpe_simp,
+                "Average Win": round(avg_win, 2),
+                "Average Loss": round(avg_loss, 2),
                 "Max Drawdown ($)": round(max_drawdown_mes, 2),
                 "Max Drawdown (%)": round(drawdown_percentual, 2),
                 "Rentabilidade ($)": round(rentabilidade_total, 2)
@@ -277,14 +386,38 @@ def calcular_monthly(df, cdi=0.12):
 
 def calcular_weekly(df, cdi=0.12):
     df = df.copy()
-    df['WeekNum'] = df['Abertura'].dt.isocalendar().week
+    
+    # Determinar colunas
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        return {}
+    
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        return {}
+    
+    df['WeekNum'] = df[date_col].dt.isocalendar().week
     stats = {}
     weeks = sorted(df['WeekNum'].unique())
     for w in weeks:
         sub = df[df['WeekNum'] == w]
         lucro, pf, sharpe, sharpe_simp, trades = calcular_metrics(sub, cdi=cdi)
-        wins = sub[sub['Res. Operação'] > 0]
+        wins = sub[sub[pnl_col] > 0]
+        losses = sub[sub[pnl_col] < 0]
         win_rate = len(wins) / trades * 100 if trades > 0 else 0
+        
+        # Calcular média de ganho e perda
+        avg_win = wins[pnl_col].mean() if len(wins) > 0 else 0
+        avg_loss = abs(losses[pnl_col].mean()) if len(losses) > 0 else 0
+        
         # Calcular rentabilidade total (lucro total do período)
         rentabilidade_total = lucro
         
@@ -295,6 +428,8 @@ def calcular_weekly(df, cdi=0.12):
             "Sharpe Ratio": sharpe,
             "Sharpe DDx3": sharpe_simp,
             "Win Rate (%)": round(win_rate, 2),
+            "Average Win": round(avg_win, 2),
+            "Average Loss": round(avg_loss, 2),
             "Rentabilidade ($)": round(rentabilidade_total, 2)
         }
     best_week = max(stats.items(), key=lambda x: x[1]['Net Profit'])[0]
@@ -315,11 +450,28 @@ def calcular_dados_grafico(df, capital_inicial=100000):
     
     df = df.copy()
     
+    # Determinar colunas
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        return []
+    
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        return []
+    
     # Ordenar por data de abertura
-    df = df.sort_values('Abertura').reset_index(drop=True)
+    df = df.sort_values(date_col).reset_index(drop=True)
     
     # Calcular equity curve trade por trade (PADRONIZADO: apenas saldo cumulativo)
-    df['Saldo'] = df['Res. Operação'].cumsum()
+    df['Saldo'] = df[pnl_col].cumsum()
     df['Saldo_Maximo'] = df['Saldo'].cummax()
     df['Drawdown'] = df['Saldo'] - df['Saldo_Maximo']
     
@@ -336,8 +488,8 @@ def calcular_dados_grafico(df, capital_inicial=100000):
     
     # Ponto inicial
     grafico_dados.append({
-        "date": df['Abertura'].iloc[0].strftime('%Y-%m-%d'),
-        "fullDate": df['Abertura'].iloc[0].strftime('%d/%m/%Y'),
+        "date": df[date_col].iloc[0].strftime('%Y-%m-%d'),
+        "fullDate": df[date_col].iloc[0].strftime('%d/%m/%Y'),
         "saldo": 0.0,  # Saldo inicial sempre 0
         "valor": float(capital_inicial),  # Patrimônio inicial
         "resultado": 0.0,  # Resultado inicial sempre 0
@@ -351,8 +503,8 @@ def calcular_dados_grafico(df, capital_inicial=100000):
     # Dados para cada trade (incluindo trades com resultado 0)
     for i, row in df.iterrows():
         grafico_dados.append({
-            "date": row['Abertura'].strftime('%Y-%m-%d'),
-            "fullDate": row['Abertura'].strftime('%d/%m/%Y %H:%M'),
+            "date": row[date_col].strftime('%Y-%m-%d'),
+            "fullDate": row[date_col].strftime('%d/%m/%Y %H:%M'),
             "saldo": float(row['Saldo']),  # ESTE é o valor que você quer mostrar
             "valor": float(row['Valor_Carteira']),  # Patrimônio total (saldo + capital)
             "resultado": float(row['Saldo']),  # Mantém compatibilidade
@@ -360,9 +512,9 @@ def calcular_dados_grafico(df, capital_inicial=100000):
             "drawdownPercent": float(abs(row['Drawdown_Percentual'])),
             "peak": float(row['Peak_Carteira']),
             "trades": int(i + 1),
-            "trade_result": float(row['Res. Operação']),  # Incluir mesmo se for 0
-            "trade_percent": float(row['Res. Operação (%)']) if pd.notna(row['Res. Operação (%)']) else 0.0,
-            "month": row['Abertura'].strftime('%B'),
+            "trade_result": float(row[pnl_col]),  # Incluir mesmo se for 0
+            "trade_percent": float(row.get('operation_result_pct', 0)) if pd.notna(row.get('operation_result_pct', 0)) else 0.0,
+            "month": row[date_col].strftime('%B'),
             "isStart": False
         })
     
@@ -378,11 +530,28 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
     
     df = df.copy()
     
+    # Determinar colunas
+    if 'entry_date' in df.columns:
+        date_col = 'entry_date'
+    elif 'Abertura' in df.columns:
+        date_col = 'Abertura'
+    else:
+        return []
+    
+    if 'operation_result' in df.columns:
+        pnl_col = 'operation_result'
+    elif 'pnl' in df.columns:
+        pnl_col = 'pnl'
+    elif 'Res. Operação' in df.columns:
+        pnl_col = 'Res. Operação'
+    else:
+        return []
+    
     # Ordenar por data de abertura
-    df = df.sort_values('Abertura').reset_index(drop=True)
+    df = df.sort_values(date_col).reset_index(drop=True)
     
     # Calcular equity curve trade por trade (PADRONIZADO: apenas saldo cumulativo)
-    df['Saldo'] = df['Res. Operação'].cumsum()
+    df['Saldo'] = df[pnl_col].cumsum()
     df['Saldo_Maximo'] = df['Saldo'].cummax()
     df['Drawdown'] = df['Saldo'] - df['Saldo_Maximo']
     
@@ -399,11 +568,11 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
     
     # Definir agrupamento
     if agrupar_por == 'dia':
-        df['Periodo'] = df['Abertura'].dt.date
+        df['Periodo'] = df[date_col].dt.date
     elif agrupar_por == 'semana':
-        df['Periodo'] = df['Abertura'].dt.to_period('W')
+        df['Periodo'] = df[date_col].dt.to_period('W')
     elif agrupar_por == 'mes':
-        df['Periodo'] = df['Abertura'].dt.to_period('M')
+        df['Periodo'] = df[date_col].dt.to_period('M')
     else:
         raise ValueError("agrupar_por deve ser 'dia', 'semana', 'mes' ou 'trade'")
     
@@ -411,7 +580,7 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
     try:
         # Tentar com include_groups=False (pandas >= 2.1)
         grupos = df.groupby('Periodo', include_groups=False).agg({
-            'Res. Operação': ['sum', 'count'],
+            pnl_col: ['sum', 'count'],
             'Saldo': 'last',
             'Saldo_Maximo': 'last',
             'Drawdown': 'min',
@@ -419,12 +588,12 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
             'Peak_Carteira': 'last',
             'Drawdown_Carteira': 'max',
             'Drawdown_Percentual': 'max',
-            'Abertura': 'first'
+            date_col: 'first'
         }).reset_index()
     except TypeError:
         # Fallback para versões antigas do pandas
         grupos = df.groupby('Periodo').agg({
-            'Res. Operação': ['sum', 'count'],
+            pnl_col: ['sum', 'count'],
             'Saldo': 'last',
             'Saldo_Maximo': 'last',
             'Drawdown': 'min',
@@ -432,7 +601,7 @@ def calcular_dados_grafico_agrupado(df, capital_inicial=0, agrupar_por='dia'):
             'Peak_Carteira': 'last',
             'Drawdown_Carteira': 'max',
             'Drawdown_Percentual': 'max',
-            'Abertura': 'first'
+            date_col: 'first'
         }).reset_index()
     
     # Simplificar nomes das colunas

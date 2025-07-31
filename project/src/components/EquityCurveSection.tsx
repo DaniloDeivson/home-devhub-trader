@@ -1,11 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
-import { TrendingUp, ChevronUp, ChevronDown, BarChart, LineChart, Calendar, Filter, Settings, DollarSign, Percent } from 'lucide-react';
-import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, defs } from 'recharts';
+import { ChevronUp, ChevronDown, BarChart, LineChart, DollarSign, Percent } from 'lucide-react';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 interface EquityCurveSectionProps {
   showEquityCurve: boolean;
   setShowEquityCurve: (show: boolean) => void;
+  selectedStrategy?: string | null;
+  selectedAsset?: string | null;
+  fileResults?: {[key: string]: any};
   data?: {
     "Performance Metrics": {
       "Net Profit": number;
@@ -82,8 +85,20 @@ interface EquityCurveSectionProps {
 export function EquityCurveSection({
   showEquityCurve,
   setShowEquityCurve,
+  selectedStrategy,
+  selectedAsset,
+  fileResults,
   data
 }: EquityCurveSectionProps) {
+  
+  // Debug logs para verificar se os dados estão chegando
+  console.log('🎯 EquityCurveSection - Props recebidas:');
+  console.log('  📁 fileResults:', fileResults ? Object.keys(fileResults) : 'null');
+  console.log('  🎯 selectedStrategy:', selectedStrategy);
+  console.log('  🎯 selectedAsset:', selectedAsset);
+  console.log('  📊 data:', data ? 'disponível' : 'null');
+  
+
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
   const [timeRange, setTimeRange] = useState<'trade' | 'daily' | 'weekly' | 'monthly'>('daily');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
@@ -91,8 +106,72 @@ export function EquityCurveSection({
   const [endDate, setEndDate] = useState('');
   const [totalInvestment, setTotalInvestment] = useState<string>('100000');
 
-  // Buscar dados reais da API
+  // Gerar dados do gráfico baseado nos filtros e dados reais
   const chartData = useMemo(() => {
+    console.log('🔄 chartData useMemo executado');
+    console.log('  🎯 selectedStrategy:', selectedStrategy);
+    console.log('  🎯 selectedAsset:', selectedAsset);
+    console.log('  📁 fileResults:', fileResults ? Object.keys(fileResults) : 'null');
+    console.log('  📊 data:', data ? Object.keys(data) : 'null');
+    
+    // Se há estratégia selecionada, buscar dados reais do CSV correspondente
+    if (selectedStrategy && fileResults) {
+      console.log('✅ Condição atendida: estratégia selecionada e fileResults disponível');
+      
+      // Tentar encontrar os dados da estratégia com e sem extensão .csv
+      const strategyData = fileResults[selectedStrategy] || fileResults[`${selectedStrategy}.csv`];
+      console.log('📊 strategyData encontrado:', !!strategyData);
+      console.log('🔍 Procurando por:', selectedStrategy, 'ou', `${selectedStrategy}.csv`);
+      
+      if (strategyData && strategyData["Equity Curve Data"]) {
+        console.log('📈 Equity Curve Data encontrado');
+        const equityData = strategyData["Equity Curve Data"];
+        console.log('📋 Tipos de dados disponíveis:', Object.keys(equityData));
+        
+        // Selecionar dados baseado no timeRange
+        let selectedData = [];
+        switch (timeRange) {
+          case 'trade':
+            selectedData = equityData.trade_by_trade || [];
+            break;
+          case 'daily':
+            selectedData = equityData.daily || [];
+            break;
+          case 'weekly':
+            selectedData = equityData.weekly || [];
+            break;
+          case 'monthly':
+            selectedData = equityData.monthly || [];
+            break;
+          default:
+            selectedData = equityData.daily || [];
+        }
+
+        console.log('📊 Dados selecionados:', selectedData.length, 'pontos');
+        console.log('📅 TimeRange:', timeRange);
+
+        // Processar dados reais
+        const processedData = selectedData.map((item: any) => ({
+          ...item,
+          saldo: Number(item.saldo) || Number(item.resultado) || 0,
+          valor: Number(item.valor) || 0,
+          resultado: Number(item.resultado) || 0,
+          drawdown: Number(item.drawdown) || 0,
+          drawdownPercent: Number(item.drawdownPercent) || 0,
+          peak: Number(item.peak) || 0,
+          trades: Number(item.trades) || 0
+        }));
+
+        console.log('✅ Dados processados:', processedData.length, 'pontos');
+        return processedData;
+      } else {
+        console.log('❌ strategyData ou Equity Curve Data não encontrado');
+      }
+    } else {
+      console.log('❌ Condição não atendida: selectedStrategy ou fileResults não disponível');
+    }
+    
+    // Caso contrário, usar dados da equity curve consolidada (comportamento atual)
     if (!data?.["Equity Curve Data"]) {
       return [];
     }
@@ -141,7 +220,7 @@ export function EquityCurveSection({
     }
 
     return processedData;
-  }, [data, timeRange, startDate, endDate]);
+  }, [data, timeRange, startDate, endDate, selectedStrategy, selectedAsset, fileResults]);
 
   // Calcular média móvel
   const dataWithMA = useMemo(() => {
@@ -164,32 +243,107 @@ export function EquityCurveSection({
     });
   }, [chartData, movingAverage]);
 
-  // Calcular estatísticas usando dados reais da API
+  // Calcular estatísticas usando dados reais do gráfico quando possível
   const stats = useMemo(() => {
+    // Se há estratégia selecionada, usar dados reais da estratégia
+    if (selectedStrategy && fileResults && fileResults[selectedStrategy]) {
+      const strategyData = fileResults[selectedStrategy];
+      const metrics = strategyData["Performance Metrics"];
+      
+      if (metrics && chartData.length > 0) {
+        // Calcular estatísticas dos dados do gráfico
+        const dadosValidos = chartData.filter((item: any) => !item.isStart);
+        
+        // Resultado total do gráfico (último valor)
+        const ultimoValor = chartData.length > 0 ? chartData[chartData.length - 1] : null;
+        const resultadoGrafico = ultimoValor ? (ultimoValor.saldo || ultimoValor.resultado || 0) : 0;
+        
+        // Drawdown máximo do gráfico
+        const drawdownsGrafico = dadosValidos.map((item: any) => Math.abs(item.drawdown || 0));
+        const maxDrawdownGrafico = drawdownsGrafico.length > 0 ? Math.max(...drawdownsGrafico) : 0;
+        
+        // Drawdown médio do gráfico
+        const avgDrawdownCalculated = drawdownsGrafico.length > 0 
+          ? drawdownsGrafico.reduce((acc: number, dd: number) => acc + dd, 0) / drawdownsGrafico.length
+          : 0;
+        
+        // Drawdown percentual máximo do gráfico
+        const drawdownsPercentGrafico = dadosValidos.map((item: any) => Math.abs(item.drawdownPercent || 0));
+        const maxDrawdownPercentGrafico = drawdownsPercentGrafico.length > 0 ? Math.max(...drawdownsPercentGrafico) : 0;
+        
+        // Contar pontos com dados
+        const pontosComDados = dadosValidos.length;
+        
+        return {
+          resultado: resultadoGrafico,
+          maxDrawdown: maxDrawdownGrafico,
+          avgDrawdown: avgDrawdownCalculated,
+          roi: (resultadoGrafico / parseFloat(totalInvestment || "100000")) * 100,
+          fatorLucro: metrics["Profit Factor"] || 0,
+          winRate: metrics["Win Rate (%)"] || 0,
+          sharpeRatio: metrics["Sharpe Ratio"] || 0,
+          grossProfit: metrics["Gross Profit"] || 0,
+          grossLoss: Math.abs(metrics["Gross Loss"] || 0),
+          avgWin: metrics["Average Win"] || 0,
+          avgLoss: Math.abs(metrics["Average Loss"] || 0),
+          activeDays: metrics["Active Days"] || 0,
+          maxDrawdownPercent: maxDrawdownPercentGrafico,
+          pontosComDados: pontosComDados
+        };
+      }
+    }
+    
+    // Caso contrário, usar dados consolidados
     if (data?.["Performance Metrics"] && chartData.length > 0) {
       const metrics = data["Performance Metrics"];
       
-      // Usar valores da API diretamente
-      const maxDrawdownAPI = Math.abs(metrics["Max Drawdown ($)"] || 0);
-      const maxDrawdownPercentAPI = Math.abs(metrics["Max Drawdown (%)"] || 0);
+      // Calcular estatísticas dos dados do gráfico
+      const dadosValidos = chartData.filter(item => !item.isStart);
       
-      // Calcular drawdown médio dos dados do gráfico (incluindo zeros)
-      const drawdownsValidos = chartData
-        .filter(item => !item.isStart) // Excluir apenas ponto inicial
-        .map(item => item.drawdown);
+      // Resultado total do gráfico (último valor)
+      const ultimoValor = chartData.length > 0 ? chartData[chartData.length - 1] : null;
+      const resultadoGrafico = ultimoValor ? (ultimoValor.saldo || ultimoValor.resultado || 0) : 0;
       
-      const avgDrawdownCalculated = drawdownsValidos.length > 0 
-        ? drawdownsValidos.reduce((acc, dd) => acc + dd, 0) / drawdownsValidos.length
+      // Drawdown máximo do gráfico
+      const drawdownsGrafico = dadosValidos.map(item => Math.abs(item.drawdown || 0));
+      const maxDrawdownGrafico = drawdownsGrafico.length > 0 ? Math.max(...drawdownsGrafico) : 0;
+      
+      // Drawdown médio do gráfico
+      const avgDrawdownCalculated = drawdownsGrafico.length > 0 
+        ? drawdownsGrafico.reduce((acc, dd) => acc + dd, 0) / drawdownsGrafico.length
         : 0;
       
-      // Contar todos os pontos com dados (incluindo zeros)
-      const pontosComDados = chartData.filter(item => !item.isStart).length;
+      // Drawdown percentual máximo do gráfico
+      const drawdownsPercentGrafico = dadosValidos.map(item => Math.abs(item.drawdownPercent || 0));
+      const maxDrawdownPercentGrafico = drawdownsPercentGrafico.length > 0 ? Math.max(...drawdownsPercentGrafico) : 0;
+      
+      // Contar pontos com dados
+      const pontosComDados = dadosValidos.length;
+      
+      // Usar dados do gráfico quando disponível, senão usar API
+      const resultadoFinal = resultadoGrafico !== 0 ? resultadoGrafico : (metrics["Net Profit"] || 0);
+      const maxDrawdownFinal = maxDrawdownGrafico !== 0 ? maxDrawdownGrafico : Math.abs(metrics["Max Drawdown ($)"] || 0);
+      const maxDrawdownPercentFinal = maxDrawdownPercentGrafico !== 0 ? maxDrawdownPercentGrafico : Math.abs(metrics["Max Drawdown (%)"] || 0);
+      
+      // PADRONIZAÇÃO: Usar valores padronizados quando disponíveis
+      const maxDrawdownPadronizado = metrics["Max Drawdown Padronizado ($)"] || maxDrawdownFinal;
+      const maxDrawdownPctPadronizado = metrics["Max Drawdown Padronizado (%)"] || maxDrawdownPercentFinal;
+      
+      // PADRONIZAÇÃO: Log para debug dos valores de drawdown
+      console.log("🔍 DEBUG - Drawdown values:", {
+        maxDrawdownGrafico,
+        maxDrawdownPercentGrafico,
+        apiDrawdown: metrics["Max Drawdown ($)"],
+        apiDrawdownPercent: metrics["Max Drawdown (%)"],
+        finalDrawdown: maxDrawdownFinal,
+        finalDrawdownPercent: maxDrawdownPercentFinal
+      });
       
       return {
-        resultado: metrics["Net Profit"] || 0,
-        maxDrawdown: maxDrawdownAPI,
+        resultado: resultadoFinal,
+        maxDrawdown: maxDrawdownPadronizado,
         avgDrawdown: avgDrawdownCalculated,
-        roi: ((metrics["Net Profit"] || 0) / parseFloat(totalInvestment || "100000")) * 100,
+        roi: (resultadoFinal / parseFloat(totalInvestment || "100000")) * 100,
         fatorLucro: metrics["Profit Factor"] || 0,
         winRate: metrics["Win Rate (%)"] || 0,
         sharpeRatio: metrics["Sharpe Ratio"] || 0,
@@ -198,7 +352,7 @@ export function EquityCurveSection({
         avgWin: metrics["Average Win"] || 0,
         avgLoss: Math.abs(metrics["Average Loss"] || 0),
         activeDays: metrics["Active Days"] || 0,
-        maxDrawdownPercent: maxDrawdownPercentAPI,
+        maxDrawdownPercent: maxDrawdownPctPadronizado,
         pontosComDados: pontosComDados
       };
     }
@@ -219,7 +373,7 @@ export function EquityCurveSection({
       maxDrawdownPercent: 0,
       pontosComDados: 0
     };
-  }, [data, totalInvestment, chartData]);
+  }, [data, totalInvestment, selectedStrategy, selectedAsset, fileResults, timeRange]);
 
   // Componente de Tooltip customizado
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -404,6 +558,13 @@ export function EquityCurveSection({
               </div>
             ) : (
               <div className="text-center text-gray-400 mb-4">
+                {(selectedStrategy || selectedAsset) && (
+                  <div className="mb-2 p-2 bg-blue-900 bg-opacity-20 border border-blue-800 rounded-lg">
+                    <span className="text-blue-400 text-sm">
+                      📊 Filtros ativos: {selectedStrategy && `Estratégia: ${selectedStrategy}`} {selectedStrategy && selectedAsset && ' | '} {selectedAsset && `Ativo: ${selectedAsset}`}
+                    </span>
+                  </div>
+                )}
                 {chartType === 'resultado' 
                   ? `Evolução ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diária' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Resultado Total: R$ ${stats.resultado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
                   : `Drawdown ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diário' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Máximo: R$ ${stats.maxDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${stats.maxDrawdownPercent.toFixed(2)}%)`}
@@ -511,6 +672,10 @@ export function EquityCurveSection({
           
           {/* Chart Legend and Info */}
           <div className="mt-4 p-3 bg-gray-700 rounded-lg">
+            <div className="mb-2 text-xs text-gray-400 flex items-center">
+              <span className="text-green-400 mr-1">📊</span>
+              Métricas sincronizadas com os dados do gráfico
+            </div>
             <div className="flex flex-col md:flex-row justify-between">
               <div className="mb-4 md:mb-0">
                 <h4 className="text-sm font-medium mb-2 text-gray-300">Legenda</h4>
@@ -532,20 +697,29 @@ export function EquityCurveSection({
               
               <div className="flex flex-wrap items-center gap-6">
                 <div>
-                  <p className="text-xs text-gray-400">Resultado Total</p>
+                  <p className="text-xs text-gray-400 flex items-center">
+                    Resultado Total
+                    <span className="ml-1 text-green-400 text-xs">📊</span>
+                  </p>
                   <p className={`text-lg font-medium ${stats.resultado >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     R$ {stats.resultado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">DD Máximo</p>
+                  <p className="text-xs text-gray-400 flex items-center">
+                    DD Máximo
+                    <span className="ml-1 text-green-400 text-xs">📊</span>
+                  </p>
                   <p className="text-lg font-medium text-red-400">
                     R$ {stats.maxDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     <span className="text-sm text-gray-400 ml-1">({stats.maxDrawdownPercent.toFixed(2)}%)</span>
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400">DD Médio</p>
+                  <p className="text-xs text-gray-400 flex items-center">
+                    DD Médio
+                    <span className="ml-1 text-green-400 text-xs">📊</span>
+                  </p>
                   <p className="text-lg font-medium text-orange-400">R$ {stats.avgDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div>

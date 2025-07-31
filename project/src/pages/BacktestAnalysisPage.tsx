@@ -20,9 +20,11 @@ import { RenameAnalysisModal } from '../components/RenameAnalysisModal';
 import { EmotionalProfileSection } from '../components/EmotionalProfileSection';
 import { DailyAnalysisSection } from '../components/DailyAnalysisSection';
 import { PlanRestrictedSection } from '../components/PlanRestrictedSection';
+import { IndividualResultsSection } from '../components/IndividualResultsSection';
 import { supabase } from '../lib/supabase';
 import { FileFilter } from '../components/FileFilter';
 import { ActiveFilesInfo } from '../components/ActiveFilesInfo';
+import { buildApiUrl } from '../config/api';
 
 // Special events data
 const specialEvents = [
@@ -69,6 +71,14 @@ interface BacktestResult {
     "Gross Loss": number;
     "Gross Profit": number;
     "Max Drawdown ($)": number;
+    "Max Drawdown (%)": number;
+    "Max Drawdown Padronizado ($)": number;
+    "Max Drawdown Padronizado (%)": number;
+    "Max Consecutive Losses": number;
+    "Max Consecutive Wins": number;
+    "Max Trade Gain": number;
+    "Max Trade Loss": number;
+    "Recovery Factor": number;
     "Net Profit": number;
     "Payoff": number;
     "Profit Factor": number;
@@ -163,7 +173,8 @@ export function BacktestAnalysisPage() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 const [showConsolidated, setShowConsolidated] = useState(true);
 const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>({});
-const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
+  const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
+  const [showIndividualResults, setShowIndividualResults] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -405,19 +416,19 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       const formData = new FormData();
       formData.append('file', files[0]);
 
-      response = await fetch('https://api.devhubtrader.com.br/api/tabela', {
+      response = await fetch(buildApiUrl('/api/tabela'), {
         method: 'POST',
         body: formData,
       });
      
     // Implement your fetch emotional profile logic here
     try {
-      const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
+      const wwx = await fetch(buildApiUrl('/api/disciplina-completa'), {
         method: 'POST', 
         body: formData
       });
       
-      const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
+      const responses = await fetch(buildApiUrl('/api/trades'), {
           method: 'POST',
           body: formData
       });
@@ -479,11 +490,11 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       if (files.length === 2) {
         // Análises individuais primeiro
         const [response1, response2] = await Promise.all([
-          fetch('https://api.devhubtrader.com.br/api/tabela', {
+          fetch(buildApiUrl('/api/tabela'), {
             method: 'POST',
             body: createFormData(files[0])
           }),
-          fetch('https://api.devhubtrader.com.br/api/tabela', {
+          fetch(buildApiUrl('/api/tabela'), {
             method: 'POST', 
             body: createFormData(files[1])
           })
@@ -495,7 +506,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         ]);
 
         // Correlação principal - usar FormData em vez de JSON
-        const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
+        const correlationResponse = await fetch(buildApiUrl('/api/correlacao'), {
           method: 'POST',
           body: formDataCorrelacao
         });
@@ -507,18 +518,18 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         }
       }
 
-      // 3. Análise consolidada principal
-      const consolidatedResponse = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
+      // 3. Análise consolidada principal com resultados individuais
+      const consolidatedResponse = await fetch(buildApiUrl('/api/tabela-multipla'), {
         method: 'POST',
         body: formDataCorrelacao, // Mesmo FormData
       });
       try {
-        const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
+        const wwx = await fetch(buildApiUrl('/api/disciplina-completa'), {
           method: 'POST', 
           body: formDataCorrelacao
         });
         
-        const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
+        const responses = await fetch(buildApiUrl('/api/trades'), {
             method: 'POST',
             body: formDataCorrelacao
         });
@@ -542,8 +553,24 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         throw new Error('Erro na análise consolidada');
       }
 
-      data = await consolidatedResponse.json();
-      setDrata(data);
+      const responseData = await consolidatedResponse.json();
+      
+      // Processar novos dados com resultados individuais
+      if (responseData.consolidado && responseData.individuais) {
+        // Salvar resultados individuais
+        setFileResults(responseData.individuais);
+        
+        // Usar dados consolidados como principal
+        data = responseData.consolidado;
+        setDrata(data);
+        
+        console.log('📊 Resultados individuais processados:', Object.keys(responseData.individuais));
+      } else {
+        // Fallback para formato antigo
+        data = responseData;
+        setDrata(data);
+
+      }
 
       // 4. ADICIONAR DADOS DE CORRELAÇÃO (CÓDIGO CORRIGIDO)
       if (correlationData && files.length === 2) {
@@ -557,7 +584,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       } else if (files.length >= 3) {
         // Para 3+ arquivos, chamar API de correlação matricial
         try {
-                  const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
+                  const correlationResponse = await fetch(buildApiUrl('/api/correlacao'), {
           method: 'POST',
           body: formDataCorrelacao
         });
@@ -597,7 +624,7 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       // Para 3+ arquivos, fazer correlação matricial
       let correlationData = null;
       try {
-        const correlationResponse = await fetch('https://api.devhubtrader.com.br/api/correlacao', {
+        const correlationResponse = await fetch(buildApiUrl('/api/correlacao'), {
           method: 'POST',
           body: formData
         });
@@ -610,18 +637,18 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
         console.error('Erro ao chamar API de correlação:', error);
       }
 
-      response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
+      response = await fetch(buildApiUrl('/api/tabela-multipla'), {
         method: 'POST',
         body: formData,
       });
       
       try {
-        const wwx = await fetch('https://api.devhubtrader.com.br/api/disciplina-completa', {
+        const wwx = await fetch(buildApiUrl('/api/disciplina-completa'), {
           method: 'POST', 
           body: formData
         });
         
-        const responses = await fetch('https://api.devhubtrader.com.br/api/trades', {
+        const responses = await fetch(buildApiUrl('/api/trades'), {
           method: 'POST',
           body: formData
         });
@@ -689,8 +716,8 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       }
     }
     
-    // Update available strategies based on file names
-    setAvailableStrategies(files.map(file => file.name.replace('.csv', '')));
+    // Update available strategies based on file names (keep full names for fileResults lookup)
+    setAvailableStrategies(files.map(file => file.name));
     
     // Deduct tokens for analysis (extra tokens for correlation analysis)
     const tokensToDeduct = files.length === 1 ? -1000 : 
@@ -821,8 +848,11 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       profitFactor: perfMetrics["Profit Factor"] ?? 0,
       winRate: perfMetrics["Win Rate (%)"] ?? 0,
       payoff: perfMetrics["Payoff"] ?? 0,
-      maxDrawdown: 15, // Not directly provided in the API, using a default value
+      maxDrawdown: perfMetrics["Max Drawdown (%)"] ?? 0,
       maxDrawdownAmount: perfMetrics["Max Drawdown ($)"] ?? 0,
+      // PADRONIZAÇÃO: Valores padronizados
+      maxDrawdownPadronizado: perfMetrics["Max Drawdown Padronizado ($)"] ?? perfMetrics["Max Drawdown ($)"] ?? 0,
+      maxDrawdownPctPadronizado: perfMetrics["Max Drawdown Padronizado (%)"] ?? perfMetrics["Max Drawdown (%)"] ?? 0,
       netProfit: perfMetrics["Net Profit"] ?? 0,
       grossProfit: perfMetrics["Gross Profit"] ?? 0,
       grossLoss: perfMetrics["Gross Loss"] ?? 0,
@@ -844,11 +874,11 @@ const [individualAnalysisMode, setIndividualAnalysisMode] = useState(false);
       worstMonth: monthlyAnalysis?.["Worst Month"] || null,
       
       // Métricas complementares moved to advanced metrics section
-      maxConsecutiveLosses: 4,
-      maxConsecutiveWins: 7,
-      maiorGanho: 1850.75,
-      maiorPerda: -980.25,
-      recoveryFactor: 2.5
+      maxConsecutiveLosses: perfMetrics["Max Consecutive Losses"] ?? 0,
+      maxConsecutiveWins: perfMetrics["Max Consecutive Wins"] ?? 0,
+      maiorGanho: perfMetrics["Max Trade Gain"] ?? 0,
+      maiorPerda: perfMetrics["Max Trade Loss"] ?? 0,
+      recoveryFactor: perfMetrics["Recovery Factor"] ?? 0
     };
   };
 
@@ -1355,7 +1385,7 @@ const reloadFilteredData = async () => {
         const formData = new FormData();
         formData.append('file', files[0]);
         
-        response = await fetch('https://api.devhubtrader.com.br/api/tabela', {
+        response = await fetch(buildApiUrl('/api/tabela'), {
           method: 'POST',
           body: formData,
         });
@@ -1366,7 +1396,7 @@ const reloadFilteredData = async () => {
           formData.append('files', file);
         });
         
-        response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
+        response = await fetch(buildApiUrl('/api/tabela-multipla'), {
           method: 'POST',
           body: formData,
         });
@@ -1389,7 +1419,7 @@ const reloadFilteredData = async () => {
         formData.append('files', file);
       });
       
-      response = await fetch('https://api.devhubtrader.com.br/api/tabela-multipla', {
+      response = await fetch(buildApiUrl('/api/tabela-multipla'), {
         method: 'POST',
         body: formData,
       });
@@ -1630,9 +1660,29 @@ useEffect(() => {
                 <EquityCurveSection 
                   showEquityCurve={showEquityCurve}
                   setShowEquityCurve={setShowEquityCurve}
+                  selectedStrategy={selectedStrategy}
+                  selectedAsset={selectedAsset}
+                  fileResults={fileResults}
                   data={drata}
-
                 />
+                
+                {/* Debug: Verificar dados passados */}
+                {Object.keys(fileResults).length > 0 && (
+                  <div className="bg-green-900 bg-opacity-20 border border-green-800 rounded-lg p-2 mb-4 text-xs">
+                    <p className="text-green-300">
+                      🔍 Debug: fileResults com {Object.keys(fileResults).length} arquivos
+                    </p>
+                    <p className="text-green-300">
+                      🎯 selectedStrategy: {selectedStrategy || 'null'}
+                    </p>
+                    <p className="text-green-300">
+                      📁 Arquivos: {Object.keys(fileResults).join(', ')}
+                    </p>
+                    <p className="text-green-300">
+                      🎛️ availableStrategies: {availableStrategies.join(', ')}
+                    </p>
+                  </div>
+                )}
                 
                 {/* Trades Section - Available to all users */}
                 <TradesTable
@@ -1667,6 +1717,17 @@ useEffect(() => {
                 <div>
                   <MetricsDashboard metrics={convertToMetricsDashboardFormat(backtestResult)}  tradeObject={trades}/>
                 </div>
+                
+                {/* Individual Results Section - Show when multiple files */}
+                {Object.keys(fileResults).length > 0 && (
+                  <IndividualResultsSection
+                    fileResults={fileResults}
+                    showIndividualResults={showIndividualResults}
+                    setShowIndividualResults={setShowIndividualResults}
+                  />
+                )}
+                
+
                 
                 {/* Emotional Profile Section - PRO only */}
                 <PlanRestrictedSection 

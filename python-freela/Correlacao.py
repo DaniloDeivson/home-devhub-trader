@@ -25,7 +25,12 @@ def calcular_correlacao_por_data_e_direcao(arquivos_df_list):
         nome = arquivo[1]['nome']
         
         # Extrair data (sem horário)
-        df['data'] = pd.to_datetime(df['Abertura']).dt.date
+        if 'entry_date' in df.columns:
+            df['data'] = pd.to_datetime(df['entry_date']).dt.date
+        elif 'Abertura' in df.columns:
+            df['data'] = pd.to_datetime(df['Abertura']).dt.date
+        else:
+            df['data'] = pd.to_datetime(df.index).dt.date
         
         # Determinar direção da operação
         if 'Tipo' in df.columns:
@@ -36,9 +41,22 @@ def calcular_correlacao_por_data_e_direcao(arquivos_df_list):
             # Assumir todas como COMPRA se não conseguir determinar
             df['direcao'] = 'COMPRA'
         
+        # Determinar coluna de resultado
+        if 'operation_result' in df.columns:
+            result_col = 'operation_result'
+        elif 'pnl' in df.columns:
+            result_col = 'pnl'
+        elif 'Res. Operação' in df.columns:
+            result_col = 'Res. Operação'
+        else:
+            result_col = None
+        
+        if result_col is None:
+            continue
+        
         # Agrupar por data e direção
         agrupado = df.groupby(['data', 'direcao']).agg({
-            'Res. Operação': ['sum', 'count', 'mean']
+            result_col: ['sum', 'count', 'mean']
         }).round(2)
         
         # Flatten colunas
@@ -46,7 +64,7 @@ def calcular_correlacao_por_data_e_direcao(arquivos_df_list):
         agrupado = agrupado.reset_index()
         
         # Também agrupar só por data (total do dia)
-        resultado_dia = df.groupby('data')['Res. Operação'].agg([
+        resultado_dia = df.groupby('data')[result_col].agg([
             'sum', 'count'
         ]).round(2)
         resultado_dia.columns = ['resultado_dia_total', 'operacoes_dia_total']

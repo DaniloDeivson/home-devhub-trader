@@ -1,0 +1,195 @@
+# Position Sizing Feature Documentation
+
+## Overview
+The Position Sizing feature calculates optimal position sizes for both stocks and futures trading based on risk management principles (2% rule, 1% conservative limit).
+
+## Key Components
+
+### Backend Implementation
+- **Main endpoint**: `/api/position-sizing` in [python-freela/main.py](mdc:python-freela/main.py)
+- **Core function**: `api_position_sizing()` processes CSV files and calculates position sizing metrics
+- **Trade processing**: Uses `processar_trades()` to convert DataFrame to trade objects
+- **Risk calculation**: Implements 2% account risk and 1% maximum risk per trade
+
+### Frontend Implementation
+- **Component**: [project/src/components/MetricsDashboard.tsx](mdc:project/src/components/MetricsDashboard.tsx)
+- **API integration**: `calculatePositionSizingData()` calls backend endpoint
+- **CSV generation**: `createCSVFromTrades()` creates mock CSV when original file unavailable
+- **Data display**: Shows metrics for both stocks and futures simultaneously
+
+## Data Flow
+
+### 1. CSV Processing
+```python
+# Backend processes CSV with proper date formatting
+df = pd.read_csv(file, skiprows=5, sep=';', encoding='latin1', decimal=',', header=None)
+df.columns = expected_headers  # Manual header assignment
+```
+
+### 2. Trade Extraction
+```python
+# Extract position data from trades
+quantity = (trade.get('quantity_total', 0) or 
+           trade.get('quantity_compra', 0) or 
+           trade.get('quantity_venda', 0) or
+           trade.get('qty_buy', 0) or 
+           trade.get('qty_sell', 0) or 0)
+```
+
+### 3. Asset Type Detection
+```python
+# Determine if stocks or futures based on position size and trade value
+is_stocks = avg_position > 100 or avg_trade_value > 1000
+if avg_position == 0:
+    is_stocks = avg_trade_value > 500
+```
+
+### 4. Position Sizing Calculation
+```python
+# Calculate for both asset types
+stocks_avg_position = avg_position if is_stocks else max(1, int(avg_trade_value * 10))
+stocks_recommended = recommended_position if is_stocks else max(1, int(account_risk / (avg_trade_risk * 10)))
+```
+
+## Risk Management Principles
+
+### 2% Rule (Account Risk)
+- **Formula**: `Account Risk = Total PnL * 0.02`
+- **Purpose**: Maximum risk per trade based on total account performance
+
+### 1% Conservative Limit
+- **Formula**: `Max Risk per Trade = Account Risk * 0.5`
+- **Purpose**: Conservative risk management for individual trades
+
+### Position Size Calculation
+- **Formula**: `Position Size = Account Risk ÷ Trade Risk`
+- **Application**: Different for stocks vs futures based on leverage and risk characteristics
+
+## Asset-Specific Calculations
+
+### Stocks
+- **Leverage**: 0.85 (lower leverage)
+- **Position estimation**: `avg_trade_value * 10` (larger positions)
+- **Risk per trade**: `avg_trade_risk * 10` (higher risk per trade)
+
+### Futures
+- **Leverage**: 3.2 (higher leverage)
+- **Position data**: Uses actual position sizes from trades
+- **Risk per trade**: Direct calculation from trade losses
+
+## Error Handling
+
+### Date Processing
+```python
+# Handle NaT values in date columns
+df = df.dropna(subset=['Abertura', 'Fechamento'])
+```
+
+### CSV Format Issues
+```python
+# Manual header assignment for consistent processing
+expected_headers = [
+    'Ativo', 'Abertura', 'Fechamento', 'Tempo Operação', 'Qtd Compra', 'Qtd Venda',
+    'Lado', 'Preço Compra', 'Preço Venda', 'Preço de Mercado', 'Médio',
+    'Res. Intervalo', 'Res. Intervalo (%)', 'Número Operação', 'Res. Operação', 'Res. Operação (%)',
+    'Drawdown', 'Ganho Max.', 'Perda Max.', 'TET', 'Total'
+]
+```
+
+## Frontend Integration
+
+### Date Formatting
+```javascript
+// Convert ISO dates to Brazilian format for backend
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { 
+    hour: '2-digit', minute: '2-digit', second: '2-digit' 
+  });
+};
+```
+
+### API Error Handling
+```javascript
+// Fallback to local calculation if API fails
+try {
+  const response = await fetch('/api/position-sizing', { method: 'POST', body: formData });
+  return await response.json();
+} catch (error) {
+  console.error("❌ Error calling position sizing API:", error);
+  return calculatePositionSizingLocal();
+}
+```
+
+## Metrics Displayed
+
+### Position Sizing Section
+- **Max Position per Trade**: Largest position size
+- **Avg Position per Trade**: Average position size
+- **Median Position per Trade**: Median position size
+- **Recommended Position**: Calculated optimal position
+- **Risk per Trade**: Average loss per trade
+
+### Risk and Positioning Metrics
+- **Max Open Positions**: Maximum concurrent positions
+- **Max Setups per Day**: Maximum trades per day
+- **Account Risk (2%)**: Total account risk allocation
+- **Max Risk per Trade (1%)**: Conservative risk limit
+
+## Configuration
+
+### Vite Proxy Setup
+```typescript
+// [project/vite.config.ts](mdc:project/vite.config.ts)
+server: {
+  proxy: {
+    '/api': {
+      target: 'http://localhost:5002',
+      changeOrigin: true,
+      secure: false,
+    },
+  },
+}
+```
+
+## Debug Features
+
+### Backend Logs
+```python
+print(f"📊 Análise de tipo de ativo:")
+print(f"   - Posição média: {avg_position}")
+print(f"   - Trade value médio: {avg_trade_value}")
+print(f"   - Tipo determinado: {'Ações' if is_stocks else 'Futuros'}")
+```
+
+### Frontend Logs
+```javascript
+console.log("📊 Position sizing analysis:");
+console.log("  - Account risk (2%):", accountRisk);
+console.log("  - Max risk per trade (1%):", maxRiskPerTrade);
+console.log("  - Asset type:", isStocks ? "Stocks" : "Futures");
+```
+
+## Usage
+
+1. **Upload CSV files** with trading data
+2. **Navigate to Metrics Dashboard** section
+3. **View Position Sizing** calculations for both asset types
+4. **Monitor Risk and Positioning Metrics** for risk management
+5. **Use recommended positions** for future trades
+
+## Dependencies
+
+### Backend
+- `pandas`: DataFrame processing
+- `flask`: API framework
+- `numpy`: Numerical calculations
+
+### Frontend
+- `react`: Component framework
+- `fetch`: API communication
+- `FormData`: File upload handling
+description:
+globs:
+alwaysApply: false
+---

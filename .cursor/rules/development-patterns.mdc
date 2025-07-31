@@ -1,0 +1,433 @@
+# Development Patterns and Best Practices
+
+## Code Organization
+
+### Backend Patterns (Python/Flask)
+
+#### 1. API Endpoint Structure
+```python
+@app.route('/api/endpoint-name', methods=['POST'])
+def api_endpoint_name():
+    try:
+        # Input validation
+        if 'file' not in request.files:
+            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+        
+        # File processing
+        file = request.files['file']
+        df = carregar_csv_safe(file)
+        
+        # Business logic
+        result = process_data(df)
+        
+        # Response
+        return jsonify(make_json_serializable(result))
+        
+    except Exception as e:
+        print(f"❌ Error in api_endpoint_name: {e}")
+        return jsonify({"error": str(e)}), 500
+```
+
+#### 2. CSV Processing Pattern
+```python
+def carregar_csv_safe(file_path_or_file):
+    """Safe CSV loading with proper encoding and error handling"""
+    try:
+        # Handle different input types
+        if isinstance(file_path_or_file, str):
+            df = pd.read_csv(file_path_or_file, encoding='latin1', decimal=',')
+        else:
+            df = pd.read_csv(file_path_or_file, encoding='latin1', decimal=',')
+        
+        # Column renaming for consistency
+        column_mapping = {
+            'Ativo': 'symbol', 'Abertura': 'entry_date', 'Fechamento': 'exit_date',
+            # ... more mappings
+        }
+        df = df.rename(columns=column_mapping)
+        
+        # Data type conversion
+        numeric_columns = ['pnl', 'entry_price', 'exit_price']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = df[col].apply(clean_numeric_value)
+        
+        return df
+        
+    except Exception as e:
+        print(f"❌ Error loading CSV: {e}")
+        raise
+```
+
+#### 3. Error Handling Pattern
+```python
+def process_data_with_validation(df):
+    """Process data with comprehensive error handling"""
+    try:
+        # Validate input
+        if df.empty:
+            raise ValueError("DataFrame está vazio")
+        
+        # Check required columns
+        required_columns = ['entry_date', 'exit_date', 'pnl']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Colunas faltando: {missing_columns}")
+        
+        # Process data
+        result = calculate_metrics(df)
+        
+        # Validate output
+        if not result:
+            raise ValueError("Nenhum resultado calculado")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error in process_data_with_validation: {e}")
+        print(f"📊 DataFrame info: shape={df.shape}, columns={list(df.columns)}")
+        raise
+```
+
+### Frontend Patterns (React/TypeScript)
+
+#### 1. Component Structure
+```typescript
+interface ComponentProps {
+  data: any;
+  showTitle?: boolean;
+  onUpdate?: (data: any) => void;
+}
+
+export function ComponentName({ data, showTitle = true, onUpdate }: ComponentProps) {
+  const [state, setState] = useState(initialState);
+  
+  // API calls with error handling
+  const fetchData = async () => {
+    try {
+      console.log("📊 Fetching data...");
+      const response = await fetch('/api/endpoint', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log("📊 Data received:", result);
+      return result;
+      
+    } catch (error) {
+      console.error("❌ Error fetching data:", error);
+      return fallbackData;
+    }
+  };
+  
+  // useEffect for side effects
+  useEffect(() => {
+    const loadData = async () => {
+      const result = await fetchData();
+      setState(result);
+    };
+    
+    loadData();
+  }, [data]);
+  
+  return (
+    <div className="component-container">
+      {showTitle && <h2>Component Title</h2>}
+      {/* Component content */}
+    </div>
+  );
+}
+```
+
+#### 2. API Integration Pattern
+```typescript
+const apiCall = async (endpoint: string, data: any) => {
+  try {
+    console.log(`📊 Calling ${endpoint}...`);
+    
+    const formData = new FormData();
+    if (data.file) {
+      formData.append('file', data.file);
+    } else {
+      // Create mock data
+      const mockData = createMockData(data);
+      formData.append('file', mockData);
+    }
+    
+    const response = await fetch(`/api/${endpoint}`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`API error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+    }
+    
+    const result = await response.json();
+    console.log(`📊 ${endpoint} response:`, result);
+    return result;
+    
+  } catch (error) {
+    console.error(`❌ Error calling ${endpoint}:`, error);
+    return null;
+  }
+};
+```
+
+#### 3. State Management Pattern
+```typescript
+// Local state with proper typing
+const [data, setData] = useState<DataType | null>(null);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState<string | null>(null);
+
+// Async state updates
+const updateData = async () => {
+  setLoading(true);
+  setError(null);
+  
+  try {
+    const result = await fetchData();
+    setData(result);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+## Debugging Patterns
+
+### Backend Debugging
+```python
+# Comprehensive logging
+print(f"📊 Processing file: {file.filename}")
+print(f"📊 DataFrame shape: {df.shape}")
+print(f"📊 Columns: {list(df.columns)}")
+print(f"📊 Sample data: {df.head(3).to_dict('records')}")
+
+# Error context
+except Exception as e:
+    print(f"❌ Error in function_name: {e}")
+    print(f"📊 Current state: {current_state}")
+    print(f"📊 Input data: {input_data}")
+    raise
+```
+
+### Frontend Debugging
+```typescript
+// Component state logging
+console.log("📊 Component state:", { data, loading, error });
+
+// API call logging
+console.log("📊 API request:", { endpoint, requestData });
+console.log("📊 API response:", responseData);
+
+// Error logging
+console.error("❌ Error details:", {
+  message: error.message,
+  stack: error.stack,
+  context: { component, props }
+});
+```
+
+## Data Processing Patterns
+
+### CSV to Trade Objects
+```python
+def processar_trades(df: pd.DataFrame) -> List[Dict]:
+    """Convert DataFrame to trade objects with validation"""
+    trades = []
+    
+    print(f"🔍 Processing trades - DataFrame shape: {df.shape}")
+    
+    for idx, row in df.iterrows():
+        # Validate required fields
+        if pd.isna(row.get('entry_date')) or pd.isna(row.get('exit_date')):
+            continue
+        
+        # Create trade object
+        trade = {
+            "entry_date": row['entry_date'].isoformat() if pd.notna(row['entry_date']) else None,
+            "exit_date": row['exit_date'].isoformat() if pd.notna(row['exit_date']) else None,
+            "pnl": float(row.get('pnl', 0)) if pd.notna(row.get('pnl')) else 0,
+            # ... more fields
+        }
+        
+        trades.append(trade)
+    
+    print(f"✅ Trades processed: {len(trades)}")
+    return trades
+```
+
+### Frontend Data Formatting
+```typescript
+const formatMetric = (value: number | undefined, isPercentage = false, isCurrency = false): string => {
+  if (value === undefined || value === null) return 'N/A';
+  
+  if (isCurrency) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  }
+  
+  if (isPercentage) {
+    return `${value.toFixed(2)}%`;
+  }
+  
+  return value.toFixed(2);
+};
+```
+
+## Configuration Patterns
+
+### Environment Variables
+```python
+# Backend configuration
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+FLASK_ENV = os.getenv('FLASK_ENV', 'development')
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+PORT = int(os.getenv('PORT', 5002))
+```
+
+### API Configuration
+```typescript
+// Frontend API configuration
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+
+const apiConfig = {
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+};
+```
+
+## Testing Patterns
+
+### Backend Testing
+```python
+def test_csv_processing():
+    """Test CSV processing with various formats"""
+    # Test valid CSV
+    df = create_test_dataframe()
+    result = processar_trades(df)
+    assert len(result) > 0
+    
+    # Test invalid CSV
+    df_empty = pd.DataFrame()
+    result_empty = processar_trades(df_empty)
+    assert len(result_empty) == 0
+```
+
+### Frontend Testing
+```typescript
+// Component testing pattern
+describe('ComponentName', () => {
+  it('should render with data', () => {
+    const mockData = createMockData();
+    render(<ComponentName data={mockData} />);
+    
+    expect(screen.getByText('Expected Text')).toBeInTheDocument();
+  });
+  
+  it('should handle API errors', async () => {
+    server.use(
+      rest.post('/api/endpoint', (req, res, ctx) => {
+        return res(ctx.status(500));
+      })
+    );
+    
+    render(<ComponentName />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Error message')).toBeInTheDocument();
+    });
+  });
+});
+```
+
+## Performance Patterns
+
+### Backend Optimization
+```python
+# Use pandas efficiently
+def process_large_dataset(df):
+    # Process in chunks for large datasets
+    chunk_size = 10000
+    results = []
+    
+    for chunk in np.array_split(df, len(df) // chunk_size + 1):
+        chunk_result = process_chunk(chunk)
+        results.extend(chunk_result)
+    
+    return results
+```
+
+### Frontend Optimization
+```typescript
+// Memoization for expensive calculations
+const expensiveCalculation = useMemo(() => {
+  return calculateExpensiveValue(data);
+}, [data]);
+
+// Debounced API calls
+const debouncedApiCall = useCallback(
+  debounce(async (params) => {
+    return await apiCall(params);
+  }, 300),
+  []
+);
+```
+
+## Security Patterns
+
+### Input Validation
+```python
+def validate_file_upload(file):
+    """Validate uploaded file"""
+    if not file or file.filename == '':
+        raise ValueError("Nenhum arquivo enviado")
+    
+    # Check file size
+    if len(file.read()) > 16 * 1024 * 1024:  # 16MB
+        raise ValueError("Arquivo muito grande")
+    
+    file.seek(0)  # Reset file pointer
+    
+    # Check file extension
+    if not file.filename.lower().endswith('.csv'):
+        raise ValueError("Apenas arquivos CSV são aceitos")
+    
+    return file
+```
+
+### API Security
+```typescript
+// Sanitize user input
+const sanitizeInput = (input: string): string => {
+  return input.replace(/[<>]/g, '');  // Remove potential HTML
+};
+
+// Validate API responses
+const validateApiResponse = (response: any): boolean => {
+  return response && typeof response === 'object' && 'data' in response;
+};
+```
+description:
+globs:
+alwaysApply: false
+---
