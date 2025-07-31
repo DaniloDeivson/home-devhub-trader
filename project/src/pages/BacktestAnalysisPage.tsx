@@ -771,6 +771,39 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     setShowChat(false);
     setFilteredTrades([]);
     setCurrentAnalysisId(null);
+    
+    // Resetar estados de visualização
+    setShowMetrics(true);
+    setShowDailyResults(false);
+    setShowDailyAnalysis(true);
+    setShowTrades(false);
+    setShowEquityCurve(true);
+    setShowSpecialEvents(false);
+    setShowCorrelation(false);
+    setShowEmotionalProfile(false);
+    setShowStrategySelector(true);
+    
+    // Resetar dados de análise
+    setTrades([]);
+    setEmocional(null);
+    setAnalysisResult(null);
+    setDrata(null);
+    setCsvContent(null);
+    setTradeSearch('');
+    
+    // Resetar seleções
+    setSelectedStrategy(null);
+    setSelectedAsset(null);
+    setAvailableStrategies(['Estratégia 1', 'Estratégia 2', 'Estratégia 3']);
+    setAvailableAssets(['WINFUT', 'WDOFUT', 'PETR4', 'VALE3']);
+    
+    // Resetar estados de análise
+    setIndividualAnalysisMode(false);
+    setShowConsolidated(true);
+    setSelectedFiles([]);
+    setFileResults({});
+    
+    // Resetar input de arquivo
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

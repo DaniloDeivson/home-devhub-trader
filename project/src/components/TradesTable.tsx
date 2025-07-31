@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { BarChart, ChevronUp, ChevronDown, Search, ArrowUpDown, TrendingUp, TrendingDown, Calendar, DollarSign, Filter, X, Eye } from 'lucide-react';
+import { BarChart, ChevronUp, ChevronDown, Search, ArrowUpDown, TrendingUp, TrendingDown, Calendar, Filter, X, Eye, Download } from 'lucide-react';
 
 interface Trade {
   id?: number;
@@ -25,9 +25,9 @@ interface Trade {
 
 interface TradesData {
   trades: Trade[];
-  statistics?: any;
-  filters?: any;
-  metadata?: any;
+  statistics?: Record<string, unknown>;
+  filters?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 type SortField = 'entry_date' | 'exit_date' | 'pnl' | 'pnl_pct' | 'symbol' | 'duration';
@@ -44,6 +44,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedTradesForDownload, setSelectedTradesForDownload] = useState<Set<number>>(new Set());
 
   // Estados para paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -72,7 +73,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
       return [];
     }
 
-    let filtered = trades.filter(trade => {
+    const filtered = trades.filter(trade => {
       // Filtro de busca por texto
       if (tradeSearch) {
         const searchLower = tradeSearch.toLowerCase();
@@ -125,8 +126,8 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
 
     // Ordenação
     filtered.sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      let aValue: string | number | Date;
+      let bValue: string | number | Date;
 
       switch (sortField) {
         case 'entry_date':
@@ -138,8 +139,8 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
           bValue = new Date(b.exit_date).getTime();
           break;
         default:
-          aValue = a[sortField];
-          bValue = b[sortField];
+          aValue = a[sortField] as string | number;
+          bValue = b[sortField] as string | number;
       }
 
       if (sortDirection === 'asc') {
@@ -198,6 +199,64 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
     }).format(value);
   };
 
+  const downloadTrades = (tradesToDownload: Trade[]) => {
+    const csvContent = [
+      // Cabeçalho
+      ['ID', 'Data Entrada', 'Data Saída', 'Ativo', 'Estratégia', 'Direção', 'Preço Entrada', 'Preço Saída', 'Duração', 'Giro Total', 'Quantidade', 'P&L (R$)', 'P&L (%)'],
+      // Dados
+      ...tradesToDownload.map(trade => [
+        trade.id || '',
+        new Date(trade.entry_date).toLocaleDateString('pt-BR') + ' ' + new Date(trade.entry_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}),
+        new Date(trade.exit_date).toLocaleDateString('pt-BR') + ' ' + new Date(trade.exit_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}),
+        trade.symbol || 'N/A',
+        trade.strategy || 'N/A',
+        trade.direction === 'long' ? 'Long' : 'Short',
+        trade.entry_price.toString(),
+        trade.exit_price.toString(),
+        trade.duration ? formatDuration(trade.duration) : 'N/A',
+        trade.quantity_total?.toString() || 'N/A',
+        trade.quantity_compra?.toString() || 'N/A',
+        trade.pnl.toString(),
+        trade.pnl_pct.toFixed(2) + '%'
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `operacoes_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
+
+  const handleDownloadAll = () => {
+    // Se há operações selecionadas, baixa apenas elas
+    if (selectedTradesForDownload.size > 0) {
+      const selectedTrades = filteredTrades.filter((trade, index) => 
+        selectedTradesForDownload.has(trade.id || index)
+      );
+      downloadTrades(selectedTrades);
+    } else {
+      // Caso contrário, baixa todas as operações filtradas
+      downloadTrades(filteredTrades);
+    }
+  };
+
+  const toggleTradeSelection = (tradeId: number) => {
+    const newSelection = new Set(selectedTradesForDownload);
+    if (newSelection.has(tradeId)) {
+      newSelection.delete(tradeId);
+    } else {
+      newSelection.add(tradeId);
+    }
+    setSelectedTradesForDownload(newSelection);
+  };
+
   const totalPnL = filteredTrades.reduce((sum, trade) => sum + trade.pnl, 0);
   const winRate = filteredTrades.length > 0 ? 
     (filteredTrades.filter(t => t.pnl > 0).length / filteredTrades.length) * 100 : 0;
@@ -220,16 +279,41 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
                 </p>
               </div>
             </div>
-            <button 
-              onClick={() => setShowTrades(!showTrades)}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              {showTrades ? (
-                <ChevronUp className="w-5 h-5 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-gray-400" />
-              )}
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Botão de download sempre visível */}
+                            <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleDownloadAll}
+                    className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-colors text-sm font-medium ${
+                      selectedTradesForDownload.size > 0 
+                        ? 'bg-green-600 hover:bg-green-700' 
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                    title={selectedTradesForDownload.size > 0 
+                      ? `Baixar ${selectedTradesForDownload.size} operação(ões) selecionada(s)` 
+                      : `Baixar ${filteredTrades.length} operação(ões) exibida(s) nos filtros atuais`
+                    }
+                  >
+                    <Download className="w-4 h-4" />
+                    {selectedTradesForDownload.size > 0 ? `Baixar (${selectedTradesForDownload.size})` : 'Baixar'}
+                  </button>
+                </div>
+                <div className="text-xs text-gray-400 text-right max-w-xs">
+                  O download será feito com base nos itens exibidos nessa lista, caso precise de alguma operação específica, filtre-a
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowTrades(!showTrades)}
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                {showTrades ? (
+                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                )}
+              </button>
+            </div>
           </div>
           
           {showTrades && (
@@ -253,7 +337,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
                       <Calendar className="w-4 h-4 text-gray-400" />
                       <select
                         value={dateFilter}
-                        onChange={(e) => setDateFilter(e.target.value as any)}
+                        onChange={(e) => setDateFilter(e.target.value as 'all' | 'today' | 'week' | 'month')}
                         className="px-3 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="all">Todas as datas</option>
@@ -337,131 +421,180 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
               </div>
               
               {/* Tabela */}
-              <div className="overflow-x-auto rounded-lg border border-gray-700">
+              <div className="overflow-x-auto rounded-xl border border-gray-700 bg-gray-800 shadow-lg">
                 {currentTrades.length > 0 ? (
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-700">
-                      <tr>
-                        <th className="px-4 py-3 text-left">
+                    <thead className="bg-gradient-to-r from-gray-700 to-gray-800">
+                      <tr className="border-b border-gray-600">
+                        <th className="px-5 py-3 text-center w-12">
+                          <input
+                            type="checkbox"
+                            checked={selectedTradesForDownload.size === filteredTrades.length && filteredTrades.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedTradesForDownload(new Set(filteredTrades.map((t, idx) => t.id || idx)));
+                              } else {
+                                setSelectedTradesForDownload(new Set());
+                              }
+                            }}
+                            className="rounded border-gray-500 bg-gray-700 text-blue-500 focus:ring-blue-400 focus:ring-2 transition-all"
+                          />
+                        </th>
+                        <th className="px-5 py-3 text-left">
                           <button
                             onClick={() => handleSort('entry_date')}
-                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                            className="flex items-center gap-2 hover:text-blue-400 transition-colors font-medium"
                           >
                             Data Entrada
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-4 h-4" />
                           </button>
                         </th>
-                        <th className="px-4 py-3 text-left">
+                        <th className="px-5 py-3 text-left">
                           <button
                             onClick={() => handleSort('exit_date')}
-                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                            className="flex items-center gap-2 hover:text-blue-400 transition-colors font-medium"
                           >
                             Data Saída
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-4 h-4" />
                           </button>
                         </th>
-                        <th className="px-4 py-3 text-center">
+                        <th className="px-5 py-3 text-center">
                           <button
                             onClick={() => handleSort('symbol')}
-                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                            className="flex items-center gap-2 hover:text-blue-400 transition-colors font-medium"
                           >
                             Ativo
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-4 h-4" />
                           </button>
                         </th>
-                        <th className="px-4 py-3 text-center">Estratégia</th>
-                        <th className="px-4 py-3 text-center">Direção</th>
-                        <th className="px-4 py-3 text-right">Entrada</th>
-                        <th className="px-4 py-3 text-right">Saída</th>
-                        <th className="px-4 py-3 text-center">Duração</th>
-                        <th className="px-4 py-3 text-center">Giro Total</th>
-                        <th className="px-4 py-3 text-center">Quantidade</th>
-                        <th className="px-4 py-3 text-right">
+                        <th className="px-5 py-3 text-center font-medium">Estratégia</th>
+                        <th className="px-5 py-3 text-center font-medium">Direção</th>
+                        <th className="px-5 py-3 text-right font-medium">Entrada</th>
+                        <th className="px-5 py-3 text-right font-medium">Saída</th>
+                        <th className="px-5 py-3 text-center font-medium">Duração</th>
+                        <th className="px-5 py-3 text-center font-medium">Giro Total</th>
+                        <th className="px-5 py-3 text-center font-medium">Quantidade</th>
+                        <th className="px-5 py-3 text-right">
                           <button
                             onClick={() => handleSort('pnl')}
-                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                            className="flex items-center gap-2 hover:text-blue-400 transition-colors font-medium"
                           >
                             P&L (R$)
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-4 h-4" />
                           </button>
                         </th>
-                        <th className="px-4 py-3 text-right">
+                        <th className="px-5 py-3 text-right">
                           <button
                             onClick={() => handleSort('pnl_pct')}
-                            className="flex items-center gap-1 hover:text-blue-400 transition-colors"
+                            className="flex items-center gap-2 hover:text-blue-400 transition-colors font-medium"
                           >
                             P&L (%)
-                            <ArrowUpDown className="w-3 h-3" />
+                            <ArrowUpDown className="w-4 h-4" />
                           </button>
                         </th>
-                        <th className="px-4 py-3 text-center">Detalhes</th>
+                        <th className="px-5 py-3 text-center font-medium">Detalhes</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-700">
                       {currentTrades.map((trade, index) => (
                         <tr 
                           key={trade.id || index} 
-                          className={`border-b border-gray-700 hover:bg-gray-700 hover:bg-opacity-50 transition-colors ${
-                            trade.pnl > 0 ? 'hover:bg-green-900 hover:bg-opacity-10' : 'hover:bg-red-900 hover:bg-opacity-10'
-                          }`}
+                          className={`group transition-all duration-200 hover:bg-gray-700/50 ${
+                            trade.pnl > 0 
+                              ? 'hover:bg-green-900/20 border-l-4 border-l-green-500/30' 
+                              : 'hover:bg-red-900/20 border-l-4 border-l-red-500/30'
+                          } ${trade.pnl > 0 ? 'bg-green-900/5' : 'bg-red-900/5'}`}
                         >
-                          <td className="px-4 py-3 text-xs">
-                            {new Date(trade.entry_date).toLocaleDateString('pt-BR')}<br/>
-                            <span className="text-gray-400">{new Date(trade.entry_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</span>
+                          <td className="px-5 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedTradesForDownload.has(trade.id || index)}
+                              onChange={() => toggleTradeSelection(trade.id || index)}
+                              className="rounded border-gray-500 bg-gray-700 text-blue-500 focus:ring-blue-400 focus:ring-2 transition-all"
+                            />
                           </td>
-                          <td className="px-4 py-3 text-xs">
-                            {new Date(trade.exit_date).toLocaleDateString('pt-BR')}<br/>
-                            <span className="text-gray-400">{new Date(trade.exit_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</span>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-white text-sm">
+                                {new Date(trade.entry_date).toLocaleDateString('pt-BR')}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(trade.entry_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
+                              </span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="font-medium text-blue-400">{trade.symbol || 'N/A'}</span>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-white text-sm">
+                                {new Date(trade.exit_date).toLocaleDateString('pt-BR')}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(trade.exit_date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
+                              </span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="px-2 py-1 bg-gray-600 rounded-full text-xs">
+                          <td className="px-5 py-3 text-center">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-900/50 text-blue-300 border border-blue-700/30">
+                              {trade.symbol || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-600/50 text-gray-200 border border-gray-500/30">
                               {trade.strategy || 'N/A'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`flex items-center justify-center gap-1 px-2 py-1 rounded-full text-xs ${
+                          <td className="px-5 py-3 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                               trade.direction === 'long' 
-                                ? 'bg-green-900 bg-opacity-50 text-green-300' 
-                                : 'bg-red-900 bg-opacity-50 text-red-300'
+                                ? 'bg-green-900/50 text-green-300 border border-green-700/30' 
+                                : 'bg-red-900/50 text-red-300 border border-red-700/30'
                             }`}>
                               {trade.direction === 'long' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                               {trade.direction === 'long' ? 'Long' : 'Short'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono">
-                            {formatCurrency(trade.entry_price)}
+                          <td className="px-5 py-3 text-right">
+                            <span className="font-mono text-xs font-medium text-white">
+                              {formatCurrency(trade.entry_price)}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono">
-                            {formatCurrency(trade.exit_price)}
+                          <td className="px-5 py-3 text-right">
+                            <span className="font-mono text-xs font-medium text-white">
+                              {formatCurrency(trade.exit_price)}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-center text-xs">
-                            {trade.duration ? formatDuration(trade.duration) : 'N/A'}
+                          <td className="px-5 py-3 text-center">
+                            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-600/30 text-gray-300">
+                              {trade.duration ? formatDuration(trade.duration) : 'N/A'}
+                            </span>
                           </td>
-                           <td className="px-4 py-3 text-center text-xs">
-                            {trade?.quantity_total  || 'N/A'}
+                          <td className="px-5 py-3 text-center">
+                            <span className="font-mono text-xs text-gray-300">
+                              {trade?.quantity_total || 'N/A'}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 text-center text-xs">
-                            {trade?.quantity_compra || 'N/A'}
+                          <td className="px-5 py-3 text-center">
+                            <span className="font-mono text-xs text-gray-300">
+                              {trade?.quantity_compra || 'N/A'}
+                            </span>
                           </td>
-                          <td className={`px-4 py-3 text-right font-mono font-medium ${
+                          <td className={`px-5 py-3 text-right font-mono text-xs font-bold ${
                             trade.pnl > 0 ? 'text-green-400' : 'text-red-400'
                           }`}>
                             {trade.pnl > 0 ? '+' : ''}{formatCurrency(trade.pnl)}
                           </td>
-                          <td className={`px-4 py-3 text-right font-mono font-medium ${
+                          <td className={`px-5 py-3 text-right font-mono text-xs font-bold ${
                             trade.pnl_pct > 0 ? 'text-green-400' : 'text-red-400'
                           }`}>
                             {trade.pnl_pct > 0 ? '+' : ''}{trade.pnl_pct.toFixed(2)}%
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-5 py-3 text-center">
                             <button
                               onClick={() => setSelectedTrade(trade)}
-                              className="p-1 hover:bg-gray-600 rounded transition-colors"
+                              className="p-1.5 hover:bg-gray-600 rounded-lg transition-all duration-200 group-hover:bg-gray-600/50"
+                              title="Ver detalhes"
                             >
-                              <Eye className="w-4 h-4 text-gray-400" />
+                              <Eye className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-400 transition-colors" />
                             </button>
                           </td>
                         </tr>
@@ -469,13 +602,13 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
                     </tbody>
                   </table>
                 ) : (
-                  <div className="text-center py-12 bg-gray-700 bg-opacity-30">
-                    <BarChart className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                    <div className="text-gray-400 text-lg mb-2">
+                  <div className="text-center py-16 bg-gray-800/50">
+                    <BarChart className="w-16 h-16 text-gray-500 mx-auto mb-6" />
+                    <div className="text-gray-300 text-xl font-medium mb-3">
                       Nenhuma operação encontrada
                     </div>
-                    <div className="text-gray-500 text-sm">
-                      Tente ajustar os filtros de busca
+                    <div className="text-gray-500 text-sm max-w-md mx-auto">
+                      Tente ajustar os filtros de busca ou verificar se há dados disponíveis
                     </div>
                   </div>
                 )}
