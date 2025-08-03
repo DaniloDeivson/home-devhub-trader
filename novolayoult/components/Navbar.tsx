@@ -29,13 +29,18 @@ export function Navbar() {
 
   const handleExternalLink = (url: string, e: React.MouseEvent) => {
     e.preventDefault();
-    window.open(url, '_blank');
+    try {
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Error opening external link:', error);
+      // Fallback: try to navigate directly
+      window.location.href = url;
+    }
   };
 
   const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <BarChart2 className="w-5 h-5" />, external: false },
     { path: '/robots', label: t('nav.robots'), icon: <Code2 className="w-5 h-5" />, external: false },
-    { path: '/experts', label: t('nav.experts'), icon: <Briefcase className="w-5 h-5" />, external: false },
+    { path: '/dashboard', label: 'Dashboard', icon: <BarChart2 className="w-5 h-5" />, external: false },
     { path: '/backtest-analysis', label: 'Backtest Analysis', icon: <FileSpreadsheet className="w-5 h-5" />, external: false },
   ];
 
@@ -44,7 +49,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
-            <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/')}>
+            <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/robots')}>
               <Code2 className="h-8 w-8 text-blue-500" />
               <span className="ml-2 text-xl font-bold text-white">DevHub Trader</span>
             </div>
@@ -63,14 +68,14 @@ export function Navbar() {
                         setIsMenuOpen(false);
                       }
                     }}
-                    className={`px-3 py-2 rounded-md text-sm font-medium flex items-center space-x-2 ${
+                    className={`px-2 lg:px-3 py-2 rounded-md text-sm font-medium flex items-center space-x-1 lg:space-x-2 ${
                       isActive(item.path) && !item.external
                         ? 'bg-gray-800 text-white'
                         : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                     }`}
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span className="hidden lg:inline">{item.label}</span>
                     {item.external && <ExternalLink className="w-3 h-3 ml-1" />}
                   </button>
                 ))}
@@ -83,12 +88,12 @@ export function Navbar() {
 
             
             {/* Token Display */}
-            <div className="hidden md:flex">
+            <div className="hidden lg:flex">
               <TokenDisplay />
             </div>
             
             {/* Language Switcher */}
-            <div className="hidden md:flex">
+            <div className="hidden lg:flex">
               <LanguageSwitcher />
             </div>
             
@@ -96,9 +101,9 @@ export function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-2 bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 rounded-md"
+                className="flex items-center space-x-2 bg-gray-800 hover:bg-gray-700 text-white px-2 lg:px-3 py-2 rounded-md"
               >
-                <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
                   {profile?.avatar_url ? (
                     <img 
                       src={profile.avatar_url} 
@@ -106,7 +111,7 @@ export function Navbar() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <User className="w-4 h-4 text-gray-400" />
+                    <User className="w-3 h-3 lg:w-4 lg:h-4 text-gray-400" />
                   )}
                 </div>
               </button>
@@ -114,7 +119,7 @@ export function Navbar() {
               {showUserMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-md shadow-lg py-1 z-50">
                   <div className="px-4 py-2 border-b border-gray-700">
-                    <p className="text-sm font-medium truncate">{profile?.name || 'User'}</p>
+                    <p className="text-sm font-medium truncate">{profile?.name || profile?.email?.split('@')[0] || 'User'}</p>
                     <p className="text-xs text-gray-400 truncate">{profile?.email}</p>
                     <div className="mt-1 flex items-center">
                       <TokenDisplay showLabel={false} />
@@ -184,7 +189,7 @@ export function Navbar() {
       {/* Mobile menu */}
       {isMenuOpen && (
         <div className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-gray-700">
             {menuItems.map((item) => (
               <button
                 key={item.path}
@@ -219,7 +224,7 @@ export function Navbar() {
             </button>
             
             <div className="pt-4 pb-3 border-t border-gray-700">
-              <div className="flex items-center justify-between px-3">
+              <div className="flex flex-col space-y-3 px-3">
                 <TokenDisplay />
                 <LanguageSwitcher />
               </div>

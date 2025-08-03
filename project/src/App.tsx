@@ -16,6 +16,7 @@ import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { BacktestAnalysisPage } from './pages/BacktestAnalysisPage';
 import { StrategyAnalysisPage } from './pages/StrategyAnalysisPage';
 import { PublicPlansPage } from './pages/PublicPlansPage';
+import DashboardPage from './pages/DashboardPage';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/profit-estrategista" element={<ProfitEstrategistaPage />} />
           <Route path="/backtest-analysis" element={<BacktestAnalysisPage />} />
           <Route path="/strategy-analysis" element={<StrategyAnalysisPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
