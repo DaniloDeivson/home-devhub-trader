@@ -2312,6 +2312,9 @@ useEffect(() => {
               </div>
             )}
             
+            {/* Spacing between sections */}
+            <div className="mb-8"></div>
+            
             {/* Correlation Analysis Section - PRO only - SEMPRE VISÍVEL */}
             <PlanRestrictedSection 
               title="Análise de Correlação" 

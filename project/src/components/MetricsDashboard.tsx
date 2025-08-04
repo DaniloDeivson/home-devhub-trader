@@ -9,7 +9,9 @@ import {
   DollarSign,
   BarChartHorizontal,
   Wallet,
-  TrendingDown
+  TrendingDown,
+  ChevronRight,
+  BarChart
 } from "lucide-react";
 
 interface MetricsDashboardProps {
@@ -72,39 +74,45 @@ interface MetricsDashboardProps {
     operacoesMaximasPorDia?: number;
     setupsMaximosPorDia?: number;
     mediaOperacoesDia?: number;
-    bestDay?: {
-      day: string;
-      trades: number;
-      winRate: number;
-      profitFactor: number;
-    } | null;
-    worstDay?: {
-      day: string;
-      trades: number;
-      winRate: number;
-      profitFactor: number;
-    } | null;
-    bestMonth?: {
-      month: string;
-      trades: number;
-      winRate: number;
-      profitFactor: number;
-    } | null;
-    worstMonth?: {
-      month: string;
-      trades: number;
-      winRate: number;
-      profitFactor: number;
-    } | null;
+    riscoPorTrade?: number;
+    capitalEmRisco?: number;
+    posicaoRecomendada?: number;
+    exposicaoMaxima?: number;
   };
 }
 
 export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showPositionSizing, setShowPositionSizing] = useState(true);
+  const [selectedAsset, setSelectedAsset] = useState('all');
+  const [showAssetDetails, setShowAssetDetails] = useState(false);
+  const [selectedMetricForDetails, setSelectedMetricForDetails] = useState<string | null>(null);
+  const [positionSizingData, setPositionSizingData] = useState({
+    stocks: {
+      avgPositionPerTrade: 0,
+      medianPositionPerTrade: 0,
+      maxPositionPerTrade: 0,
+      maxContractsPerDay: 0
+    },
+    futures: {
+      avgPositionPerTrade: 0,
+      medianPositionPerTrade: 0,
+      maxPositionPerTrade: 0,
+      maxContractsPerDay: 0
+    },
+    general: {
+      maxOpenPositions: 0,
+      setupsMaximosPorDia: 0,
+      accountRisk: 0,
+      maxRiskPerTrade: 0,
+      riscoPorTrade: 2.00,
+      capitalEmRisco: 0.00,
+      posicaoRecomendada: 0,
+      exposicaoMaxima: 0.00
+    }
+  });
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, any>>({});
   const [showTradeDuration, setShowTradeDuration] = useState(false);
-  const [showPositionSizing, setShowPositionSizing] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<string>('all');
   const trade = tradeObject?.trades;
 
   // Function to detect asset type based on symbol
@@ -412,6 +420,36 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
   const calculatePositionSizingLocal = () => {
     const trades = tradeObject.trades;
     console.log("📊 Calculating position sizing locally from", trades.length, "trades");
+    console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
+    console.log("📊 First trade data:", trades[0]);
+    
+    if (!trades || trades.length === 0) {
+      console.log("📊 No trades available for position sizing calculation");
+      return {
+        stocks: {
+          avgPositionPerTrade: 0,
+          medianPositionPerTrade: 0,
+          maxPositionPerTrade: 0,
+          maxContractsPerDay: 0
+        },
+        futures: {
+          avgPositionPerTrade: 0,
+          medianPositionPerTrade: 0,
+          maxPositionPerTrade: 0,
+          maxContractsPerDay: 0
+        },
+        general: {
+          maxOpenPositions: 0,
+          setupsMaximosPorDia: 0,
+          accountRisk: 0,
+          maxRiskPerTrade: 0,
+          riscoPorTrade: 2.00,
+          capitalEmRisco: 0.00,
+          posicaoRecomendada: 0,
+          exposicaoMaxima: 0.00
+        }
+      };
+    }
     
     // Calculate account risk (2% rule from position sizing principles)
     const totalPnL = trades.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
@@ -427,13 +465,13 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
                           trade.qty_buy || trade.qty_sell || trade.quantity || 
                           trade.qty || trade.quantity_buy || trade.quantity_sell ||
-                          trade.position_size || trade.size || trade.volume || 0;
+                          trade.position_size || trade.size || trade.volume || 
+                          trade.quantity_total || trade.quantity_compra || trade.quantity_venda || 0;
       return positionSize;
     }).filter((size: number) => size > 0);
 
     console.log("📊 Position sizes found:", positionSizes.length, "valid positions");
-    console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
-    console.log("📊 First trade data:", trades[0]);
+    console.log("📊 Position sizes sample:", positionSizes.slice(0, 5));
     
     // Log detailed position data for debugging
     if (trades.length > 0) {
@@ -445,7 +483,8 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
           quantity_venda: trade.quantity_venda,
           qty_buy: trade.qty_buy,
           qty_sell: trade.qty_sell,
-          pnl: trade.pnl
+          pnl: trade.pnl,
+          symbol: trade.symbol
         });
       });
     }
@@ -470,83 +509,73 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       }
     }
 
-    // Calculate max open positions (trades on the same day)
-    const tradesByDate: Record<string, any[]> = {};
-    trades.forEach((trade: any) => {
+    // Calculate max contracts per day
+    const tradesByDay = trades.reduce((acc: any, trade: any) => {
       const date = new Date(trade.entry_date).toDateString();
-      if (!tradesByDate[date]) {
-        tradesByDate[date] = [];
-      }
-      tradesByDate[date].push(trade);
-    });
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(trade);
+      return acc;
+    }, {});
 
-    const maxOpenPositions = Math.max(...Object.values(tradesByDate).map((trades: any[]) => trades.length));
-    const setupsMaximosPorDia = maxOpenPositions;
+    const maxContractsPerDay = Math.max(...Object.values(tradesByDay).map((dayTrades: any) => dayTrades.length), 0);
 
-    // Calculate average trade risk (stop loss distance)
-    const tradeRisks = trades.map((trade: any) => {
-      // Estimate risk based on average loss
-      return Math.abs(trade.pnl || 0);
-    }).filter((risk: number) => risk > 0);
-    
-    const avgTradeRisk = tradeRisks.length > 0 ? 
-      tradeRisks.reduce((sum: number, risk: number) => sum + risk, 0) / tradeRisks.length : 0;
-
-    // Calculate recommended position size using position sizing formula
-    // Position Size = Account Risk / Trade Risk
-    const recommendedPosition = avgTradeRisk > 0 ? Math.floor(accountRisk / avgTradeRisk) : 0;
-
-    // Determine asset type based on the most common symbol
-    const assetCounts: Record<string, number> = {};
-    trades.forEach((trade: any) => {
-      const symbol = trade.symbol || 'UNKNOWN';
-      assetCounts[symbol] = (assetCounts[symbol] || 0) + 1;
-    });
-    
-    const mostCommonSymbol = Object.keys(assetCounts).reduce((a: string, b: string) => 
-      assetCounts[a] > assetCounts[b] ? a : b, Object.keys(assetCounts)[0]);
+    // Determine if stocks or futures based on position sizes and symbols
+    const avgPosition = avgPositionPerTrade;
+    const symbols = trades.map((trade: any) => trade.symbol).filter(Boolean);
+    const mostCommonSymbol = symbols.length > 0 ? 
+      symbols.reduce((a: string, b: string) => 
+        symbols.filter(v => v === a).length >= symbols.filter(v => v === b).length ? a : b
+      ) : '';
     
     const assetType = detectAssetType(mostCommonSymbol);
-    
-    console.log("📊 Position sizing analysis:");
-    console.log("  - Account risk (2%):", accountRisk);
-    console.log("  - Max risk per trade (1%):", maxRiskPerTrade);
-    console.log("  - Average trade risk:", avgTradeRisk);
-    console.log("  - Recommended position size:", recommendedPosition);
-    console.log("  - Asset type:", assetType);
-    console.log("  - Most common symbol:", mostCommonSymbol);
-    console.log("  - Position sizes:", positionSizes);
-    console.log("  - Average position:", avgPositionPerTrade);
-    console.log("  - Median position:", medianPositionPerTrade);
-    console.log("  - Max position:", maxPositionPerTrade);
-    
-    // Calculate leverage based on asset type
-    const avgLeverage = assetType === 'bitcoin' ? 5.0 : 
-                       assetType === 'dolar' ? 3.2 : 
-                       assetType === 'indice' ? 2.5 : 0.85;
+    const isStocks = avgPosition > 100 || assetType === 'acao' || avgPosition === 0; // Default to stocks if no position data
+
+    // Calculate recommended position based on risk management
+    const recommendedPosition = maxRiskPerTrade > 0 ? Math.floor(maxRiskPerTrade / (avgPosition || 1)) : 0;
+
+    // Calculate exposure percentage
+    const totalExposure = positionSizes.reduce((sum: number, size: number) => sum + size, 0);
+    const exposurePercentage = netProfit > 0 ? (totalExposure / netProfit) * 100 : 0;
+
+    console.log("📊 Position sizing calculations:", {
+      totalPnL,
+      netProfit,
+      accountRisk,
+      maxRiskPerTrade,
+      avgPositionPerTrade,
+      medianPositionPerTrade,
+      maxPositionPerTrade,
+      maxContractsPerDay,
+      isStocks,
+      assetType,
+      mostCommonSymbol,
+      recommendedPosition,
+      exposurePercentage,
+      symbols: symbols.slice(0, 5)
+    });
 
     return {
       stocks: {
-        maxPositionPerTrade: maxPositionPerTrade,
-        avgPositionPerTrade: Math.round(avgPositionPerTrade),
-        medianPositionPerTrade: Math.round(medianPositionPerTrade),
-        avgLeverage: avgLeverage,
-        recommendedPosition: recommendedPosition,
-        riskPerTrade: avgTradeRisk
+        avgPositionPerTrade: isStocks ? avgPositionPerTrade : 0,
+        medianPositionPerTrade: isStocks ? medianPositionPerTrade : 0,
+        maxPositionPerTrade: isStocks ? maxPositionPerTrade : 0,
+        maxContractsPerDay: isStocks ? maxContractsPerDay : 0
       },
       futures: {
-        maxPositionPerTrade: maxPositionPerTrade,
-        avgPositionPerTrade: Math.round(avgPositionPerTrade),
-        medianPositionPerTrade: Math.round(medianPositionPerTrade),
-        avgLeverage: avgLeverage,
-        recommendedPosition: recommendedPosition,
-        riskPerTrade: avgTradeRisk
+        avgPositionPerTrade: !isStocks ? avgPositionPerTrade : 0,
+        medianPositionPerTrade: !isStocks ? medianPositionPerTrade : 0,
+        maxPositionPerTrade: !isStocks ? maxPositionPerTrade : 0,
+        maxContractsPerDay: !isStocks ? maxContractsPerDay : 0
       },
       general: {
-        maxOpenPositions: maxOpenPositions,
-        setupsMaximosPorDia: setupsMaximosPorDia,
+        maxOpenPositions: maxContractsPerDay,
+        setupsMaximosPorDia: maxContractsPerDay,
         accountRisk: accountRisk,
-        maxRiskPerTrade: maxRiskPerTrade
+        maxRiskPerTrade: maxRiskPerTrade,
+        riscoPorTrade: 2.00,
+        capitalEmRisco: accountRisk,
+        posicaoRecomendada: recommendedPosition,
+        exposicaoMaxima: exposurePercentage
       }
     };
   };
@@ -619,42 +648,30 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     return csvContent;
   };
 
-  const [positionSizingData, setPositionSizingData] = useState({
-    stocks: {
-      maxPositionPerTrade: 0,
-      avgPositionPerTrade: 0,
-      medianPositionPerTrade: 0,
-      avgLeverage: 0,
-      recommendedPosition: 0,
-      riskPerTrade: 0
-    },
-    futures: {
-      maxPositionPerTrade: 0,
-      avgPositionPerTrade: 0,
-      medianPositionPerTrade: 0,
-      avgLeverage: 0,
-      recommendedPosition: 0,
-      riskPerTrade: 0
-    },
-    general: {
-      maxOpenPositions: 0,
-      setupsMaximosPorDia: 0,
-      accountRisk: 0,
-      maxRiskPerTrade: 0
-    }
-  });
-
   // Load position sizing data when component mounts or trades change
   useEffect(() => {
     const loadPositionSizingData = async () => {
       if (tradeObject?.trades && tradeObject.trades.length > 0) {
+        console.log("📊 Loading position sizing data for", tradeObject.trades.length, "trades");
         const data = await calculatePositionSizingData();
+        console.log("📊 Position sizing data calculated:", data);
         setPositionSizingData(data);
+      } else {
+        console.log("📊 No trades available for position sizing calculation");
       }
     };
 
     loadPositionSizingData();
   }, [tradeObject?.trades]);
+
+  // Debug effect to log current state
+  useEffect(() => {
+    console.log("📊 Current position sizing data:", positionSizingData);
+    console.log("📊 Trade object:", tradeObject);
+    console.log("📊 Selected asset:", selectedAsset);
+    console.log("📊 Trades length:", tradeObject?.trades?.length);
+    console.log("📊 Sample trade:", tradeObject?.trades?.[0]);
+  }, [positionSizingData, tradeObject, selectedAsset]);
 
   // Animate metrics when they change
   useEffect(() => {
@@ -690,6 +707,10 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       operacoesMaximasPorDia: Number(safeMetrics.operacoesMaximasPorDia) || 12,
       setupsMaximosPorDia: Number(safeMetrics.setupsMaximosPorDia) || 8,
       mediaOperacoesDia: Number(safeMetrics.mediaOperacoesDia) || 0,
+      riscoPorTrade: Number(safeMetrics.riscoPorTrade) || 2.00,
+      capitalEmRisco: Number(safeMetrics.capitalEmRisco) || 0.00,
+      posicaoRecomendada: Number(safeMetrics.posicaoRecomendada) || 0,
+      exposicaoMaxima: Number(safeMetrics.exposicaoMaxima) || 0.00,
 
       // Safe handling of analysis objects
       dayOfWeekAnalysis: safeMetrics.dayOfWeekAnalysis || {},
@@ -799,6 +820,112 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
   )
  const maiorGanho = Math.max(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
 const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
+
+  // Função para abrir modal de detalhes
+  const handleShowDetails = (metricType: string, assetType?: string) => {
+    console.log(`📊 Abrindo detalhes para: ${metricType}${assetType ? ` - ${assetType}` : ''}`);
+    setSelectedMetricForDetails(metricType);
+    setShowAssetDetails(true);
+  };
+
+  // Função para obter informações detalhadas
+  const getDetailedInfo = (metricType: string, assetType?: string) => {
+    const trades = tradeObject?.trades || [];
+    const totalTrades = trades.length;
+    
+    // Obter dados corretos baseados no assetType
+    const getDataForAssetType = (type: string) => {
+      if (type === 'stocks') {
+        return positionSizingData.stocks;
+      } else if (type === 'futures') {
+        return positionSizingData.futures;
+      } else {
+        // Para 'all' ou undefined, usar dados consolidados
+        return {
+          avgPositionPerTrade: positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade || 0,
+          medianPositionPerTrade: positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade || 0,
+          maxPositionPerTrade: positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade || 0,
+          maxContractsPerDay: positionSizingData.general.setupsMaximosPorDia || 0
+        };
+      }
+    };
+    
+    const assetData = getDataForAssetType(assetType || 'all');
+    
+    console.log('📊 getDetailedInfo debug:', {
+      metricType,
+      assetType,
+      assetData,
+      positionSizingData,
+      totalTrades
+    });
+    
+    switch (metricType) {
+      case 'Posição Média':
+        const avgPosition = assetData.avgPositionPerTrade || 0;
+        return {
+          title: 'Posição Média por Trade',
+          description: 'Representa o volume médio de contratos utilizados em cada operação',
+          value: `${Math.round(avgPosition)} contratos`,
+          details: [
+            `Total de trades analisados: ${totalTrades}`,
+            `Tipo de ativo: ${assetType === 'stocks' ? 'Ações' : assetType === 'futures' ? 'Futuros' : 'Misto'}`,
+            `Baseado em dados reais dos trades`,
+            `Valor calculado: ${avgPosition.toFixed(2)}`
+          ]
+        };
+      
+      case 'Posição Mediana':
+        const medianPosition = assetData.medianPositionPerTrade || 0;
+        return {
+          title: 'Posição Mediana por Trade',
+          description: 'Indica o valor central da distribuição de posições',
+          value: `${Math.round(medianPosition)} contratos`,
+          details: [
+            `Representa o valor do meio quando ordenados por tamanho`,
+            `Mais robusto que a média para dados assimétricos`,
+            `Total de trades: ${totalTrades}`,
+            `Valor calculado: ${medianPosition.toFixed(2)}`
+          ]
+        };
+      
+      case 'Posição Máxima':
+        const maxPosition = assetData.maxPositionPerTrade || 0;
+        return {
+          title: 'Maior Posição Utilizada',
+          description: 'Representa o maior volume negociado em um único trade',
+          value: `${Math.round(maxPosition)} contratos`,
+          details: [
+            `Maior posição encontrada nos dados`,
+            `Útil para entender o limite máximo utilizado`,
+            `Baseado em ${totalTrades} trades analisados`,
+            `Valor calculado: ${maxPosition.toFixed(2)}`
+          ]
+        };
+      
+      case 'Setup Máximo por Dia':
+        const maxSetups = assetData.maxContractsPerDay || 0;
+        return {
+          title: 'Máximo de Setups por Dia',
+          description: 'Indica o limite de operações diárias recomendado',
+          value: `${maxSetups} setups`,
+          details: [
+            `Baseado na análise de trades por dia`,
+            `Recomendação para controle de risco`,
+            `Análise de ${totalTrades} trades no total`,
+            `Valor calculado: ${maxSetups}`
+          ]
+        };
+      
+      default:
+        return {
+          title: 'Informações Detalhadas',
+          description: 'Detalhes da métrica selecionada',
+          value: 'N/A',
+          details: ['Informações não disponíveis']
+        };
+    }
+  };
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
       {/* Header */}
@@ -1176,94 +1303,325 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
 
           {/* Position Sizing Section - Moved below Trade Duration */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4 p-3 bg-gray-800 rounded-lg border border-gray-600">
-              <div className="flex items-center">
-                <Wallet className="w-6 h-6 text-gray-300 mr-3" />
-                <h3 className="text-xl font-bold text-white">Dimensionamento de Posição</h3>
-              </div>
-              <button
-                onClick={() => setShowPositionSizing(!showPositionSizing)}
-                className="p-2 hover:bg-gray-700 rounded-full transition-colors"
-              >
-                {showPositionSizing ? (
-                  <ChevronUp className="w-5 h-5 text-gray-300" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-300" />
-                )}
-              </button>
-            </div>
-
-            {showPositionSizing && (
-              <div className="space-y-6">
-                {/* Asset Selector */}
-                <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
-                  <h4 className="text-md font-medium mb-3 flex items-center text-white">
-                    <BarChartHorizontal className="w-5 h-5 text-gray-300 mr-2" />
-                    Seletor de Ativo
-                  </h4>
-                  
-                  {/* Asset Dropdown */}
-                  <div className="mb-4">
-                    <label className="block text-sm text-gray-400 mb-2">Selecione o Ativo:</label>
-                    <select 
-                      value={selectedAsset}
-                      onChange={(e) => setSelectedAsset(e.target.value)}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-500"
-                    >
-                      <option value="all">Todos os Ativos</option>
-                      {getUniqueAssets().map((asset, index) => (
-                        <option key={index} value={asset}>
-                          {asset} ({detectAssetType(asset)})
-                        </option>
-                      ))}
-                    </select>
+            <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-lg p-5 mb-6 shadow-md">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className="bg-purple-500 bg-opacity-20 p-2 rounded-full mr-3">
+                    <Wallet className="w-6 h-6 text-purple-400" />
                   </div>
-
-                  {/* Position Metrics */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
-                      <p className="text-sm text-gray-300 mb-1">Posição Média</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
-                      <p className="text-sm text-gray-300 mb-1">Posição Mediana</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.medianPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
-                      <p className="text-sm text-gray-300 mb-1">Posição Máxima</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.maxPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
-                      <p className="text-sm text-gray-300 mb-1">Setup Máximo por Ativo (Diário)</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? positionSizingData.general.setupsMaximosPorDia
-                          : getAssetPositionData(selectedAsset)?.maxContractsPerDay || 0
-                        } setups
-                      </p>
-                    </div>
-                  </div>
+                  <h3 className="font-semibold text-lg">Dimensionamento de Posição</h3>
                 </div>
+                <button
+                  onClick={() => setShowPositionSizing(!showPositionSizing)}
+                  className="p-1.5 hover:bg-gray-600 rounded"
+                >
+                  {showPositionSizing ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+
+              {showPositionSizing && (
+                <div className="space-y-6">
+                  {/* Asset Selector */}
+                  <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                    <h4 className="text-md font-medium mb-3 flex items-center text-white">
+                      <BarChartHorizontal className="w-5 h-5 text-gray-300 mr-2" />
+                      Seletor de Ativo
+                    </h4>
+                    
+                    {/* Asset Dropdown */}
+                    <div className="mb-4">
+                      <label className="block text-sm text-gray-400 mb-2">Selecione o Ativo:</label>
+                      <select 
+                        value={selectedAsset}
+                        onChange={(e) => setSelectedAsset(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-500"
+                      >
+                        <option value="all">Todos os Ativos</option>
+                        {getUniqueAssets().map((asset, index) => (
+                          <option key={index} value={asset}>
+                            {asset} ({detectAssetType(asset)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Position Metrics Table - Using the same visual as "Resultado por Horário" */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-600">
+                            <th className="text-left py-3 px-4 font-medium text-gray-300">Métrica</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-300">Ações</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-300">Futuros</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-300">Consolidado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-gray-700 bg-gray-800">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                <Wallet className="w-4 h-4 text-purple-400 mr-2" />
+                                <span className="text-white">Posição Média</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.stocks.avgPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Média', 'stocks')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Ações"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.futures.avgPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Média', 'futures')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Futuros"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">
+                                  {selectedAsset === 'all' 
+                                    ? Math.round(positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade || 0)
+                                    : Math.round(getAssetPositionData(selectedAsset)?.avgPosition || 0)
+                                  }
+                                </span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Média', 'all')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Consolidado"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr className="border-b border-gray-700 bg-gray-700">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                <Wallet className="w-4 h-4 text-purple-400 mr-2" />
+                                <span className="text-white">Posição Mediana</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.stocks.medianPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Mediana', 'stocks')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Ações"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.futures.medianPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Mediana', 'futures')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Futuros"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">
+                                  {selectedAsset === 'all' 
+                                    ? Math.round(positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade || 0)
+                                    : Math.round(getAssetPositionData(selectedAsset)?.medianPosition || 0)
+                                  }
+                                </span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Mediana', 'all')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Consolidado"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr className="border-b border-gray-700 bg-gray-800">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                <Wallet className="w-4 h-4 text-purple-400 mr-2" />
+                                <span className="text-white">Posição Máxima</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.stocks.maxPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Máxima', 'stocks')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Ações"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{Math.round(positionSizingData.futures.maxPositionPerTrade || 0)}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Máxima', 'futures')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Futuros"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">
+                                  {selectedAsset === 'all' 
+                                    ? Math.round(positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade || 0)
+                                    : Math.round(getAssetPositionData(selectedAsset)?.maxPosition || 0)
+                                  }
+                                </span>
+                                <button
+                                  onClick={() => handleShowDetails('Posição Máxima', 'all')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Consolidado"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr className="border-b border-gray-700 bg-gray-700">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                <Wallet className="w-4 h-4 text-purple-400 mr-2" />
+                                <span className="text-white">Setup Máximo por Dia</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{positionSizingData.stocks.maxContractsPerDay || 0}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Setup Máximo por Dia', 'stocks')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Ações"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">{positionSizingData.futures.maxContractsPerDay || 0}</span>
+                                <button
+                                  onClick={() => handleShowDetails('Setup Máximo por Dia', 'futures')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Futuros"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 px-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                <span className="text-white">
+                                  {selectedAsset === 'all' 
+                                    ? positionSizingData.general.setupsMaximosPorDia || 0
+                                    : getAssetPositionData(selectedAsset)?.maxContractsPerDay || 0
+                                  }
+                                </span>
+                                <button
+                                  onClick={() => handleShowDetails('Setup Máximo por Dia', 'all')}
+                                  className="hover:bg-gray-600 p-1 rounded transition-colors"
+                                  title="Detalhes - Consolidado"
+                                >
+                                  <ChevronRight className="w-3 h-3 text-gray-400" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                   {/* Asset Details Modal */}
+                   {showAssetDetails && selectedMetricForDetails && (
+                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                       <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-600">
+                         <div className="flex items-center justify-between mb-4">
+                           <h3 className="text-lg font-semibold text-white">
+                             {getDetailedInfo(selectedMetricForDetails).title}
+                           </h3>
+                           <button
+                             onClick={() => setShowAssetDetails(false)}
+                             className="text-gray-400 hover:text-white transition-colors"
+                           >
+                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                             </svg>
+                           </button>
+                         </div>
+                         
+                         <div className="space-y-4">
+                           <div>
+                             <p className="text-gray-300 text-sm mb-2">
+                               {getDetailedInfo(selectedMetricForDetails).description}
+                             </p>
+                             <div className="bg-gray-700 p-3 rounded-lg">
+                               <p className="text-2xl font-bold text-white">
+                                 {getDetailedInfo(selectedMetricForDetails).value}
+                               </p>
+                             </div>
+                           </div>
+                           
+                           <div>
+                             <h4 className="text-sm font-medium text-gray-300 mb-2">Detalhes:</h4>
+                             <ul className="space-y-1">
+                               {getDetailedInfo(selectedMetricForDetails).details.map((detail, index) => (
+                                 <li key={index} className="text-sm text-gray-400 flex items-start">
+                                   <span className="text-purple-400 mr-2">•</span>
+                                   {detail}
+                                 </li>
+                               ))}
+                             </ul>
+                           </div>
+                           
+                           <div className="flex justify-end pt-4">
+                             <button
+                               onClick={() => setShowAssetDetails(false)}
+                               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                             >
+                               Fechar
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               )}
+             </div>
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ }

@@ -146,7 +146,7 @@ export function EquityCurveSection({
     
     // Se está no modo consolidado e há múltiplos arquivos, combinar dados de todas as estratégias
     if (showConsolidated && fileResults && Object.keys(fileResults).length > 0) {
-      console.log('✅ ENTRANDO NO MODO CONSOLIDADO');
+      console.log('✅ ENTRANDO NO MODO CONSOLIDADO SIMPLIFICADO');
       console.log('📊 Modo consolidado: combinando dados de todas as estratégias:', Object.keys(fileResults));
       console.log('🎯 Filtro de ativo:', selectedAsset || 'Nenhum');
       
@@ -244,8 +244,10 @@ export function EquityCurveSection({
       console.log('📅 Range de datas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
       console.log('📅 Total de datas únicas:', sortedDates.length);
       
-      // Criar dados alinhados por data
+      // Criar dados alinhados por data - VERSÃO SIMPLIFICADA
       const alignedData: unknown[] = [];
+      let runningTotal = 0; // Saldo acumulado total
+      let peakTotal = 0; // Pico máximo total
       
       sortedDates.forEach((date, dateIndex) => {
         // Verificar se a data é válida
@@ -254,46 +256,73 @@ export function EquityCurveSection({
           return;
         }
         
-        const dateEntry: any = {
-          fullDate: date,
-          date: date, // Manter o formato original da data
-          saldo: 0, // Soma dos saldos de todas as estratégias
-          drawdown: 0,
-          trades: 0
-        };
+        // Calcular o saldo total para esta data
+        let dateTotal = 0;
+        let dateTrades = 0;
+        let maxDrawdownDay = 0;
+        let maxDrawdownPercentDay = 0;
+        let maxPeakDay = 0;
         
         // Para cada estratégia, encontrar o valor mais próximo da data
         validStrategies.forEach(fileName => {
           const strategyData = allData.filter((item: any) => item.strategy === fileName);
           const dateData = strategyData.find((item: any) => item.fullDate === date);
           
+          let drawdown = 0;
+          let drawdownPercent = 0;
+          let peak = 0;
           if (dateData) {
-            // Se encontrou dados exatos para esta data
-            dateEntry[`saldo_${fileName}`] = dateData.saldo;
-            dateEntry[`drawdown_${fileName}`] = dateData.drawdown;
-            dateEntry[`trades_${fileName}`] = dateData.trades;
-            // Somar ao saldo total
-            dateEntry.saldo += dateData.saldo;
+            dateTotal += dateData.saldo;
+            dateTrades += dateData.trades;
+            drawdown = dateData.drawdown || 0;
+            drawdownPercent = dateData.drawdownPercent || 0;
+            peak = dateData.peak || 0;
           } else {
-            // Se não encontrou, usar o último valor conhecido ou 0
             const lastData = strategyData
               .filter((item: any) => new Date(item.fullDate) <= new Date(date))
               .sort((a: any, b: any) => new Date(b.fullDate).getTime() - new Date(a.fullDate).getTime())[0];
-            
             if (lastData) {
-              dateEntry[`saldo_${fileName}`] = lastData.saldo;
-              dateEntry[`drawdown_${fileName}`] = lastData.drawdown;
-              dateEntry[`trades_${fileName}`] = lastData.trades;
-              // Somar ao saldo total
-              dateEntry.saldo += lastData.saldo;
-            } else {
-              dateEntry[`saldo_${fileName}`] = 0;
-              dateEntry[`drawdown_${fileName}`] = 0;
-              dateEntry[`trades_${fileName}`] = 0;
-              // Não somar nada ao saldo total (já é 0)
+              dateTotal += lastData.saldo;
+              dateTrades += lastData.trades;
+              drawdown = lastData.drawdown || 0;
+              drawdownPercent = lastData.drawdownPercent || 0;
+              peak = lastData.peak || 0;
             }
           }
+          // Atualizar o maior drawdown do dia (em valor absoluto)
+          if (Math.abs(drawdown) > Math.abs(maxDrawdownDay)) {
+            maxDrawdownDay = drawdown;
+            maxDrawdownPercentDay = drawdownPercent;
+            maxPeakDay = peak;
+          }
         });
+        
+        // Atualizar saldo acumulado
+        runningTotal = dateTotal;
+        // Atualizar pico máximo
+        if (runningTotal > peakTotal) {
+          peakTotal = runningTotal;
+        }
+        // O drawdown consolidado do dia é o maior drawdown do dia entre as estratégias
+        const drawdownTotal = maxDrawdownDay;
+        const drawdownPercentTotal = maxDrawdownPercentDay;
+        const peakForDay = maxPeakDay;
+        
+        // Log detalhado para debug do drawdown
+        if (dateIndex < 3 || dateIndex % 100 === 0) {
+          console.log(`🔍 Drawdown Debug - Data: ${date}, Pico: ${peakTotal}, Saldo: ${runningTotal}, DD: ${drawdownTotal}, DD%: ${drawdownPercentTotal}`);
+        }
+        
+        const dateEntry: any = {
+          fullDate: date,
+          date: date,
+          saldo: runningTotal, // Saldo total consolidado
+          drawdown: drawdownTotal, // Drawdown consolidado (maior do dia)
+          drawdownPercent: drawdownPercentTotal, // Percentual do maior drawdown
+          peak: peakForDay, // Pico referente ao maior drawdown
+          trades: dateTrades, // Total de trades
+          isStart: dateIndex === 0
+        };
         
         alignedData.push(dateEntry);
         
@@ -303,7 +332,7 @@ export function EquityCurveSection({
         }
       });
       
-      console.log('✅ Dados alinhados:', alignedData.length, 'pontos');
+      console.log('✅ Dados alinhados simplificados:', alignedData.length, 'pontos');
       console.log('📋 Estratégias nos dados:', Object.keys(fileResults));
       
       // Log de exemplo dos dados alinhados
@@ -317,7 +346,7 @@ export function EquityCurveSection({
     
     // Se está no modo individual e há arquivos selecionados, combinar dados das estratégias selecionadas
     if (!showConsolidated && selectedFiles.length > 0 && fileResults) {
-      console.log('✅ ENTRANDO NO MODO INDIVIDUAL');
+      console.log('✅ ENTRANDO NO MODO INDIVIDUAL SIMPLIFICADO');
       console.log('📊 Modo individual: combinando dados das estratégias selecionadas:', selectedFiles);
       console.log('🎯 Filtro de ativo:', selectedAsset || 'Nenhum');
       
@@ -415,8 +444,10 @@ export function EquityCurveSection({
       console.log('📅 Range de datas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
       console.log('📅 Total de datas únicas:', sortedDates.length);
       
-      // Criar dados alinhados por data
+      // Criar dados alinhados por data - VERSÃO SIMPLIFICADA
       const alignedData: unknown[] = [];
+      let runningTotal = 0; // Saldo acumulado total
+      let peakTotal = 0; // Pico máximo total
       
       sortedDates.forEach((date, dateIndex) => {
         // Verificar se a data é válida
@@ -425,13 +456,9 @@ export function EquityCurveSection({
           return;
         }
         
-        const dateEntry: any = {
-          fullDate: date,
-          date: date, // Manter o formato original da data
-          saldo: 0, // Soma dos saldos de todas as estratégias
-          drawdown: 0,
-          trades: 0
-        };
+        // Calcular o saldo total para esta data
+        let dateTotal = 0;
+        let dateTrades = 0;
         
         // Para cada estratégia, encontrar o valor mais próximo da data
         validSelectedFiles.forEach(fileName => {
@@ -440,11 +467,8 @@ export function EquityCurveSection({
           
           if (dateData) {
             // Se encontrou dados exatos para esta data
-            dateEntry[`saldo_${fileName}`] = dateData.saldo;
-            dateEntry[`drawdown_${fileName}`] = dateData.drawdown;
-            dateEntry[`trades_${fileName}`] = dateData.trades;
-            // Somar ao saldo total
-            dateEntry.saldo += dateData.saldo;
+            dateTotal += dateData.saldo;
+            dateTrades += dateData.trades;
           } else {
             // Se não encontrou, usar o último valor conhecido ou 0
             const lastData = strategyData
@@ -452,19 +476,41 @@ export function EquityCurveSection({
               .sort((a: any, b: any) => new Date(b.fullDate).getTime() - new Date(a.fullDate).getTime())[0];
             
             if (lastData) {
-              dateEntry[`saldo_${fileName}`] = lastData.saldo;
-              dateEntry[`drawdown_${fileName}`] = lastData.drawdown;
-              dateEntry[`trades_${fileName}`] = lastData.trades;
-              // Somar ao saldo total
-              dateEntry.saldo += lastData.saldo;
-            } else {
-              dateEntry[`saldo_${fileName}`] = 0;
-              dateEntry[`drawdown_${fileName}`] = 0;
-              dateEntry[`trades_${fileName}`] = 0;
-              // Não somar nada ao saldo total (já é 0)
+              dateTotal += lastData.saldo;
+              dateTrades += lastData.trades;
             }
           }
         });
+        
+        // Atualizar saldo acumulado
+        runningTotal = dateTotal;
+        
+        // Atualizar pico máximo
+        if (runningTotal > peakTotal) {
+          peakTotal = runningTotal;
+        }
+        
+        // Calcular drawdown total usando o cálculo específico
+        // Drawdown = Pico Máximo - Saldo Atual
+        // Drawdown % = (Drawdown / Pico Máximo) * 100
+        const drawdownTotal = peakTotal - runningTotal;
+        const drawdownPercentTotal = peakTotal > 0 ? (drawdownTotal / peakTotal) * 100 : 0;
+        
+        // Log detalhado para debug do drawdown
+        if (dateIndex < 3 || dateIndex % 100 === 0) {
+          console.log(`🔍 Drawdown Debug Individual - Data: ${date}, Pico: ${peakTotal}, Saldo: ${runningTotal}, DD: ${drawdownTotal}, DD%: ${drawdownPercentTotal}`);
+        }
+        
+        const dateEntry: any = {
+          fullDate: date,
+          date: date,
+          saldo: runningTotal, // Saldo total consolidado
+          drawdown: drawdownTotal, // Drawdown total calculado
+          drawdownPercent: drawdownPercentTotal, // Drawdown percentual total
+          peak: peakTotal, // Pico máximo total
+          trades: dateTrades, // Total de trades
+          isStart: dateIndex === 0
+        };
         
         alignedData.push(dateEntry);
         
@@ -474,7 +520,7 @@ export function EquityCurveSection({
         }
       });
       
-      console.log('✅ Dados alinhados:', alignedData.length, 'pontos');
+      console.log('✅ Dados alinhados simplificados:', alignedData.length, 'pontos');
       console.log('📋 Estratégias nos dados:', selectedFiles);
       
       // Log de exemplo dos dados alinhados
@@ -685,17 +731,23 @@ export function EquityCurveSection({
         combinedStats.roi = (combinedStats.resultado / 100000) * 100;
       }
       
-      // Calcular drawdown médio baseado nos dados do gráfico
+      // Calcular drawdown médio baseado nos dados do gráfico consolidado
       if (chartData.length > 0) {
-        const allDrawdowns: number[] = [];
-        
-        Object.keys(fileResults).forEach(fileName => {
-          const strategyDrawdown = chartData.map((item: any) => item[`drawdown_${fileName}`] || 0);
-          allDrawdowns.push(...strategyDrawdown);
-        });
+        const allDrawdowns = chartData
+          .filter((item: any) => !item.isStart) // Excluir ponto inicial
+          .map((item: any) => Math.abs(item.drawdown || 0)); // Usar drawdown consolidado
         
         if (allDrawdowns.length > 0) {
-          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + Math.abs(dd), 0) / allDrawdowns.length;
+          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
+        }
+        
+        // Calcular drawdown máximo baseado nos dados consolidados
+        const maxDrawdownFromChart = Math.max(...allDrawdowns);
+        if (maxDrawdownFromChart > Math.abs(combinedStats.maxDrawdown)) {
+          combinedStats.maxDrawdown = -maxDrawdownFromChart;
+          // Calcular percentual baseado no pico máximo
+          const maxPeak = Math.max(...chartData.map((item: any) => item.peak || 0));
+          combinedStats.maxDrawdownPercent = maxPeak > 0 ? (maxDrawdownFromChart / maxPeak) * 100 : 0;
         }
       }
       
@@ -771,17 +823,23 @@ export function EquityCurveSection({
         combinedStats.roi = (combinedStats.resultado / 100000) * 100;
       }
       
-      // Calcular drawdown médio baseado nos dados do gráfico
+      // Calcular drawdown médio baseado nos dados do gráfico consolidado
       if (chartData.length > 0) {
-        const allDrawdowns: number[] = [];
-        
-        selectedFiles.forEach(fileName => {
-          const strategyDrawdown = chartData.map((item: any) => item[`drawdown_${fileName}`] || 0);
-          allDrawdowns.push(...strategyDrawdown);
-        });
+        const allDrawdowns = chartData
+          .filter((item: any) => !item.isStart) // Excluir ponto inicial
+          .map((item: any) => Math.abs(item.drawdown || 0)); // Usar drawdown consolidado
         
         if (allDrawdowns.length > 0) {
-          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + Math.abs(dd), 0) / allDrawdowns.length;
+          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
+        }
+        
+        // Calcular drawdown máximo baseado nos dados consolidados
+        const maxDrawdownFromChart = Math.max(...allDrawdowns);
+        if (maxDrawdownFromChart > Math.abs(combinedStats.maxDrawdown)) {
+          combinedStats.maxDrawdown = -maxDrawdownFromChart;
+          // Calcular percentual baseado no pico máximo
+          const maxPeak = Math.max(...chartData.map((item: any) => item.peak || 0));
+          combinedStats.maxDrawdownPercent = maxPeak > 0 ? (maxDrawdownFromChart / maxPeak) * 100 : 0;
         }
       }
       
@@ -944,51 +1002,14 @@ export function EquityCurveSection({
             </p>
           ))}
           
-          {/* Detalhes específicos para modo individual */}
-          {!showConsolidated && selectedFiles.length > 0 && chartType === 'drawdown' && !dataPoint.isStart && (
+          {/* Detalhes simplificados para drawdown */}
+          {chartType === 'drawdown' && !dataPoint.isStart && (
             <>
-              <p className="text-xs text-gray-400 mt-2">Detalhes das estratégias:</p>
-              {selectedFiles.map((strategyName, index) => {
-                const strategyDrawdown = dataPoint[`drawdown_${strategyName}`] || 0;
-                const strategyTrades = dataPoint[`trades_${strategyName}`] || 0;
-                return (
-                  <div key={strategyName} className="text-xs text-gray-400">
-                    <span style={{ color: getStrategyColor(strategyName, index) }}>
-                      {strategyName.replace('.csv', '')}:
-                    </span>
-                    <span> DD: R$ {strategyDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, Trades: {strategyTrades}</span>
-                  </div>
-                );
-              })}
-            </>
-          )}
-          
-          {/* Detalhes específicos para modo consolidado */}
-          {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && chartType === 'drawdown' && !dataPoint.isStart && (
-            <>
-              <p className="text-xs text-gray-400 mt-2">Detalhes das estratégias:</p>
-              {Object.keys(fileResults).map((strategyName, index) => {
-                const strategyDrawdown = dataPoint[`drawdown_${strategyName}`] || 0;
-                const strategyTrades = dataPoint[`trades_${strategyName}`] || 0;
-                return (
-                  <div key={strategyName} className="text-xs text-gray-400">
-                    <span style={{ color: getStrategyColor(strategyName, index) }}>
-                      {strategyName.replace('.csv', '')}:
-                    </span>
-                    <span> DD: R$ {strategyDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, Trades: {strategyTrades}</span>
-                  </div>
-                );
-              })}
-            </>
-          )}
-          
-          {/* Detalhes para modo consolidado */}
-          {showConsolidated && chartType === 'drawdown' && !dataPoint.isStart && (
-            <>
-              <p className="text-xs text-gray-400 mt-2">Detalhes do período:</p>
+              <p className="text-xs text-gray-400 mt-2">Detalhes do Drawdown Total:</p>
               <p className="text-xs text-gray-400">Drawdown: R$ {(dataPoint.drawdown || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({(dataPoint.drawdownPercent || 0).toFixed(2)}%)</p>
-              <p className="text-xs text-gray-400">Pico: R$ {(dataPoint.peak || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-              <p className="text-xs text-gray-400">Trades: {dataPoint.trades || 0}</p>
+              <p className="text-xs text-gray-400">Pico Máximo: R$ {(dataPoint.peak || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="text-xs text-gray-400">Saldo Atual: R$ {(dataPoint.saldo || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="text-xs text-gray-400">Total de Trades: {dataPoint.trades || 0}</p>
               {timeRange === 'trade' && dataPoint.trade_result && (
                 <p className="text-xs text-gray-400">Resultado do trade: R$ {dataPoint.trade_result.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
               )}
@@ -1161,8 +1182,8 @@ export function EquityCurveSection({
                   </div>
                 )}
                 {chartType === 'resultado' 
-                  ? `Evolução ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diária' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Resultado Total: R$ ${stats.resultado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
-                  : `Drawdown ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diário' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Máximo: R$ ${stats.maxDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${stats.maxDrawdownPercent.toFixed(2)}%)`}
+                  ? `Evolução do Resultado Total ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diária' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Resultado: R$ ${stats.resultado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                  : `Drawdown Total ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diário' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados} pontos) - Máximo: R$ ${stats.maxDrawdown.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${stats.maxDrawdownPercent.toFixed(2)}%)`}
               </div>
             )}
             
@@ -1197,59 +1218,19 @@ export function EquityCurveSection({
                       />
                       <Tooltip content={<CustomTooltip />} />
                       
-                      {/* Renderizar múltiplas áreas para modo consolidado (todas as estratégias) */}
-                      {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && Object.keys(fileResults).map((strategyName, index) => (
-                        <Area
-                          key={strategyName}
-                          type="monotone"
-                          dataKey={`saldo_${strategyName}`}
-                          stroke={getStrategyColor(strategyName, index)}
-                          strokeWidth={2}
-                          fill={getStrategyColor(strategyName, index)}
-                          fillOpacity={0.3}
-                          name={`Saldo ${strategyName.replace('.csv', '')}`}
-                        />
-                      ))}
+                      {/* APENAS UMA LINHA: Evolução do resultado total consolidado */}
+                      <Area
+                        type="monotone"
+                        dataKey="saldo"
+                        stroke="#10B981"
+                        strokeWidth={3}
+                        fill="url(#equityGradient)"
+                        fillOpacity={0.6}
+                        name="Evolução do Resultado Total"
+                      />
                       
-                      {/* Renderizar linha somada das estratégias no modo consolidado */}
-                      {showConsolidated && fileResults && Object.keys(fileResults).length > 1 && (
-                        <Area
-                          type="monotone"
-                          dataKey="saldo"
-                          stroke="#FFFFFF"
-                          strokeWidth={3}
-                          fill="none"
-                          name="Soma das Estratégias"
-                        />
-                      )}
-                      
-                      {/* Renderizar múltiplas áreas para modo individual */}
-                      {!showConsolidated && selectedFiles.length > 0 && selectedFiles.map((strategyName, index) => (
-                        <Area
-                          key={strategyName}
-                          type="monotone"
-                          dataKey={`saldo_${strategyName}`}
-                          stroke={getStrategyColor(strategyName, index)}
-                          strokeWidth={2}
-                          fill={getStrategyColor(strategyName, index)}
-                          fillOpacity={0.3}
-                          name={`Saldo ${strategyName.replace('.csv', '')}`}
-                        />
-                      ))}
-                      
-                      {/* Renderizar linha somada das estratégias no modo individual */}
-                      {!showConsolidated && selectedFiles.length > 1 && (
-                        <Area
-                          type="monotone"
-                          dataKey="saldo"
-                          stroke="#FFFFFF"
-                          strokeWidth={3}
-                          fill="none"
-                          name="Soma das Estratégias"
-                        />
-                      )}
-                      
-                      {movingAverage !== 'nenhuma' && showConsolidated && (
+                      {/* Média móvel opcional */}
+                      {movingAverage !== 'nenhuma' && (
                         <Line
                           type="monotone"
                           dataKey="saldoMA"
@@ -1283,33 +1264,16 @@ export function EquityCurveSection({
                       />
                       <Tooltip content={<CustomTooltip />} />
                       
-                      {/* Renderizar múltiplas áreas para modo consolidado (todas as estratégias) */}
-                      {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && Object.keys(fileResults).map((strategyName, index) => (
-                        <Area
-                          key={strategyName}
-                          type="monotone"
-                          dataKey={`drawdown_${strategyName}`}
-                          stroke={getStrategyColor(strategyName, index)}
-                          strokeWidth={2}
-                          fill={getStrategyColor(strategyName, index)}
-                          fillOpacity={0.3}
-                          name={`Drawdown ${strategyName.replace('.csv', '')}`}
-                        />
-                      ))}
-                      
-                      {/* Renderizar múltiplas áreas para modo individual */}
-                      {!showConsolidated && selectedFiles.length > 0 && selectedFiles.map((strategyName, index) => (
-                        <Area
-                          key={strategyName}
-                          type="monotone"
-                          dataKey={`drawdown_${strategyName}`}
-                          stroke={getStrategyColor(strategyName, index)}
-                          strokeWidth={2}
-                          fill={getStrategyColor(strategyName, index)}
-                          fillOpacity={0.3}
-                          name={`Drawdown ${strategyName.replace('.csv', '')}`}
-                        />
-                      ))}
+                      {/* APENAS UMA LINHA: Drawdown total consolidado com cálculo específico */}
+                      <Area
+                        type="monotone"
+                        dataKey="drawdown"
+                        stroke="#EF4444"
+                        strokeWidth={3}
+                        fill="#EF4444"
+                        fillOpacity={0.3}
+                        name="Drawdown Total"
+                      />
                     </AreaChart>
                   )}
                 </ResponsiveContainer>
@@ -1331,93 +1295,42 @@ export function EquityCurveSection({
           <div className="mt-4 p-3 bg-gray-700 rounded-lg">
             <div className="mb-2 text-xs text-gray-400 flex items-center">
               <span className="text-green-400 mr-1">📊</span>
-              Métricas sincronizadas com os dados do gráfico
+              Visualização simplificada - 1 linha por categoria
             </div>
             <div className="flex flex-col md:flex-row justify-between">
               <div className="mb-4 md:mb-0">
                 <h4 className="text-sm font-medium mb-2 text-gray-300">Legenda</h4>
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Legenda para modo consolidado */}
-                  {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && (
-                    <>
-                      {Object.keys(fileResults).map((strategyName, index) => (
-                        <div key={strategyName} className="flex items-center">
-                          <div 
-                            className="w-3 h-3 rounded-full mr-2"
-                            style={{ backgroundColor: getStrategyColor(strategyName, index) }}
-                          ></div>
-                          <span className="text-sm text-gray-400">
-                            {chartType === 'resultado' 
-                              ? `Saldo ${strategyName.replace('.csv', '')}` 
-                              : `Drawdown ${strategyName.replace('.csv', '')}`
-                            }
-                          </span>
-                        </div>
-                      ))}
-                      {Object.keys(fileResults).length > 1 && (
-                        <div className="flex items-center">
-                          <div className="w-3 h-3 bg-white rounded-full mr-2"></div>
-                          <span className="text-sm text-gray-400">
-                            {chartType === 'resultado' 
-                              ? 'Soma das Estratégias' 
-                              : 'Drawdown Combinado'
-                            }
-                          </span>
-                        </div>
-                      )}
-                      {movingAverage !== 'nenhuma' && chartType === 'resultado' && (
-                        <div className="flex items-center">
-                          <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
-                          <span className="text-sm text-gray-400">Média Móvel {movingAverage}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  {/* Legenda simplificada */}
+                  <div className="flex items-center">
+                    <div 
+                      className={`w-3 h-3 rounded-full mr-2 ${
+                        chartType === 'resultado' ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                    ></div>
+                    <span className="text-sm text-gray-400">
+                      {chartType === 'resultado' 
+                        ? 'Evolução do Resultado Total' 
+                        : 'Drawdown Total (Cálculo Específico)'
+                      }
+                    </span>
+                  </div>
                   
-                  {/* Legenda para modo individual */}
-                  {!showConsolidated && selectedFiles.length > 0 && (
-                    <>
-                      {selectedFiles.map((strategyName, index) => (
-                        <div key={strategyName} className="flex items-center">
-                          <div 
-                            className="w-3 h-3 rounded-full mr-2"
-                            style={{ backgroundColor: getStrategyColor(strategyName, index) }}
-                          ></div>
-                          <span className="text-sm text-gray-400">
-                            {chartType === 'resultado' 
-                              ? `Saldo ${strategyName.replace('.csv', '')}` 
-                              : `Drawdown ${strategyName.replace('.csv', '')}`
-                            }
-                          </span>
-                        </div>
-                      ))}
-                      {selectedFiles.length > 1 && (
-                        <div className="flex items-center">
-                          <div className="w-3 h-3 bg-white rounded-full mr-2"></div>
-                          <span className="text-sm text-gray-400">
-                            {chartType === 'resultado' 
-                              ? 'Soma das Estratégias' 
-                              : 'Drawdown Combinado'
-                            }
-                          </span>
-                        </div>
-                      )}
-                      {movingAverage !== 'nenhuma' && chartType === 'resultado' && (
-                        <div className="flex items-center">
-                          <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
-                          <span className="text-sm text-gray-400">Média Móvel {movingAverage}</span>
-                        </div>
-                      )}
-                    </>
+                  {/* Média móvel opcional */}
+                  {movingAverage !== 'nenhuma' && chartType === 'resultado' && (
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></div>
+                      <span className="text-sm text-gray-400">Média Móvel {movingAverage}</span>
+                    </div>
                   )}
                 </div>
                 
-                {/* Lista das estratégias selecionadas */}
-                {!showConsolidated && selectedFiles.length > 0 && (
+                {/* Informações sobre o modo consolidado */}
+                {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && (
                   <div className="mt-2">
-                    <div className="text-xs text-gray-500 mb-1">Estratégias selecionadas:</div>
+                    <div className="text-xs text-gray-500 mb-1">Estratégias consolidadas ({Object.keys(fileResults).length}):</div>
                     <div className="flex flex-wrap gap-1">
-                      {selectedFiles.map((fileName, index) => (
+                      {Object.keys(fileResults).map((fileName, index) => (
                         <span
                           key={index}
                           className="inline-block px-2 py-1 text-xs rounded"
@@ -1434,12 +1347,12 @@ export function EquityCurveSection({
                   </div>
                 )}
                 
-                {/* Lista das estratégias no modo consolidado */}
-                {showConsolidated && fileResults && Object.keys(fileResults).length > 0 && (
+                {/* Informações sobre o modo individual */}
+                {!showConsolidated && selectedFiles.length > 0 && (
                   <div className="mt-2">
-                    <div className="text-xs text-gray-500 mb-1">Todas as estratégias:</div>
+                    <div className="text-xs text-gray-500 mb-1">Estratégias selecionadas ({selectedFiles.length}):</div>
                     <div className="flex flex-wrap gap-1">
-                      {Object.keys(fileResults).map((fileName, index) => (
+                      {selectedFiles.map((fileName, index) => (
                         <span
                           key={index}
                           className="inline-block px-2 py-1 text-xs rounded"

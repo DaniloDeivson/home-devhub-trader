@@ -205,7 +205,7 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
             </thead>
             <tbody>
               {categorizedData.map((category, index) => (
-                <tr key={category.nome} className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}`}>
+                <tr key={category.nome} className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-700'}`}>
                   <td className="py-3 px-4">
                     <div className="flex items-center">
                       <Clock className="w-4 h-4 text-purple-400 mr-2" />
