@@ -201,7 +201,79 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [drata,setDrata] = useState<any>(null);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  // Estado para dados de correlação original (não afetados por filtros)
+  const [originalCorrelationData, setOriginalCorrelationData] = useState<any>(null);
+  const [recalculatedMetrics, setRecalculatedMetrics] = useState<any>(null);
   const [error2, setError2] = useState<string | null>(null);
+  
+  // useEffect para recalcular métricas quando necessário
+  useEffect(() => {
+    const recalculateMetrics = async () => {
+      // Só recalcular se há fileResults e estamos no modo consolidado ou com estratégias selecionadas
+      if (!fileResults || Object.keys(fileResults).length === 0) {
+        setRecalculatedMetrics(null);
+        return;
+      }
+
+      let allTrades: any[] = [];
+      
+      // Determinar quais trades consolidar
+      if (!showConsolidated && selectedFiles.length > 0) {
+        // Modo individual com estratégias selecionadas
+        selectedFiles.forEach(fileName => {
+          const strategyData = fileResults[fileName];
+          if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+            allTrades.push(...strategyData.trades);
+          }
+        });
+      } else if (!selectedStrategy) {
+        // Modo consolidado (todos os CSVs)
+        Object.keys(fileResults).forEach(fileName => {
+          const strategyData = fileResults[fileName];
+          if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+            allTrades.push(...strategyData.trades);
+          }
+        });
+      }
+
+      // Só recalcular se há trades para processar
+      if (allTrades.length === 0) {
+        setRecalculatedMetrics(null);
+        return;
+      }
+
+      try {
+        console.log('📊 Recalculando métricas com dados consolidados:', allTrades.length, 'trades');
+        
+        const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ trades: allTrades }),
+        });
+
+        if (response.ok) {
+          const recalculatedData = await response.json();
+          setRecalculatedMetrics(recalculatedData);
+          
+          console.log('📊 Métricas recalculadas com sucesso:', {
+            sharpeRatio: recalculatedData.metricas_principais?.sharpe_ratio,
+            profitFactor: recalculatedData.metricas_principais?.fator_lucro,
+            totalTrades: allTrades.length
+          });
+        } else {
+          console.error('❌ Erro ao recalcular métricas:', response.status);
+          setRecalculatedMetrics(null);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao recalcular métricas:', error);
+        setRecalculatedMetrics(null);
+      }
+    };
+
+    recalculateMetrics();
+  }, [fileResults, showConsolidated, selectedFiles, selectedStrategy]);
   const [filteredTrades, setFilteredTrades] = useState<Trade[]>([]);
   const [tradeSearch, setTradeSearch] = useState('');
   const [emocional, setEmocional] = useState<any>(null);
@@ -407,7 +479,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   try {
     let response;
     let data;
-    let correlationData = null;
+    const correlationData = null;
 
     if (files.length === 1) {
       // Single file - use original API
@@ -581,6 +653,12 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           file1: { name: files[0].name, data: data1 },
           file2: { name: files[1].name, data: data2 }
         };
+        // Salvar dados de correlação original (não afetados por filtros)
+        setOriginalCorrelationData({
+          correlationAnalysis: correlationData.correlation_analysis,
+          correlationMetadata: correlationData.metadata,
+          dateDirectionCorrelation: dateDirectionData
+        });
         console.log('📊 Correlação tradicional adicionada (2 arquivos)');
       } else if (files.length >= 3) {
         // Para 3+ arquivos, chamar API de correlação matricial
@@ -594,6 +672,11 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
             const correlationResult = await correlationResponse.json();
             data.correlationMatricial = correlationResult;
             data.dateDirectionCorrelation = correlationResult;
+            // Salvar dados de correlação original (não afetados por filtros)
+            setOriginalCorrelationData({
+              correlationMatricial: correlationResult,
+              dateDirectionCorrelation: correlationResult
+            });
             console.log(`📊 Análise matricial adicionada (${files.length} arquivos)`);
           }
         } catch (error) {
@@ -632,6 +715,11 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
         if (correlationResponse.ok) {
           correlationData = await correlationResponse.json();
+          // Salvar dados de correlação original (não afetados por filtros)
+          setOriginalCorrelationData({
+            correlationMatricial: correlationData,
+            dateDirectionCorrelation: correlationData
+          });
           console.log('📊 Correlação matricial obtida para 3+ arquivos');
         }
       } catch (error) {
@@ -772,6 +860,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     setShowChat(false);
     setFilteredTrades([]);
     setCurrentAnalysisId(null);
+    // Limpar dados de correlação original
+    setOriginalCorrelationData(null);
+    setRecalculatedMetrics(null);
     
     // Resetar estados de visualização
     setShowMetrics(true);
@@ -1693,6 +1784,10 @@ useEffect(() => {
     showConsolidated={showConsolidated}
     setShowConsolidated={setShowConsolidated}
     onResetFilters={handleResetFilters}
+    
+    // Props para dados de trades para extrair ativos dinamicamente
+    trades={trades}
+    fileResults={fileResults}
   />
 )}
 
@@ -1781,6 +1876,7 @@ useEffect(() => {
                     setShowDailyAnalysis={setShowDailyAnalysis}
                     backtestResult={backtestResult}
                     tradesData={trades}
+                    fileResults={fileResults}
                   />
                 </PlanRestrictedSection>
                 
@@ -1802,7 +1898,7 @@ useEffect(() => {
                     if (!showConsolidated && selectedFiles.length > 0 && fileResults) {
                       console.log('📊 Calculando métricas combinadas para estratégias selecionadas:', selectedFiles);
                       
-                      let combinedMetrics = {
+                      const combinedMetrics = {
                         profitFactor: 0,
                         winRate: 0,
                         payoff: 0,
@@ -1832,7 +1928,7 @@ useEffect(() => {
                         recoveryFactor: 0
                       };
                       
-                      let combinedTrades: any[] = [];
+                      const combinedTrades: any[] = [];
                       
                       selectedFiles.forEach(fileName => {
                         const strategyData = fileResults[fileName];
@@ -1855,6 +1951,10 @@ useEffect(() => {
                             combinedMetrics.maxDrawdownAmount = currentDrawdown;
                             combinedMetrics.maxDrawdown = Math.abs(metrics["Max Drawdown (%)"] || 0);
                           }
+                          
+                          // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
+                          // combinedMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
+                          // combinedMetrics.recoveryFactor += metrics["Recovery Factor"] || 0;
                           
                           // Adicionar trades da estratégia
                           if (strategyData.trades && Array.isArray(strategyData.trades)) {
@@ -1904,6 +2004,16 @@ useEffect(() => {
                         combinedMetrics.payoff = combinedMetrics.averageWin / combinedMetrics.averageLoss;
                       } else {
                         combinedMetrics.payoff = combinedMetrics.averageWin > 0 ? 999 : 0;
+                      }
+                      
+                      // Usar valores recalculados se disponíveis, senão usar valores calculados pelo frontend
+                      if (recalculatedMetrics && recalculatedMetrics.metricas_principais) {
+                        console.log('📊 Usando valores recalculados pelo backend');
+                        combinedMetrics.sharpeRatio = recalculatedMetrics.metricas_principais.sharpe_ratio || 0;
+                        combinedMetrics.recoveryFactor = recalculatedMetrics.metricas_principais.fator_recuperacao || 0;
+                        // Profit Factor é calculado pelo frontend com base nos dados consolidados
+                      } else {
+                        console.log('📊 Usando valores calculados pelo frontend para Sharpe Ratio e Recovery Factor');
                       }
                       
                       metricsToUse = combinedMetrics;
@@ -2001,7 +2111,7 @@ useEffect(() => {
                     else if (fileResults && Object.keys(fileResults).length > 0 && !selectedStrategy) {
                       console.log('📊 Calculando métricas automáticas de todos os CSVs carregados');
                       
-                      let allMetrics = {
+                      const allMetrics = {
                         profitFactor: 0,
                         winRate: 0,
                         payoff: 0,
@@ -2031,7 +2141,7 @@ useEffect(() => {
                         recoveryFactor: 0
                       };
                       
-                      let allTrades: any[] = [];
+                      const allTrades: any[] = [];
                       
                       // Calcular métricas de todos os CSVs
                       Object.keys(fileResults).forEach(fileName => {
@@ -2061,6 +2171,10 @@ useEffect(() => {
                             allMetrics.maxDrawdownAmount = currentDrawdown;
                             allMetrics.maxDrawdown = Math.abs(metrics["Max Drawdown (%)"] || 0);
                           }
+                          
+                          // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
+                          // allMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
+                          // allMetrics.recoveryFactor += metrics["Recovery Factor"] || 0;
                           
                           // Adicionar trades da estratégia
                           if (strategyData.trades && Array.isArray(strategyData.trades)) {
@@ -2106,6 +2220,16 @@ useEffect(() => {
                         allMetrics.payoff = allMetrics.averageWin > 0 ? 999 : 0;
                       }
                       
+                      // Usar valores recalculados se disponíveis, senão usar valores calculados pelo frontend
+                      if (recalculatedMetrics && recalculatedMetrics.metricas_principais) {
+                        console.log('📊 Usando valores recalculados pelo backend (todos os CSVs)');
+                        allMetrics.sharpeRatio = recalculatedMetrics.metricas_principais.sharpe_ratio || 0;
+                        allMetrics.recoveryFactor = recalculatedMetrics.metricas_principais.fator_recuperacao || 0;
+                        // Profit Factor é calculado pelo frontend com base nos dados consolidados
+                      } else {
+                        console.log('📊 Usando valores calculados pelo frontend para Sharpe Ratio e Recovery Factor (todos os CSVs)');
+                      }
+                      
                       metricsToUse = allMetrics;
                       tradesToUse = { trades: allTrades };
                       
@@ -2136,6 +2260,9 @@ useEffect(() => {
                       <MetricsDashboard 
                         metrics={metricsToUse}  
                         tradeObject={tradesToUse}
+                        showConsolidated={showConsolidated}
+                        selectedFiles={selectedFiles}
+                        fileResults={fileResults}
                       />
                     );
                   })()}
@@ -2194,8 +2321,9 @@ useEffect(() => {
                <SimpleCorrelationComponent
                   showCorrelation={showCorrelation}
                   setShowCorrelation={setShowCorrelation}
-                  backtestResult={backtestResult}
+                  backtestResult={originalCorrelationData || backtestResult}
                   onResetCorrelation={handleResetFilters}
+                  isUsingOriginalData={!!originalCorrelationData}
                 />
             </PlanRestrictedSection>
 

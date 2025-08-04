@@ -16,13 +16,15 @@ interface SimpleCorrelationProps {
   setShowCorrelation: (show: boolean) => void;
   backtestResult: any;
   onResetCorrelation?: () => void;
+  isUsingOriginalData?: boolean;
 }
 
 export function SimpleCorrelationComponent({
   showCorrelation,
   setShowCorrelation,
   backtestResult,
-  onResetCorrelation
+  onResetCorrelation,
+  isUsingOriginalData = false
 }: SimpleCorrelationProps) {
   const [activeTab, setActiveTab] = useState('resultado');
 
@@ -530,6 +532,9 @@ export function SimpleCorrelationComponent({
             {correlationData && (
               <span className="ml-2 text-sm text-green-400">✓ Disponível</span>
             )}
+            {isUsingOriginalData && (
+              <span className="ml-2 text-sm text-yellow-400">🔒 Dados Originais</span>
+            )}
           </h2>
         </div>
         <div className="flex items-center space-x-2">
@@ -557,6 +562,25 @@ export function SimpleCorrelationComponent({
       
       {showCorrelation && (
         <div className="p-4">
+          {/* Informação sobre dados originais */}
+          {isUsingOriginalData && (
+            <div className="mb-4 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-800 rounded-lg">
+              <div className="flex items-start">
+                <Info className="w-4 h-4 text-yellow-400 mr-2 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm text-yellow-300 font-medium mb-1">
+                    🔒 Dados de Correlação Preservados
+                  </p>
+                  <p className="text-xs text-yellow-200">
+                    Esta seção mantém os dados de correlação originais calculados no momento do upload dos CSVs. 
+                    Os filtros de estratégia e ativo não afetam estes cálculos para garantir que a análise de correlação 
+                    nunca seja perdida.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {correlationData ? (
             <div>
               {/* Verificar se há erro na correlação */}

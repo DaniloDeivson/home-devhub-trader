@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Filter, FileText } from 'lucide-react';
 
 interface StrategySelectorProps {
@@ -17,6 +17,10 @@ interface StrategySelectorProps {
   showConsolidated?: boolean;
   setShowConsolidated?: (show: boolean) => void;
   onResetFilters?: () => void;
+  
+  // Props para dados de trades para extrair ativos dinamicamente
+  trades?: any[];
+  fileResults?: { [key: string]: any };
 }
 
 export function StrategySelector({
@@ -32,14 +36,55 @@ export function StrategySelector({
   setSelectedFiles,
   showConsolidated = true,
   setShowConsolidated,
-  onResetFilters
+  onResetFilters,
+  trades = [],
+  fileResults
 }: StrategySelectorProps) {
   const hasMultipleFiles = files.length > 1;
+  
+  // Extrair ativos disponíveis dinamicamente dos trades
+  const dynamicAvailableAssets = useMemo(() => {
+    const assets = new Set<string>();
+    
+    // Se há trades disponíveis, extrair ativos deles
+    if (trades && trades.length > 0) {
+      trades.forEach(trade => {
+        if (trade.symbol) {
+          assets.add(trade.symbol);
+        }
+      });
+    }
+    
+    // Se há fileResults, extrair ativos de todas as estratégias
+    if (fileResults && Object.keys(fileResults).length > 0) {
+      Object.values(fileResults).forEach((strategyData: any) => {
+        if (strategyData.trades && Array.isArray(strategyData.trades)) {
+          strategyData.trades.forEach((trade: any) => {
+            if (trade.symbol) {
+              assets.add(trade.symbol);
+            }
+          });
+        }
+      });
+    }
+    
+    // Se não há ativos extraídos dinamicamente, usar os disponíveis
+    if (assets.size === 0 && availableAssets.length > 0) {
+      availableAssets.forEach(asset => assets.add(asset));
+    }
+    
+    return Array.from(assets).sort();
+  }, [trades, fileResults, availableAssets]);
+  
+  // Verificar se há ativos disponíveis para mostrar o filtro
+  const hasAvailableAssets = dynamicAvailableAssets.length > 0;
   
   console.log('🔍 StrategySelector renderizado:', {
     selectedStrategy,
     availableStrategies,
-    hasMultipleFiles
+    hasMultipleFiles,
+    dynamicAvailableAssets,
+    hasAvailableAssets
   });
 
   const handleFileToggle = (fileName: string) => {
@@ -97,22 +142,24 @@ export function StrategySelector({
             </select>
           </div>
           
-          {/* Filtro de Ativo */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Ativo
-            </label>
-            <select
-              value={selectedAsset || ''}
-              onChange={(e) => setSelectedAsset(e.target.value || null)}
-              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos os ativos</option>
-              {availableAssets.map(asset => (
-                <option key={asset} value={asset}>{asset}</option>
-              ))}
-            </select>
-          </div>
+          {/* Filtro de Ativo - só aparece quando há ativos disponíveis */}
+          {hasAvailableAssets && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Ativo
+              </label>
+              <select
+                value={selectedAsset || ''}
+                onChange={(e) => setSelectedAsset(e.target.value || null)}
+                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Todos os ativos</option>
+                {dynamicAvailableAssets.map(asset => (
+                  <option key={asset} value={asset}>{asset}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Filtro de Modo de Análise - só aparece com múltiplos arquivos */}
           {hasMultipleFiles && (

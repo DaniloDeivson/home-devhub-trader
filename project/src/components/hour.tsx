@@ -1,29 +1,13 @@
 import React, { useState } from 'react';
 import { Clock, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { TradesData, HourlyData, CategoryData } from '../types/backtest';
 
 interface HourlyAnalysisProps {
-  tradesData?: any; // Dados das trades já carregados
-}
-
-interface HourlyData {
-  horario: string;
-  trades: number;
-  winRate: number;
-  profitFactor: number;
-  resultado: number;
-}
-
-interface CategoryData {
-  nome: string;
-  horarios: HourlyData[];
-  totalTrades: number;
-  totalResultado: number;
-  avgWinRate: number;
-  avgProfitFactor: number;
+  tradesData?: TradesData | null;
 }
 
 // Dados de exemplo para demonstração
-const sampleTradesData = {
+const sampleTradesData: TradesData = {
   trades: [
     { entry_date: '2024-01-15T09:30:00', pnl: 500 },
     { entry_date: '2024-01-15T10:15:00', pnl: -200 },
@@ -52,7 +36,6 @@ const sampleTradesData = {
 
 export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
   const [showTimeAnalysis, setShowTimeAnalysis] = useState(true);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   
   // Usar dados de exemplo se não houver dados fornecidos
   const data = tradesData || sampleTradesData;
@@ -80,7 +63,7 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
     },
   ];
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
@@ -88,7 +71,7 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
   };
 
   // Função para calcular win rate por horário
-  const calculateWinRate = (trades: any[], hour: string) => {
+  const calculateWinRate = (trades: Trade[], hour: string): number => {
     if (!trades || trades.length === 0) return 0;
     
     const hourTrades = trades.filter(trade => {
@@ -98,12 +81,12 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
     
     if (hourTrades.length === 0) return 0;
     
-    const winningTrades = hourTrades.filter(trade => trade.pnl > 0).length;
-    return (winningTrades / hourTrades.length) * 100;
+    const winningTrades = hourTrades.filter(trade => trade.pnl > 0);
+    return (winningTrades.length / hourTrades.length) * 100;
   };
 
   // Função para calcular profit factor por horário
-  const calculateProfitFactor = (trades: any[], hour: string) => {
+  const calculateProfitFactor = (trades: Trade[], hour: string): number => {
     if (!trades || trades.length === 0) return 0;
     
     const hourTrades = trades.filter(trade => {
@@ -113,109 +96,91 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
     
     if (hourTrades.length === 0) return 0;
     
-    const grossProfit = hourTrades
+    const totalProfit = hourTrades
       .filter(trade => trade.pnl > 0)
       .reduce((sum, trade) => sum + trade.pnl, 0);
     
-    const grossLoss = Math.abs(hourTrades
+    const totalLoss = Math.abs(hourTrades
       .filter(trade => trade.pnl < 0)
       .reduce((sum, trade) => sum + trade.pnl, 0));
     
-    return grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 2.0 : 0;
+    return totalLoss > 0 ? totalProfit / totalLoss : 0;
   };
 
-  // Processar dados por horário individual
+  // Função para obter dados por horário
   const getHourlyData = (): HourlyData[] => {
-    if (!data?.statistics?.temporal?.hourly) {
-      return [];
+    if (!data.trades) return [];
+    
+    const hourlyData: HourlyData[] = [];
+    
+    for (let hour = 9; hour <= 17; hour++) {
+      const hourTrades = data.trades!.filter(trade => {
+        const entryHour = new Date(trade.entry_date).getHours();
+        return entryHour === hour;
+      });
+      
+      const totalResult = hourTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+      const winRate = calculateWinRate(data.trades!, hour.toString());
+      const profitFactor = calculateProfitFactor(data.trades!, hour.toString());
+      
+      hourlyData.push({
+        horario: `${hour.toString().padStart(2, '0')}:00`,
+        trades: hourTrades.length,
+        winRate,
+        profitFactor,
+        resultado: totalResult
+      });
     }
-
-    const hourlyStats = data.statistics.temporal.hourly;
-    const trades = data.trades || [];
-
-    return Object.entries(hourlyStats).map(([hour, dataItem]: [string, any]) => {
-      const winRate = calculateWinRate(trades, hour);
-      const profitFactor = calculateProfitFactor(trades, hour);
-
-      return {
-        horario: `${hour}h`,
-        trades: dataItem.count || 0,
-        winRate: winRate,
-        profitFactor: profitFactor,
-        resultado: dataItem.sum || 0
-      };
-    }).sort((a, b) => parseInt(a.horario) - parseInt(b.horario));
+    
+    return hourlyData;
   };
 
-  // Agrupar dados por categorias
+  // Função para obter dados categorizados
   const getCategorizedData = (): CategoryData[] => {
     const hourlyData = getHourlyData();
+    const categories: CategoryData[] = [];
     
-    return horarios.map(categoria => {
-      const horariosNaCategoria = hourlyData.filter(item => {
-        const hora = parseInt(item.horario.replace('h', ''));
-        return hora >= categoria.horario[0] && hora < categoria.horario[1];
+    horarios.forEach(({ horario, nome }) => {
+      const [startHour, endHour] = horario;
+      const relevantData = hourlyData.filter(data => {
+        const hour = parseInt(data.horario.split(':')[0]);
+        return hour >= startHour && hour < endHour;
       });
-
-      const totalTrades = horariosNaCategoria.reduce((sum, item) => sum + item.trades, 0);
-      const totalResultado = horariosNaCategoria.reduce((sum, item) => sum + item.resultado, 0);
       
-      // Calcular médias ponderadas
-      const avgWinRate = totalTrades > 0 ? 
-        horariosNaCategoria.reduce((sum, item) => sum + (item.winRate * item.trades), 0) / totalTrades : 0;
-      const avgProfitFactor = totalTrades > 0 ? 
-        horariosNaCategoria.reduce((sum, item) => sum + (item.profitFactor * item.trades), 0) / totalTrades : 0;
-
-      return {
-        nome: categoria.nome,
-        horarios: horariosNaCategoria,
-        totalTrades,
-        totalResultado,
-        avgWinRate,
-        avgProfitFactor
-      };
-    }).filter(categoria => categoria.totalTrades > 0); // Filtrar categorias sem trades
+      if (relevantData.length > 0) {
+        const totalTrades = relevantData.reduce((sum, data) => sum + data.trades, 0);
+        const totalResultado = relevantData.reduce((sum, data) => sum + data.resultado, 0);
+        const avgWinRate = relevantData.reduce((sum, data) => sum + data.winRate, 0) / relevantData.length;
+        const avgProfitFactor = relevantData.reduce((sum, data) => sum + data.profitFactor, 0) / relevantData.length;
+        
+        categories.push({
+          nome,
+          horarios: relevantData,
+          totalTrades,
+          totalResultado,
+          avgWinRate,
+          avgProfitFactor
+        });
+      }
+    });
+    
+    return categories;
   };
 
   const categorizedData = getCategorizedData();
 
-  const toggleCategory = (categoryName: string) => {
-    setExpandedCategories(prev => 
-      prev.includes(categoryName) 
-        ? prev.filter(name => name !== categoryName)
-        : [...prev, categoryName]
-    );
-  };
-
-  // Se não há dados, não renderizar
-  if (!data || categorizedData.length === 0) {
-    return (
-      <div className="mb-8 mt-8">
-        <div className="flex items-center mb-4">
-          <div className="bg-purple-500 bg-opacity-20 p-2 rounded-full mr-3">
-            <Clock className="w-6 h-6 text-purple-400" />
-          </div>
-          <h3 className="font-semibold text-lg text-white">Resultado por Horário</h3>
-        </div>
-        <div className="bg-gray-700 rounded-lg p-4 text-center">
-          <p className="text-gray-400">Nenhum dado de horário disponível</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="mb-8 mt-8">
+    <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-lg p-5 mb-6 shadow-md">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
           <div className="bg-purple-500 bg-opacity-20 p-2 rounded-full mr-3">
             <Clock className="w-6 h-6 text-purple-400" />
           </div>
-          <h3 className="font-semibold text-lg text-white">Resultado por Horário</h3>
+          <h3 className="font-semibold text-lg">Resultado por Horário</h3>
         </div>
-        <button 
+        <button
           onClick={() => setShowTimeAnalysis(!showTimeAnalysis)}
-          className="p-1.5 hover:bg-gray-700 rounded-md transition-colors"
+          className="p-1.5 hover:bg-gray-600 rounded"
         >
           {showTimeAnalysis ? (
             <ChevronUp className="w-5 h-5 text-gray-400" />
@@ -224,104 +189,57 @@ export default function HourlyAnalysis({ tradesData }: HourlyAnalysisProps) {
           )}
         </button>
       </div>
-      
+
       {showTimeAnalysis && (
-        <div className="overflow-x-auto bg-gray-700 rounded-lg p-4 shadow-md">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-800 rounded-lg">
-                <th className="px-4 py-3 text-left rounded-l-lg text-white">Período</th>
-                <th className="px-4 py-3 text-center text-white">Trades</th>
-                <th className="px-4 py-3 text-center text-white">Taxa de Acerto</th>
-                <th className="px-4 py-3 text-center text-white">Fator de Lucro</th>
-                <th className="px-4 py-3 text-right text-white">Resultado</th>
-                <th className="px-4 py-3 text-center rounded-r-lg text-white">Detalhes</th>
+              <tr className="border-b border-gray-600">
+                <th className="text-left py-3 px-4 font-medium text-gray-300">Período</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-300">Trades</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-300">Taxa de Acerto</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-300">Fator de Lucro</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-300">Resultado</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-300">Detalhes</th>
               </tr>
             </thead>
             <tbody>
-              {categorizedData.map((categoria, categoryIndex) => (
-                <React.Fragment key={categoryIndex}>
-                  {/* Linha da categoria */}
-                  <tr className="border-b border-gray-600 bg-gray-800 bg-opacity-50">
-                    <td className="px-4 py-3 font-bold text-white">
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 mr-2 text-purple-400" />
-                        {categoria.nome}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center font-bold text-white">
-                      {categoria.totalTrades}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        categoria.avgWinRate >= 60 ? 'bg-green-900 text-green-300' : 
-                        categoria.avgWinRate >= 45 ? 'bg-yellow-900 text-yellow-300' : 
-                        'bg-red-900 text-red-300'
-                      }`}>
-                        {categoria.avgWinRate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        categoria.avgProfitFactor >= 1.5 ? 'bg-green-900 text-green-300' : 
-                        categoria.avgProfitFactor >= 1.0 ? 'bg-yellow-900 text-yellow-300' : 
-                        'bg-red-900 text-red-300'
-                      }`}>
-                        {categoria.avgProfitFactor.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-3 text-right font-bold ${categoria.totalResultado > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {formatCurrency(categoria.totalResultado)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => toggleCategory(categoria.nome)}
-                        className="p-1 hover:bg-gray-600 rounded transition-colors"
-                      >
-                        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
-                          expandedCategories.includes(categoria.nome) ? 'rotate-90' : ''
-                        }`} />
-                      </button>
-                    </td>
-                  </tr>
-                  
-                  {/* Linhas dos horários individuais (quando expandido) */}
-                  {expandedCategories.includes(categoria.nome) && 
-                    categoria.horarios.map((item, index) => (
-                      <tr key={`${categoryIndex}-${index}`} className="border-b border-gray-600 bg-gray-700 bg-opacity-30 hover:bg-gray-600 hover:bg-opacity-30 transition-colors">
-                        <td className="px-8 py-2 text-sm text-gray-300">
-                          <div className="flex items-center">
-                            <div className="w-2 h-2 bg-gray-500 rounded-full mr-3"></div>
-                            {item.horario}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-center text-sm text-gray-300">{item.trades}</td>
-                        <td className="px-4 py-2 text-center">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            item.winRate >= 60 ? 'bg-green-900 text-green-300' : 
-                            item.winRate >= 45 ? 'bg-yellow-900 text-yellow-300' : 
-                            'bg-red-900 text-red-300'
-                          }`}>
-                            {item.winRate.toFixed(1)}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 text-center">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            item.profitFactor >= 1.5 ? 'bg-green-900 text-green-300' : 
-                            item.profitFactor >= 1.0 ? 'bg-yellow-900 text-yellow-300' : 
-                            'bg-red-900 text-red-300'
-                          }`}>
-                            {item.profitFactor.toFixed(2)}
-                          </span>
-                        </td>
-                        <td className={`px-4 py-2 text-right text-sm ${item.resultado > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {formatCurrency(item.resultado)}
-                        </td>
-                        <td className="px-4 py-2"></td>
-                      </tr>
-                    ))
-                  }
-                </React.Fragment>
+              {categorizedData.map((category, index) => (
+                <tr key={category.nome} className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}`}>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center">
+                      <Clock className="w-4 h-4 text-purple-400 mr-2" />
+                      <span className="text-white">{category.nome}</span>
+                    </div>
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    <span className="text-white">{category.totalTrades}</span>
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    <span className="inline-block bg-red-600 text-white px-2 py-1 rounded text-xs">
+                      {category.avgWinRate.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    <span className={`inline-block px-2 py-1 rounded text-xs ${
+                      category.avgProfitFactor >= 1.0 
+                        ? 'bg-orange-600 text-white' 
+                        : 'bg-red-600 text-white'
+                    }`}>
+                      {category.avgProfitFactor.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    <span className={`font-medium ${
+                      category.totalResultado >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {formatCurrency(category.totalResultado)}
+                    </span>
+                  </td>
+                  <td className="text-center py-3 px-4">
+                    <ChevronRight className="w-4 h-4 text-gray-400 mx-auto" />
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

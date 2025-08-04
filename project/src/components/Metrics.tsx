@@ -5,68 +5,118 @@ import {
   CheckCircle, XCircle, Calendar, Maximize, Minimize, Loader2
 } from 'lucide-react';
 import { buildApiUrl } from '../config/api';
-
-interface DailyMetrics {
-  metricas_principais: {
-    sharpe_ratio: number;
-    fator_recuperacao: number;
-    drawdown_maximo: number;
-    drawdown_maximo_pct: number;
-    dias_operados: number;
-    resultado_liquido: number;
-  };
-  ganhos_perdas: {
-    ganho_medio_diario: number;
-    perda_media_diaria: number;
-    payoff_diario: number;
-    ganho_maximo_diario: number;
-    perda_maxima_diaria: number;
-  };
-  estatisticas_operacao: {
-    media_operacoes_dia: number;
-    taxa_acerto_diaria: number;
-    dias_vencedores_perdedores: string;
-    dias_perdedores_consecutivos: number;
-    dias_vencedores_consecutivos: number;
-  };
-}
+import { DailyMetrics, TradesData } from '../types/backtest';
 
 interface DailyMetricsCardsProps {
-  tradesData?: any; // Dados das trades já carregados
+  tradesData?: TradesData | null;
+  fileResults?: { [key: string]: unknown } | null; // Adicionado para múltiplos CSVs
 }
 
-export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps) {
+export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetricsCardsProps) {
   const [metrics, setMetrics] = useState<DailyMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tradesData) {
+    if (tradesData || fileResults) {
       fetchMetricsFromData();
     }
-  }, [tradesData]);
+  }, [tradesData, fileResults]);
 
   const fetchMetricsFromData = async () => {
-    if (!tradesData) return;
-
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tradesData),
-      });
+      let data: DailyMetrics;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao calcular métricas');
+      // Se temos múltiplos CSVs (fileResults), processar todos os dados originais
+      if (fileResults && Object.keys(fileResults).length > 0) {
+        console.log('📊 Processando múltiplos CSVs para análise diária - consolidando todos os dados originais');
+        
+        // Consolidar trades de todos os CSVs
+        const allTrades: unknown[] = [];
+        let maxDrawdown = 0;
+        
+        // Processar todos os CSVs e consolidar dados
+        Object.keys(fileResults).forEach(fileName => {
+          const strategyData = fileResults[fileName] as any;
+          if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+            // Adicionar todas as trades de cada CSV
+            allTrades.push(...strategyData.trades);
+            
+            // Manter o maior drawdown entre todos os CSVs
+            if (strategyData["Performance Metrics"] && strategyData["Performance Metrics"]["Max Drawdown ($)"]) {
+              const currentDrawdown = Math.abs(strategyData["Performance Metrics"]["Max Drawdown ($)"]);
+              if (currentDrawdown > maxDrawdown) {
+                maxDrawdown = currentDrawdown;
+              }
+            }
+          }
+        });
+
+        if (allTrades.length === 0) {
+          throw new Error('Nenhuma trade encontrada nos CSVs');
+        }
+
+        console.log(`📊 Consolidando dados de ${Object.keys(fileResults).length} CSVs com ${allTrades.length} trades totais`);
+
+        // Enviar todas as trades consolidadas para o backend para cálculo das métricas diárias
+        const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ trades: allTrades }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao calcular métricas');
+        }
+
+        data = await response.json();
+        
+        // Usar o maior drawdown encontrado entre todos os CSVs
+        if (maxDrawdown > 0) {
+          data.metricas_principais.drawdown_maximo = maxDrawdown;
+          data.metricas_principais.drawdown_maximo_pct = (maxDrawdown / Math.abs(data.metricas_principais.resultado_liquido)) * 100;
+        }
+
+        console.log('📊 Métricas diárias consolidadas calculadas:', {
+          totalTrades: data.metricas_principais.dias_operados,
+          resultadoLiquido: data.metricas_principais.resultado_liquido,
+          maxDrawdown: data.metricas_principais.drawdown_maximo,
+          arquivosProcessados: Object.keys(fileResults).length,
+          tradesConsolidadas: allTrades.length
+        });
+
+      } else if (tradesData) {
+        // Processo original para um único CSV
+        const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(tradesData),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao calcular métricas');
+        }
+
+        data = await response.json();
+        
+        // Corrigir o drawdown para usar o valor fixo se disponível
+        if (tradesData.maxDrawdown !== undefined) {
+          data.metricas_principais.drawdown_maximo = tradesData.maxDrawdown;
+          data.metricas_principais.drawdown_maximo_pct = (tradesData.maxDrawdown / Math.abs(data.metricas_principais.resultado_liquido)) * 100;
+        }
+      } else {
+        throw new Error('Nenhum dado disponível para processamento');
       }
-
-      const data = await response.json();
+      
       setMetrics(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
@@ -150,7 +200,7 @@ export default function DailyMetricsCards({ tradesData }: DailyMetricsCardsProps
               <span className="text-gray-300">Drawdown Máximo</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.metricas_principais.drawdown_maximo_padronizado || metrics.metricas_principais.drawdown_maximo)}
+              {formatCurrency(metrics.metricas_principais.drawdown_maximo)}
             </span>
           </div>
           <div className="flex items-center justify-between">

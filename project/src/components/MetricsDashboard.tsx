@@ -128,8 +128,19 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       return 'indice';
     }
     
-    // Default to stocks
-    return 'acoes';
+    // Check for specific futures
+    if (symbolUpper.includes('WINFUT') || symbolUpper.includes('WDOFUT') || symbolUpper.includes('BITFUT')) {
+      return 'futuro';
+    }
+    
+    // Check if it's a stock (4 letters + number pattern)
+    const stockPattern = /^[A-Z]{4}\d+$/;
+    if (stockPattern.test(symbolUpper)) {
+      return 'acao';
+    }
+    
+    // Default to futures
+    return 'futuro';
   };
 
   // Get unique assets from trades
@@ -873,6 +884,32 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
               </p>
             </div>
 
+            {/* Sharpe Ratio */}
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-sm text-gray-400 mb-1">Sharpe Ratio</p>
+              <p
+                className={`text-2xl font-bold ${getMetricColor(
+                  "sharpeRatio",
+                  animatedMetrics.sharpeRatio || 0
+                )}`}
+              >
+                {formatMetric(animatedMetrics.sharpeRatio)}
+              </p>
+            </div>
+
+            {/* Recovery Factor */}
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-sm text-gray-400 mb-1">Fator de Recuperação</p>
+              <p
+                className={`text-2xl font-bold ${getMetricColor(
+                  "recoveryFactor",
+                  animatedMetrics.recoveryFactor || 0
+                )}`}
+              >
+                {formatMetric(animatedMetrics.recoveryFactor)}
+              </p>
+            </div>
+
             {/* Win Rate */}
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Taxa de Acerto</p>
@@ -887,192 +924,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
             </div>
           </div>
 
-          {/* Position Sizing Section */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4 p-3 bg-gradient-to-r from-blue-900 to-purple-900 rounded-lg border border-blue-500">
-              <div className="flex items-center">
-                <Wallet className="w-6 h-6 text-yellow-400 mr-3" />
-                <h3 className="text-xl font-bold text-white">Dimensionamento de Posição</h3>
-                <span className="ml-3 px-2 py-1 bg-yellow-500 text-black text-xs font-bold rounded-full">NOVO</span>
-              </div>
-              <button
-                onClick={() => setShowPositionSizing(!showPositionSizing)}
-                className="p-2 hover:bg-blue-800 rounded-full transition-colors"
-              >
-                {showPositionSizing ? (
-                  <ChevronUp className="w-5 h-5 text-yellow-400" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-yellow-400" />
-                )}
-              </button>
-            </div>
 
-            {showPositionSizing && (
-              <div className="space-y-6">
-                {/* Asset Selector */}
-                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-blue-500 shadow-lg">
-                  <h4 className="text-md font-medium mb-3 flex items-center">
-                    <BarChartHorizontal className="w-5 h-5 text-blue-400 mr-2" />
-                    Seletor de Ativo
-                  </h4>
-                  
-                  {/* Asset Dropdown */}
-                  <div className="mb-4">
-                    <label className="block text-sm text-gray-400 mb-2">Selecione o Ativo:</label>
-                    <select 
-                      value={selectedAsset}
-                      onChange={(e) => setSelectedAsset(e.target.value)}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="all">Todos os Ativos</option>
-                      {getUniqueAssets().map((asset, index) => (
-                        <option key={index} value={asset}>
-                          {asset} ({detectAssetType(asset)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Position Metrics */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gradient-to-br from-green-800 to-green-700 p-3 rounded-lg border border-green-500 shadow-md">
-                      <p className="text-sm text-green-200 mb-1">Posição Média</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-blue-800 to-blue-700 p-3 rounded-lg border border-blue-500 shadow-md">
-                      <p className="text-sm text-blue-200 mb-1">Posição Mediana</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.medianPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-purple-800 to-purple-700 p-3 rounded-lg border border-purple-500 shadow-md">
-                      <p className="text-sm text-purple-200 mb-1">Posição Máxima</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade)
-                          : getAssetPositionData(selectedAsset)?.maxPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Asset Analysis */}
-                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-green-500 shadow-lg">
-                  <h4 className="text-md font-medium mb-3 flex items-center">
-                    <TrendingUp className="w-5 h-5 text-green-400 mr-2" />
-                    Análise por Ativo
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gradient-to-br from-orange-800 to-orange-700 p-3 rounded-lg border border-orange-500 shadow-md">
-                      <p className="text-sm text-orange-200 mb-1">Contratos Máximos</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? positionSizingData.general.maxOpenPositions
-                          : getAssetPositionData(selectedAsset)?.maxContractsPerDay || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-teal-800 to-teal-700 p-3 rounded-lg border border-teal-500 shadow-md">
-                      <p className="text-sm text-teal-200 mb-1">Média de Contratos Diários</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? positionSizingData.general.setupsMaximosPorDia
-                          : getAssetPositionData(selectedAsset)?.avgContractsPerDay || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-indigo-800 to-indigo-700 p-3 rounded-lg border border-indigo-500 shadow-md">
-                      <p className="text-sm text-indigo-200 mb-1">Posição Recomendada</p>
-                      <p className="text-lg font-medium text-yellow-300">
-                        {selectedAsset === 'all' 
-                          ? (positionSizingData.stocks.recommendedPosition || positionSizingData.futures.recommendedPosition)
-                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
-                        } contratos
-                      </p>
-                    </div>
-                    <div className="bg-gradient-to-br from-pink-800 to-pink-700 p-3 rounded-lg border border-pink-500 shadow-md">
-                      <p className="text-sm text-pink-200 mb-1">Total de Trades</p>
-                      <p className="text-lg font-medium text-white">
-                        {selectedAsset === 'all' 
-                          ? (tradeObject?.trades?.length || 0)
-                          : getAssetPositionData(selectedAsset)?.totalTrades || 0
-                        } trades
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Asset Type Info */}
-                {selectedAsset !== 'all' && getAssetPositionData(selectedAsset) && (
-                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-yellow-500 shadow-lg">
-                    <h4 className="text-md font-medium mb-3 flex items-center">
-                      <BarChart2 className="w-5 h-5 text-yellow-400 mr-2" />
-                      Informações do Ativo
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-gradient-to-br from-yellow-800 to-yellow-700 p-3 rounded-lg border border-yellow-500 shadow-md">
-                        <p className="text-sm text-yellow-200 mb-1">Tipo de Ativo</p>
-                        <p className="text-lg font-medium text-white capitalize">
-                          {getAssetPositionData(selectedAsset)?.assetType}
-                        </p>
-                      </div>
-                      <div className="bg-gradient-to-br from-red-800 to-red-700 p-3 rounded-lg border border-red-500 shadow-md">
-                        <p className="text-sm text-red-200 mb-1">Símbolo</p>
-                        <p className="text-lg font-medium text-white">
-                          {selectedAsset}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk Analysis */}
-                <div className="bg-gradient-to-r from-blue-900 to-purple-900 border-2 border-blue-500 rounded-lg p-4 shadow-xl">
-                  <div className="flex items-start">
-                    <TrendingDown className="w-6 h-6 text-yellow-400 mr-3 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-bold text-yellow-300 mb-3 text-lg">Análise de Risco e Position Sizing</h4>
-                      <ul className="text-sm text-blue-200 space-y-2">
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
-                          <strong>Account Risk (2%):</strong> {formatMetric(positionSizingData.general.accountRisk, false, true)} - Risco máximo por trade
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
-                          <strong>Max Risk (1%):</strong> {formatMetric(positionSizingData.general.maxRiskPerTrade, false, true)} - Limite conservador por operação
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-                          <strong>Posição Recomendada:</strong> {positionSizingData.stocks.recommendedPosition || positionSizingData.futures.recommendedPosition} unidades baseada no risco
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
-                          <strong>Máximo de {positionSizingData.general.maxOpenPositions} posições simultâneas</strong> - Controle de exposição
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
-                          <strong>Limite de {positionSizingData.general.setupsMaximosPorDia} setups/dia</strong> - Gestão de disciplina
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-2 h-2 bg-orange-400 rounded-full mr-2"></span>
-                          <strong>Fórmula aplicada:</strong> Position Size = Account Risk ÷ Trade Risk
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Trade Statistics and Advanced Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -1315,6 +1167,95 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
                         <li>• Melhor payoff (1.65) e taxa de acerto (65.8%) na faixa de 1-2 horas</li>
                         <li>• Trades longos &gt;4h mostram baixo fator de lucro (0.78) e payoff abaixo de 1</li>
                       </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Position Sizing Section - Moved below Trade Duration */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4 p-3 bg-gray-800 rounded-lg border border-gray-600">
+              <div className="flex items-center">
+                <Wallet className="w-6 h-6 text-gray-300 mr-3" />
+                <h3 className="text-xl font-bold text-white">Dimensionamento de Posição</h3>
+              </div>
+              <button
+                onClick={() => setShowPositionSizing(!showPositionSizing)}
+                className="p-2 hover:bg-gray-700 rounded-full transition-colors"
+              >
+                {showPositionSizing ? (
+                  <ChevronUp className="w-5 h-5 text-gray-300" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-300" />
+                )}
+              </button>
+            </div>
+
+            {showPositionSizing && (
+              <div className="space-y-6">
+                {/* Asset Selector */}
+                <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                  <h4 className="text-md font-medium mb-3 flex items-center text-white">
+                    <BarChartHorizontal className="w-5 h-5 text-gray-300 mr-2" />
+                    Seletor de Ativo
+                  </h4>
+                  
+                  {/* Asset Dropdown */}
+                  <div className="mb-4">
+                    <label className="block text-sm text-gray-400 mb-2">Selecione o Ativo:</label>
+                    <select 
+                      value={selectedAsset}
+                      onChange={(e) => setSelectedAsset(e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-500"
+                    >
+                      <option value="all">Todos os Ativos</option>
+                      {getUniqueAssets().map((asset, index) => (
+                        <option key={index} value={asset}>
+                          {asset} ({detectAssetType(asset)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Position Metrics */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
+                      <p className="text-sm text-gray-300 mb-1">Posição Média</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
+                        } contratos
+                      </p>
+                    </div>
+                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
+                      <p className="text-sm text-gray-300 mb-1">Posição Mediana</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.medianPosition || 0
+                        } contratos
+                      </p>
+                    </div>
+                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
+                      <p className="text-sm text-gray-300 mb-1">Posição Máxima</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.maxPosition || 0
+                        } contratos
+                      </p>
+                    </div>
+                    <div className="bg-gray-700 p-3 rounded-lg border border-gray-600">
+                      <p className="text-sm text-gray-300 mb-1">Setup Máximo por Ativo (Diário)</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? positionSizingData.general.setupsMaximosPorDia
+                          : getAssetPositionData(selectedAsset)?.maxContractsPerDay || 0
+                        } setups
+                      </p>
                     </div>
                   </div>
                 </div>

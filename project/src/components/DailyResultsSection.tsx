@@ -1,10 +1,11 @@
 import React from 'react';
 import { Calendar, ChevronUp, ChevronDown, TrendingUp, XCircle, Check } from 'lucide-react';
+import { BacktestResult } from '../types/backtest';
 
 interface DailyResultsSectionProps {
   showDailyResults: boolean;
   setShowDailyResults: (show: boolean) => void;
-  backtestResult: any;
+  backtestResult: BacktestResult | null;
 }
 
 export function DailyResultsSection({
@@ -14,6 +15,8 @@ export function DailyResultsSection({
 }: DailyResultsSectionProps) {
   // Guard clause to prevent rendering if backtestResult is null or Performance Metrics is missing
   if (!backtestResult || !backtestResult["Performance Metrics"]) return null;
+  
+  const metrics = backtestResult["Performance Metrics"];
   
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">
@@ -46,7 +49,7 @@ export function DailyResultsSection({
                 {new Intl.NumberFormat('pt-BR', {
                   style: 'currency',
                   currency: 'BRL'
-                }).format(backtestResult["Performance Metrics"]["Average Win"] || 0)}
+                }).format(metrics["Average Win"] || 0)}
               </div>
             </div>
             
@@ -59,7 +62,7 @@ export function DailyResultsSection({
                 {new Intl.NumberFormat('pt-BR', {
                   style: 'currency',
                   currency: 'BRL'
-                }).format(backtestResult["Performance Metrics"]["Average Loss"] || 0)}
+                }).format(metrics["Average Loss"] || 0)}
               </div>
             </div>
             
@@ -69,7 +72,7 @@ export function DailyResultsSection({
                 Taxa de Acerto
               </h3>
               <div className="text-2xl font-bold text-blue-400">
-                {backtestResult["Performance Metrics"]["Win Rate (%)"]?.toFixed(1) || "0.0"}%
+                {metrics["Win Rate (%)"]?.toFixed(1) || "0.0"}%
               </div>
             </div>
           </div>

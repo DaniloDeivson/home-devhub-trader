@@ -38,6 +38,9 @@ interface MetricsDashboardProps {
     duracaoMaximaTrade?: string;
     duracaoMedianaTrade?: string;
   };
+  showConsolidated?: boolean;
+  selectedFiles?: string[];
+  fileResults?: {[key: string]: any};
 }
 
 // Mapeamento de dias da semana em inglês para português
@@ -78,7 +81,7 @@ const monthOrder = [
   'july', 'august', 'september', 'october', 'november', 'december'
 ];
 
-export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
+export function MetricsDashboard({ metrics, showConsolidated, selectedFiles, fileResults }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [animatedMetrics, setAnimatedMetrics] = useState<any>({});
   const [showDayOfWeek, setShowDayOfWeek] = useState(false);
@@ -94,7 +97,10 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
       averageWin: metrics.averageWin,
       averageLoss: metrics.averageLoss,
       profitFactor: metrics.profitFactor,
-      winRate: metrics.winRate
+      winRate: metrics.winRate,
+      showConsolidated,
+      selectedFiles,
+      fileResultsKeys: fileResults ? Object.keys(fileResults) : []
     });
     
     // Set default values for metrics that might be missing
@@ -319,7 +325,18 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
       <div className="p-4 flex items-center justify-between border-b border-gray-800">
         <div className="flex items-center">
           <BarChart2 className="w-5 h-5 text-blue-500 mr-2" />
-          <h2 className="text-lg font-medium">Métricas de Performance</h2>
+          <div>
+            <h2 className="text-lg font-medium">Métricas de Performance</h2>
+            {showConsolidated ? (
+              <p className="text-xs text-blue-400">Modo Consolidado - Todas as Estratégias</p>
+            ) : selectedFiles && selectedFiles.length > 0 ? (
+              <p className="text-xs text-green-400">
+                Modo Individual - {selectedFiles.length} Estratégia{selectedFiles.length > 1 ? 's' : ''} Selecionada{selectedFiles.length > 1 ? 's' : ''}
+              </p>
+            ) : (
+              <p className="text-xs text-yellow-400">Modo Padrão</p>
+            )}
+          </div>
         </div>
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -336,8 +353,22 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
       {/* Dashboard Content */}
       {!isCollapsed && (
         <div className="p-4">
+          {/* Estratégias Ativas */}
+          {selectedFiles && selectedFiles.length > 0 && (
+            <div className="bg-gray-800 rounded-lg p-3 mb-4">
+              <p className="text-sm text-gray-400 mb-2">Estratégias Ativas:</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedFiles.map((file, index) => (
+                  <span key={index} className="bg-blue-900 text-blue-300 px-2 py-1 rounded text-xs">
+                    {file.replace('.csv', '')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {/* Key Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {/* Net Profit */}
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Lucro Líquido</p>
@@ -354,6 +385,22 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 {animatedMetrics.maxDrawdown ? `${animatedMetrics.maxDrawdown.toFixed(2)}% do capital` : 'N/A'}
+              </p>
+            </div>
+            
+            {/* Sharpe Ratio */}
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-sm text-gray-400 mb-1">Sharpe Ratio</p>
+              <p className={`text-2xl font-bold ${getMetricColor('sharpeRatio', animatedMetrics.sharpeRatio || 0)}`}>
+                {animatedMetrics.sharpeRatio?.toFixed(2) || '0.00'}
+              </p>
+            </div>
+            
+            {/* Recovery Factor */}
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-sm text-gray-400 mb-1">Fator de Recuperação</p>
+              <p className={`text-2xl font-bold ${getMetricColor('recoveryFactor', animatedMetrics.recoveryFactor || 0)}`}>
+                {animatedMetrics.recoveryFactor?.toFixed(2) || '0.00'}
               </p>
             </div>
             
@@ -438,16 +485,6 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
               </h3>
               <table className="w-full text-sm">
                 <tbody>
-                  <tr className="border-b border-gray-700">
-                    <td className="py-2 text-gray-400">Sharpe Ratio</td>
-                    <td className="py-2 text-right">
-                      {animatedMetrics.sharpeRatio?.toFixed(2) || 'N/A'}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-gray-700">
-                    <td className="py-2 text-gray-400">Fator de Recuperação</td>
-                    <td className="py-2 text-right">{animatedMetrics.recoveryFactor?.toFixed(2) || 'N/A'}</td>
-                  </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trade Médio</td>
                     <td className="py-2 text-right">R$ {animatedMetrics.averageTrade?.toFixed(2) || '0.00'}</td>

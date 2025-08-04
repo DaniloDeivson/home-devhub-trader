@@ -406,7 +406,7 @@ useEffect(() => {
       return;
     }
 
-    let prompt = `O código gerado não está funcionando corretamente. Por favor, corrija os erros e gere uma nova versão funcional. 
+    const prompt = `O código gerado não está funcionando corretamente. Por favor, corrija os erros e gere uma nova versão funcional. 
     
 Código atual com problemas:
 \`\`\`

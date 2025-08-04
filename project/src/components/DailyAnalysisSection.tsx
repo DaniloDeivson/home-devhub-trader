@@ -1,18 +1,19 @@
 import React from 'react';
 import DailyMetricsCards from './Metrics';
 import { 
-  BarChart2, ChevronUp, ChevronDown, Calendar, Clock, 
-  Award, Shield, AlertTriangle, TrendingUp, TrendingDown, 
-  DollarSign, Percent, Target, Activity, ArrowUp, ArrowDown,
-  Zap, CheckCircle, XCircle, BarChart, PieChart, Layers,
-  Star, Compass, Maximize, Minimize
+  BarChart2, ChevronUp, ChevronDown, Calendar, 
+  AlertTriangle, BarChart, PieChart,
+  Star
 } from 'lucide-react';
 import HourlyAnalysis from './hour';
+import { BacktestResult, TradesData } from '../types/backtest';
+
 interface DailyAnalysisSectionProps {
   showDailyAnalysis: boolean;
   setShowDailyAnalysis: (show: boolean) => void;
-  backtestResult: any;
-  tradesData: any;
+  backtestResult: BacktestResult | null;
+  tradesData: TradesData | null;
+  fileResults?: { [key: string]: unknown } | null; // Adicionado para múltiplos CSVs
 }
 
 // Mapeamento de dias da semana em inglês para português
@@ -82,62 +83,20 @@ export function DailyAnalysisSection({
   showDailyAnalysis,
   setShowDailyAnalysis,
   tradesData,
-  backtestResult
+  backtestResult,
+  fileResults
 }: DailyAnalysisSectionProps) {
+  // State for showing/hiding sections - set to false by default
+  const [showDayOfWeek, setShowDayOfWeek] = React.useState(false);
+  const [showMonthly, setShowMonthly] = React.useState(false);
+  const [showWeekly, setShowWeekly] = React.useState(false);
+  const [showCalendarView, setShowCalendarView] = React.useState(true);
+  const [showMonthCalendar, setShowMonthCalendar] = React.useState(true);
+  const [showWeekCalendar, setShowWeekCalendar] = React.useState(true);
+
   // Guard clause to prevent rendering if backtestResult is null
   if (!backtestResult) return null;
   
-  // Sample data for the analysis - in a real implementation, this would come from backtestResult
-  const dailyAnalysis = {
-    sharpeRatio: 1.85,
-    recoveryFactor: 2.30,
-    averageDailyGain: 450.75,
-    averageDailyLoss: -280.50,
-    maxDailyLoss: -1250.80,
-    maxDailyGain: 2350.40,
-    averageTradesPerDay: 4.2,
-    dailyWinRate: 62.5,
-    maxDrawdown: 15.8,
-    tradingDays: 42,
-    furyProbability: 8.5,
-    netResult: 12450.75,
-    dailyPayoff: 1.60,
-    consecutiveLossDays: 3,
-    consecutiveWinDays: 5
-  };
-  
-  // Sample data for resultado por horário - in a real implementation, this would come from backtestResult
-  const resultadoPorHorario = [
-    { 
-      horario: 'Pré Mercado (9h-10h)', 
-      trades: 18, 
-      resultado: 2150.25,
-      winRate: 72.2,
-      profitFactor: 2.85
-    },
-    { 
-      horario: 'Manhã (10h-12h)', 
-      trades: 35, 
-      resultado: 4250.75,
-      winRate: 68.5,
-      profitFactor: 2.35
-    },
-    { 
-      horario: 'Tarde (12h-16h)', 
-      trades: 25, 
-      resultado: 1850.25,
-      winRate: 56.0,
-      profitFactor: 1.75
-    },
-    { 
-      horario: 'Fechamento (16h-18h30)', 
-      trades: 15, 
-      resultado: -650.50,
-      winRate: 33.3,
-      profitFactor: 0.65
-    }
-  ];
-
   // Day of Week Analysis data
   const dayOfWeekAnalysis = backtestResult["Day of Week Analysis"];
   const bestDay = dayOfWeekAnalysis?.["Best Day"];
@@ -152,15 +111,6 @@ export function DailyAnalysisSection({
   const weeklyAnalysis = backtestResult["Weekly Analysis"];
   const bestWeek = weeklyAnalysis?.["Best Week"];
   const worstWeek = weeklyAnalysis?.["Worst Week"];
-  
-  // State for showing/hiding sections - set to false by default
-  const [showDayOfWeek, setShowDayOfWeek] = React.useState(false);
-  const [showMonthly, setShowMonthly] = React.useState(false);
-  const [showWeekly, setShowWeekly] = React.useState(false);
-  const [showCalendarView, setShowCalendarView] = React.useState(true);
-  const [showMonthCalendar, setShowMonthCalendar] = React.useState(true);
-  const [showWeekCalendar, setShowWeekCalendar] = React.useState(true);
-  const [showTimeAnalysis, setShowTimeAnalysis] = React.useState(true);
 
   const formatMetric = (
     value: number | undefined,
@@ -182,47 +132,7 @@ export function DailyAnalysisSection({
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
   };
 
-  // Função para gerar dados de exemplo para o calendário se não houver dados reais
-  const generateSampleDayData = () => {
-    const sampleData: Record<string, any> = {};
-    
-    dayOrder.forEach(day => {
-      const profitFactor = Math.random() * 2 + 0.5;
-      const winRate = Math.random() * 40 + 40;
-      const trades = Math.floor(Math.random() * 20) + 5;
-      
-      sampleData[day] = {
-        "Trades": trades,
-        "Win Rate (%)": winRate,
-        "Profit Factor": profitFactor
-      };
-    });
-    
-    return sampleData;
-  };
-  
-  // Função para gerar dados de exemplo para o calendário mensal se não houver dados reais
-  const generateSampleMonthData = () => {
-    const sampleData: Record<string, any> = {};
-    
-    monthOrder.forEach(month => {
-      const profitFactor = Math.random() * 2 + 0.5;
-      const winRate = Math.random() * 40 + 40;
-      const trades = Math.floor(Math.random() * 50) + 10;
-      
-      sampleData[month] = {
-        "Trades": trades,
-        "Win Rate (%)": winRate,
-        "Profit Factor": profitFactor
-      };
-    });
-    
-    return sampleData;
-  };
-  
-  // Usar dados reais ou gerar dados de exemplo
-  const dayStats = dayOfWeekAnalysis?.Stats || {};
-  const monthStats = monthlyAnalysis?.Stats || {};
+
 
   const renderDayCalendar = () => {
   return (
@@ -538,17 +448,21 @@ export function DailyAnalysisSection({
           )}
         </button>
       </div>
+      <br></br>
       
       {showDailyAnalysis && (
-        <div className="p-6">
+        <div className="p-6 pt-8">
           {/* Primary Metrics - Redesigned with better visual hierarchy */}
           
-            {/* Métricas Principais */}
-            <DailyMetricsCards tradesData={tradesData} />
-        
+          {/* Métricas Principais */}
+          <div className="mb-8">
+            <DailyMetricsCards tradesData={tradesData} fileResults={fileResults} />
+          </div>
           
           {/* Resultado por Horário Section - Enhanced with better visuals */}
-          <HourlyAnalysis tradesData={tradesData} />
+          <div className="mb-8">
+            <HourlyAnalysis tradesData={tradesData} />
+          </div>
           
           {/* Day of Week Analysis - Enhanced with better visuals */}
           <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-lg p-5 mb-6 shadow-md">
