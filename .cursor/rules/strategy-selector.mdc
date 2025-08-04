@@ -1,0 +1,43 @@
+# StrategySelector - Regras de Implementação
+
+## Props e Interface
+- Sempre incluir props opcionais para modo individual: `selectedFiles`, `setSelectedFiles`, `showConsolidated`, `setShowConsolidated`
+- Usar interface `StrategySelectorProps` com todas as props necessárias
+- Incluir `onResetFilters` callback para resetar filtros
+
+## Modo Consolidado vs Individual
+- Mostrar seletor de modo apenas quando `hasMultipleFiles = files.length > 1`
+- Usar botão toggle para alternar entre "Consolidado" e "Individual"
+- Estilo diferente para cada modo: azul para consolidado, roxo para individual
+
+## Seleção de Arquivos
+- Implementar `handleFileToggle` para selecionar/deselecionar arquivos
+- Implementar `selectAllFiles` e `clearAllFiles` para seleção em massa
+- Mostrar contador: `${selectedFiles.length}/${files.length} selecionados`
+- Usar cores diferentes para arquivos selecionados vs não selecionados
+
+## Estados de Visualização
+- Mostrar informações sobre filtros ativos
+- Exibir modo atual e número de arquivos
+- Mostrar botões "Selecionar Todos" e "Desmarcar Todos" no modo individual
+
+## Grid de Arquivos
+- Usar `grid-cols-2 md:grid-cols-3 lg:grid-cols-4` para responsividade
+- Mostrar nome do arquivo sem extensão `.csv`
+- Exibir tamanho do arquivo em KB
+- Indicador visual (bolinha) para arquivos selecionados
+
+## Reset de Filtros
+- Implementar `handleResetFilters` que limpa todos os filtros
+- Resetar `selectedStrategy`, `selectedAsset`, `selectedFiles`
+- Voltar para modo consolidado: `setShowConsolidated(true)`
+- Selecionar todos os arquivos: `setSelectedFiles(files.map(f => f.name))`
+
+## Integração com BacktestAnalysisPage
+- Passar todas as props necessárias do componente pai
+- Garantir que `selectedFiles` seja sempre um array
+- Implementar callbacks para atualizar estados no componente pai
+description:
+globs:
+alwaysApply: false
+---

@@ -1,0 +1,59 @@
+# BacktestAnalysisPage - Regras de Implementação
+
+## Estados de Dados
+- Sempre incluir `selectedFiles: string[]` nos dados salvos
+- Usar `fileResults: {[key: string]: BacktestResult}` para dados individuais
+- Manter `showConsolidated: boolean` para controlar modo de análise
+- Implementar `individualAnalysisMode: boolean` para compatibilidade
+
+## Salvamento de Análises
+- Incluir todos os dados necessários em `completeAnalysisData`:
+  ```typescript
+  {
+    files, fileResults, selectedFiles, showConsolidated,
+    trades, filteredTrades, tradeSearch,
+    emocional, analysisResult, drata,
+    selectedStrategy, selectedAsset, csvContent,
+    availableStrategies, availableAssets,
+    // Estados de visualização
+    showMetrics, showDailyResults, showDailyAnalysis,
+    showTrades, showEquityCurve, showSpecialEvents,
+    showCorrelation, showEmotionalProfile,
+    showStrategySelector, showChat
+  }
+  ```
+
+## Carregamento de Análises
+- Implementar `handleLoadAnalysis` com recuperação completa de dados
+- Restaurar `selectedFiles` dos dados salvos
+- Recuperar todos os estados de visualização
+- Criar File object a partir do CSV content se necessário
+
+## Interface SavedAnalysis
+- Incluir `selectedFiles: string[]` na interface
+- Manter compatibilidade com análises salvas anteriormente
+- Usar valores padrão para campos opcionais
+
+## Seção de Correlação
+- Manter seção sempre visível (fora da condição `backtestResult`)
+- Passar `handleResetFilters` como `onResetCorrelation`
+- Garantir que não seja afetada pelos filtros do StrategySelector
+
+## Integração de Componentes
+- Passar todas as props necessárias para `EquityCurveSection`
+- Passar `selectedFiles`, `showConsolidated` para `StrategySelector`
+- Garantir que dados fluam corretamente entre componentes
+
+## Debug e Logs
+- Incluir logs detalhados para debug de dados
+- Verificar se `fileResults` e `data` estão disponíveis
+- Logar estrutura de dados em cada etapa do processamento
+
+## Tratamento de Erros
+- Implementar try-catch em operações assíncronas
+- Mostrar mensagens de erro claras para o usuário
+- Garantir fallbacks para dados ausentes ou corrompidos
+description:
+globs:
+alwaysApply: false
+---

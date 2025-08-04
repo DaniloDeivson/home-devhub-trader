@@ -7,19 +7,22 @@ import {
   ArrowDown, 
   ChevronUp,
   ChevronDown,
-  Info
+  Info,
+  RotateCcw
 } from 'lucide-react';
 
 interface SimpleCorrelationProps {
   showCorrelation: boolean;
   setShowCorrelation: (show: boolean) => void;
   backtestResult: any;
+  onResetCorrelation?: () => void;
 }
 
 export function SimpleCorrelationComponent({
   showCorrelation,
   setShowCorrelation,
-  backtestResult
+  backtestResult,
+  onResetCorrelation
 }: SimpleCorrelationProps) {
   const [activeTab, setActiveTab] = useState('resultado');
 
@@ -529,16 +532,27 @@ export function SimpleCorrelationComponent({
             )}
           </h2>
         </div>
-        <button 
-          onClick={() => setShowCorrelation(!showCorrelation)}
-          className="p-1.5 hover:bg-gray-700 rounded-md"
-        >
-          {showCorrelation ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+        <div className="flex items-center space-x-2">
+          {onResetCorrelation && (
+            <button
+              onClick={onResetCorrelation}
+              className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white"
+              title="Resetar para dados originais"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           )}
-        </button>
+          <button 
+            onClick={() => setShowCorrelation(!showCorrelation)}
+            className="p-1.5 hover:bg-gray-700 rounded-md"
+          >
+            {showCorrelation ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+        </div>
       </div>
       
       {showCorrelation && (

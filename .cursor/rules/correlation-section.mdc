@@ -1,0 +1,49 @@
+# CorrelationSection - Regras de Implementação
+
+## Props e Interface
+- Incluir prop opcional `onResetCorrelation` para resetar dados
+- Usar interface `SimpleCorrelationProps` com todas as props necessárias
+- Sempre incluir `showCorrelation`, `setShowCorrelation`, `backtestResult`
+
+## Botão de Reset
+- Implementar botão de reset com ícone `RotateCcw`
+- Posicionar ao lado do botão de expandir/colapsar
+- Usar tooltip explicativo: "Resetar para dados originais"
+- Só mostrar quando `onResetCorrelation` estiver disponível
+
+## Estrutura de Dados
+- Usar `correlationData = backtestResult?.dateDirectionCorrelation`
+- Usar `correlationMatricial = backtestResult?.correlationMatricial`
+- Verificar se é análise matricial: `isMatricial = correlationMatricial?.info_arquivos?.tipo_analise === 'matricial'`
+
+## Tabs de Análise
+- Implementar tabs: "Por Resultado", "Por Direção", "Matricial"
+- Usar estado `activeTab` para controlar qual tab está ativa
+- Mostrar tab "Matricial" apenas quando `isMatricial` é true
+- Usar ícones diferentes para cada tab: `TrendingUp`, `ArrowUp`, `Info`
+
+## Renderização de Dados
+- Implementar `renderResultadoTab()`, `renderDirecaoTab()`, `renderMatricialTab()`
+- Verificar diferentes estruturas possíveis dos dados
+- Usar fallbacks para dados inconsistentes
+- Calcular percentuais corretamente
+
+## Tratamento de Erros
+- Mostrar mensagem de erro quando `correlationData.correlacao_data_direcao?.resumo?.erro`
+- Exibir mensagem quando não há dados suficientes
+- Fornecer instruções claras para o usuário
+
+## Estados de Visualização
+- Mostrar indicador "✓ Disponível" quando há dados
+- Usar cores diferentes para cada tipo de correlação
+- Implementar barras de progresso para percentuais
+- Usar ícones para representar direções: setas para cima/baixo
+
+## Integração com BacktestAnalysisPage
+- Passar função `handleResetFilters` como `onResetCorrelation`
+- Garantir que a seção seja sempre visível (fora da condição `backtestResult`)
+- Manter consistência com outros componentes da página
+description:
+globs:
+alwaysApply: false
+---

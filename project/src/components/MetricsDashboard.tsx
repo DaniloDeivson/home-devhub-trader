@@ -13,7 +13,28 @@ import {
 } from "lucide-react";
 
 interface MetricsDashboardProps {
-  tradeObject: any;
+  tradeObject: {
+    trades: Array<{
+      symbol?: string;
+      entry_date: string;
+      exit_date: string;
+      pnl: number;
+      quantity_total?: number;
+      quantity_compra?: number;
+      quantity_venda?: number;
+      qty_buy?: number;
+      qty_sell?: number;
+      quantity?: number;
+      qty?: number;
+      quantity_buy?: number;
+      quantity_sell?: number;
+      position_size?: number;
+      size?: number;
+      volume?: number;
+      [key: string]: any;
+    }>;
+    file?: File;
+  };
   showTitle?: boolean;
   metrics: {
     profitFactor?: number;
@@ -34,7 +55,7 @@ interface MetricsDashboardProps {
     averageLoss?: number;
     recoveryFactor?: number;
     averageTrade?: number;
-    averageTradeDuration?: string; // Duration in hours, minutes
+    averageTradeDuration?: string;
     dayOfWeekAnalysis?: Record<
       string,
       { trades: number; winRate: number; profitFactor: number }
@@ -43,7 +64,6 @@ interface MetricsDashboardProps {
       string,
       { trades: number; winRate: number; profitFactor: number }
     >;
-    // Métricas complementares
     stopIdealPorDia?: number;
     resultadoDiasFuria?: number;
     numeroDiasFuria?: number;
@@ -52,7 +72,6 @@ interface MetricsDashboardProps {
     operacoesMaximasPorDia?: number;
     setupsMaximosPorDia?: number;
     mediaOperacoesDia?: number;
-    // Dados diretos da API
     bestDay?: {
       day: string;
       trades: number;
@@ -82,11 +101,113 @@ interface MetricsDashboardProps {
 
 export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [animatedMetrics, setAnimatedMetrics] = useState<any>({});
-  const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(true);
+  const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, any>>({});
   const [showTradeDuration, setShowTradeDuration] = useState(false);
   const [showPositionSizing, setShowPositionSizing] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<string>('all');
   const trade = tradeObject?.trades;
+
+  // Function to detect asset type based on symbol
+  const detectAssetType = (symbol: string): string => {
+    if (!symbol) return 'acoes';
+    
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Check for Bitcoin
+    if (symbolUpper.includes('BTC') || symbolUpper.includes('BITCOIN')) {
+      return 'bitcoin';
+    }
+    
+    // Check for Dollar
+    if (symbolUpper.includes('USD') || symbolUpper.includes('DOLAR') || symbolUpper.includes('DÓLAR')) {
+      return 'dolar';
+    }
+    
+    // Check for Index
+    if (symbolUpper.includes('IBOV') || symbolUpper.includes('INDICE') || symbolUpper.includes('ÍNDICE')) {
+      return 'indice';
+    }
+    
+    // Default to stocks
+    return 'acoes';
+  };
+
+  // Get unique assets from trades
+  const getUniqueAssets = () => {
+    if (!trade || trade.length === 0) return [];
+    
+    const assets = trade.map(t => t.symbol || 'N/A').filter((symbol, index, arr) => arr.indexOf(symbol) === index);
+    return assets;
+  };
+
+  // Get position sizing data for specific asset
+  const getAssetPositionData = (assetSymbol: string) => {
+    if (!trade || trade.length === 0) return null;
+    
+    const assetTrades = trade.filter(t => t.symbol === assetSymbol);
+    if (assetTrades.length === 0) return null;
+    
+    const assetType = detectAssetType(assetSymbol);
+    
+    // Calculate position sizes for this specific asset
+    const positionSizes = assetTrades.map(trade => {
+      const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
+                          trade.qty_buy || trade.qty_sell || trade.quantity || 
+                          trade.qty || trade.quantity_buy || trade.quantity_sell ||
+                          trade.position_size || trade.size || trade.volume || 0;
+      return positionSize;
+    }).filter(size => size > 0);
+
+    if (positionSizes.length === 0) return null;
+
+    const maxPosition = Math.max(...positionSizes);
+    const avgPosition = positionSizes.reduce((sum, size) => sum + size, 0) / positionSizes.length;
+    const sortedPositions = [...positionSizes].sort((a, b) => a - b);
+    
+    let medianPosition = 0;
+    if (sortedPositions.length > 0) {
+      if (sortedPositions.length % 2 === 0) {
+        // Even number of elements - take average of two middle values
+        const mid1 = sortedPositions[sortedPositions.length / 2 - 1];
+        const mid2 = sortedPositions[sortedPositions.length / 2];
+        medianPosition = (mid1 + mid2) / 2;
+      } else {
+        // Odd number of elements - take middle value
+        medianPosition = sortedPositions[Math.floor(sortedPositions.length / 2)];
+      }
+    }
+
+    // Calculate max contracts per day for this asset
+    const tradesByDate = {};
+    assetTrades.forEach(trade => {
+      const date = new Date(trade.entry_date).toDateString();
+      if (!tradesByDate[date]) {
+        tradesByDate[date] = [];
+      }
+      tradesByDate[date].push(trade);
+    });
+
+    const maxContractsPerDay = Math.max(...Object.values(tradesByDate).map(trades => trades.length));
+    const avgContractsPerDay = assetTrades.length / Object.keys(tradesByDate).length;
+
+    console.log(`📊 Asset ${assetSymbol} analysis:`);
+    console.log(`  - Position sizes:`, positionSizes);
+    console.log(`  - Average position:`, avgPosition);
+    console.log(`  - Median position:`, medianPosition);
+    console.log(`  - Max position:`, maxPosition);
+    console.log(`  - Total trades:`, assetTrades.length);
+
+    return {
+      assetType,
+      maxPosition,
+      avgPosition: Math.round(avgPosition),
+      medianPosition: Math.round(medianPosition),
+      maxContractsPerDay,
+      avgContractsPerDay: Math.round(avgContractsPerDay),
+      totalTrades: assetTrades.length
+    };
+  };
+
   // Sample data for the trade duration analysis with additional metrics
   // Calculate real trade duration data from the trades array
   const calculateTradeDurationData = () => {
@@ -100,7 +221,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     }
 
     console.log("trades? ",trade);
-    const tradesWithDuration = trade?.map(t => {
+    const tradesWithDuration = trade?.map((t: any) => {
       const entryDate = new Date(t.entry_date);
       const exitDate = new Date(t.exit_date);
       const durationHours = (exitDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60);
@@ -112,14 +233,14 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     });
 
     // Calculate basic duration statistics
-    const durations = tradesWithDuration.map(t => t.durationHours);
-    const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
-    const sortedDurations = [...durations].sort((a, b) => a - b);
+    const durations = tradesWithDuration.map((t: any) => t.durationHours);
+    const avgDuration = durations.reduce((a: number, b: number) => a + b, 0) / durations.length;
+    const sortedDurations = [...durations].sort((a: number, b: number) => a - b);
     const medianDuration = sortedDurations[Math.floor(sortedDurations.length / 2)];
     const maxDuration = Math.max(...durations);
 
     // Format duration helper function
-    const formatDuration = (hours) => {
+    const formatDuration = (hours: number) => {
       const h = Math.floor(hours);
       const m = Math.floor((hours - h) * 60);
       return `${h}h ${m}m`;
@@ -140,7 +261,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     ];
 
     const resultByDuration = durationRanges.map(range => {
-      const rangeTradesData = tradesWithDuration.filter(t => 
+      const rangeTradesData = tradesWithDuration.filter((t: any) => 
         t.durationHours >= range.min && t.durationHours < range.max
       );
       
@@ -155,14 +276,14 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
         };
       }
 
-      const totalResult = rangeTradesData.reduce((sum, t) => sum + (t.pnl || 0), 0);
-      const winningTrades = rangeTradesData.filter(t => (t.pnl || 0) > 0);
-      const losingTrades = rangeTradesData.filter(t => (t.pnl || 0) < 0);
+      const totalResult = rangeTradesData.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+      const winningTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) > 0);
+      const losingTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) < 0);
       
       const winRate = (winningTrades.length / rangeTradesData.length) * 100;
       
-      const grossProfit = winningTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-      const grossLoss = Math.abs(losingTrades.reduce((sum, t) => sum + (t.pnl || 0), 0));
+      const grossProfit = winningTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+      const grossLoss = Math.abs(losingTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0));
       
       const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
       
@@ -282,7 +403,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     console.log("📊 Calculating position sizing locally from", trades.length, "trades");
     
     // Calculate account risk (2% rule from position sizing principles)
-    const totalPnL = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
+    const totalPnL = trades.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
     const netProfit = Math.max(0, totalPnL); // Assume positive capital
     const accountRisk = netProfit * 0.02; // 2% risk per trade
     
@@ -290,14 +411,14 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     const maxRiskPerTrade = netProfit * 0.01; // 1% max risk per trade
     
     // Calculate position sizes based on actual trade data
-    const positionSizes = trades.map(trade => {
+    const positionSizes = trades.map((trade: any) => {
       // Try different possible column names for position size
       const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
                           trade.qty_buy || trade.qty_sell || trade.quantity || 
                           trade.qty || trade.quantity_buy || trade.quantity_sell ||
                           trade.position_size || trade.size || trade.volume || 0;
       return positionSize;
-    }).filter(size => size > 0);
+    }).filter((size: number) => size > 0);
 
     console.log("📊 Position sizes found:", positionSizes.length, "valid positions");
     console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
@@ -306,7 +427,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     // Log detailed position data for debugging
     if (trades.length > 0) {
       console.log("📊 Position data analysis:");
-      trades.slice(0, 3).forEach((trade, index) => {
+      trades.slice(0, 3).forEach((trade: any, index: number) => {
         console.log(`  Trade ${index + 1}:`, {
           quantity_total: trade.quantity_total,
           quantity_compra: trade.quantity_compra,
@@ -321,15 +442,26 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     // Calculate basic position statistics
     const maxPositionPerTrade = positionSizes.length > 0 ? Math.max(...positionSizes) : 0;
     const avgPositionPerTrade = positionSizes.length > 0 ? 
-      positionSizes.reduce((sum, size) => sum + size, 0) / positionSizes.length : 0;
+      positionSizes.reduce((sum: number, size: number) => sum + size, 0) / positionSizes.length : 0;
     
-    const sortedPositions = [...positionSizes].sort((a, b) => a - b);
-    const medianPositionPerTrade = sortedPositions.length > 0 ? 
-      sortedPositions[Math.floor(sortedPositions.length / 2)] : 0;
+    const sortedPositions = [...positionSizes].sort((a: number, b: number) => a - b);
+    let medianPositionPerTrade = 0;
+    
+    if (sortedPositions.length > 0) {
+      if (sortedPositions.length % 2 === 0) {
+        // Even number of elements - take average of two middle values
+        const mid1 = sortedPositions[sortedPositions.length / 2 - 1];
+        const mid2 = sortedPositions[sortedPositions.length / 2];
+        medianPositionPerTrade = (mid1 + mid2) / 2;
+      } else {
+        // Odd number of elements - take middle value
+        medianPositionPerTrade = sortedPositions[Math.floor(sortedPositions.length / 2)];
+      }
+    }
 
     // Calculate max open positions (trades on the same day)
-    const tradesByDate = {};
-    trades.forEach(trade => {
+    const tradesByDate: Record<string, any[]> = {};
+    trades.forEach((trade: any) => {
       const date = new Date(trade.entry_date).toDateString();
       if (!tradesByDate[date]) {
         tradesByDate[date] = [];
@@ -337,66 +469,67 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       tradesByDate[date].push(trade);
     });
 
-    const maxOpenPositions = Math.max(...Object.values(tradesByDate).map(trades => trades.length));
+    const maxOpenPositions = Math.max(...Object.values(tradesByDate).map((trades: any[]) => trades.length));
     const setupsMaximosPorDia = maxOpenPositions;
 
     // Calculate average trade risk (stop loss distance)
-    const tradeRisks = trades.map(trade => {
+    const tradeRisks = trades.map((trade: any) => {
       // Estimate risk based on average loss
       return Math.abs(trade.pnl || 0);
-    }).filter(risk => risk > 0);
+    }).filter((risk: number) => risk > 0);
     
     const avgTradeRisk = tradeRisks.length > 0 ? 
-      tradeRisks.reduce((sum, risk) => sum + risk, 0) / tradeRisks.length : 0;
+      tradeRisks.reduce((sum: number, risk: number) => sum + risk, 0) / tradeRisks.length : 0;
 
     // Calculate recommended position size using position sizing formula
     // Position Size = Account Risk / Trade Risk
     const recommendedPosition = avgTradeRisk > 0 ? Math.floor(accountRisk / avgTradeRisk) : 0;
 
-    // Determine if it's stocks or futures based on position sizes and trade characteristics
-    const avgTradeValue = Math.abs(trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0) / trades.length);
-    const isStocks = avgPositionPerTrade > 100 || avgTradeValue > 1000; // Stocks typically have larger position sizes
+    // Determine asset type based on the most common symbol
+    const assetCounts: Record<string, number> = {};
+    trades.forEach((trade: any) => {
+      const symbol = trade.symbol || 'UNKNOWN';
+      assetCounts[symbol] = (assetCounts[symbol] || 0) + 1;
+    });
+    
+    const mostCommonSymbol = Object.keys(assetCounts).reduce((a: string, b: string) => 
+      assetCounts[a] > assetCounts[b] ? a : b, Object.keys(assetCounts)[0]);
+    
+    const assetType = detectAssetType(mostCommonSymbol);
     
     console.log("📊 Position sizing analysis:");
     console.log("  - Account risk (2%):", accountRisk);
     console.log("  - Max risk per trade (1%):", maxRiskPerTrade);
     console.log("  - Average trade risk:", avgTradeRisk);
     console.log("  - Recommended position size:", recommendedPosition);
-    console.log("  - Asset type:", isStocks ? "Stocks" : "Futures");
+    console.log("  - Asset type:", assetType);
+    console.log("  - Most common symbol:", mostCommonSymbol);
+    console.log("  - Position sizes:", positionSizes);
+    console.log("  - Average position:", avgPositionPerTrade);
+    console.log("  - Median position:", medianPositionPerTrade);
+    console.log("  - Max position:", maxPositionPerTrade);
     
     // Calculate leverage based on asset type
-    const avgLeverage = isStocks ? 0.85 : 3.2;
+    const avgLeverage = assetType === 'bitcoin' ? 5.0 : 
+                       assetType === 'dolar' ? 3.2 : 
+                       assetType === 'indice' ? 2.5 : 0.85;
 
     return {
-      stocks: isStocks ? {
+      stocks: {
         maxPositionPerTrade: maxPositionPerTrade,
         avgPositionPerTrade: Math.round(avgPositionPerTrade),
         medianPositionPerTrade: Math.round(medianPositionPerTrade),
         avgLeverage: avgLeverage,
         recommendedPosition: recommendedPosition,
         riskPerTrade: avgTradeRisk
-      } : {
-        maxPositionPerTrade: 0,
-        avgPositionPerTrade: 0,
-        medianPositionPerTrade: 0,
-        avgLeverage: 0,
-        recommendedPosition: 0,
-        riskPerTrade: 0
       },
-      futures: !isStocks ? {
+      futures: {
         maxPositionPerTrade: maxPositionPerTrade,
         avgPositionPerTrade: Math.round(avgPositionPerTrade),
         medianPositionPerTrade: Math.round(medianPositionPerTrade),
         avgLeverage: avgLeverage,
         recommendedPosition: recommendedPosition,
         riskPerTrade: avgTradeRisk
-      } : {
-        maxPositionPerTrade: 0,
-        avgPositionPerTrade: 0,
-        medianPositionPerTrade: 0,
-        avgLeverage: 0,
-        recommendedPosition: 0,
-        riskPerTrade: 0
       },
       general: {
         maxOpenPositions: maxOpenPositions,
@@ -408,7 +541,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
   };
 
   // Helper function to create CSV from trades data
-  const createCSVFromTrades = (trades) => {
+  const createCSVFromTrades = (trades: any[]) => {
     console.log("📊 Creating CSV from trades:", trades.length, "trades");
     console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
     
@@ -422,10 +555,10 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     
     const csvRows = [csvHeaders.join(';')];
     
-    trades.forEach((trade, index) => {
+    trades.forEach((trade: any, index: number) => {
       // Map trade data to CSV format expected by backend
       // Formatar datas no formato esperado pelo backend (dd/mm/yyyy hh:mm:ss)
-      const formatDate = (dateStr) => {
+      const formatDate = (dateStr: any) => {
         if (!dateStr) return '';
         try {
           const date = new Date(dateStr);
@@ -435,7 +568,7 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
             minute: '2-digit', 
             second: '2-digit' 
           });
-        } catch (e) {
+        } catch {
           return '';
         }
       };
@@ -533,9 +666,6 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       netProfit: Number(safeMetrics.netProfit) || 0,
       maxDrawdown: Number(safeMetrics.maxDrawdown) || 0,
       maxDrawdownAmount: Number(safeMetrics.maxDrawdownAmount) || 0,
-        // PADRONIZAÇÃO: Usar valores padronizados quando disponíveis
-        maxDrawdownPadronizado: Number(safeMetrics.maxDrawdownPadronizado) || Number(safeMetrics.maxDrawdown) || 0,
-        maxDrawdownPctPadronizado: Number(safeMetrics.maxDrawdownPctPadronizado) || Number(safeMetrics.maxDrawdownPct) || 0,
       averageTrade: Number(safeMetrics.averageTrade) || 0,
       winRate: Number(safeMetrics.winRate) || 0,
       grossProfit: Number(safeMetrics.grossProfit) || 0,
@@ -636,28 +766,28 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
   };
   const filteredTradeDurationData = tradeDurationData.resultByDuration.filter(
-    (trade) =>trade.count !== 0
+    (trade: any) => trade.count !== 0
   )
   const tradesLucrativos = tradeObject?.trades.filter(
-    (trade) => (
+    (trade: any) => (
       trade.pnl > 0
       
     )
   )
 
   const tradesLoss = tradeObject?.trades.filter(
-    (trade) => (
+    (trade: any) => (
       trade.pnl < 0
     )
   )
 
   const tradesNull = tradeObject?.trades.filter(
-    (trade) => (
+    (trade: any) => (
       trade.pnl === 0
     )
   )
- const maiorGanho = Math.max(...(tradeObject?.trades || []).map(trade => (trade.pnl || 0) ));
-const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.pnl || 0) ));
+ const maiorGanho = Math.max(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
+const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
       {/* Header */}
@@ -702,10 +832,10 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.p
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Drawdown Máximo R$</p>
               <p className="text-3xl font-bold text-red-500">
-                {formatMetric(animatedMetrics.maxDrawdownPadronizado || animatedMetrics.maxDrawdownAmount, false, true)}
+                {formatMetric(animatedMetrics.maxDrawdownAmount, false, true)}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {formatMetric(animatedMetrics.maxDrawdownPctPadronizado || animatedMetrics.maxDrawdown, true)} do capital
+                {formatMetric(animatedMetrics.maxDrawdown, true)} do capital
               </p>
             </div>
 
@@ -759,155 +889,183 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map(trade => (trade.p
 
           {/* Position Sizing Section */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 p-3 bg-gradient-to-r from-blue-900 to-purple-900 rounded-lg border border-blue-500">
               <div className="flex items-center">
-                <Wallet className="w-5 h-5 text-blue-400 mr-2" />
-                <h3 className="text-lg font-medium">Dimensionamento de Posição</h3>
+                <Wallet className="w-6 h-6 text-yellow-400 mr-3" />
+                <h3 className="text-xl font-bold text-white">Dimensionamento de Posição</h3>
+                <span className="ml-3 px-2 py-1 bg-yellow-500 text-black text-xs font-bold rounded-full">NOVO</span>
               </div>
               <button
                 onClick={() => setShowPositionSizing(!showPositionSizing)}
-                className="p-1 hover:bg-gray-800 rounded-full"
+                className="p-2 hover:bg-blue-800 rounded-full transition-colors"
               >
                 {showPositionSizing ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                  <ChevronUp className="w-5 h-5 text-yellow-400" />
                 ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                  <ChevronDown className="w-5 h-5 text-yellow-400" />
                 )}
               </button>
             </div>
 
             {showPositionSizing && (
               <div className="space-y-6">
-                {/* Stocks vs Futures */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Stocks Section */}
-                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-blue-500">
-                    <h4 className="text-lg font-medium mb-3 flex items-center">
-                      <BarChartHorizontal className="w-5 h-5 text-blue-400 mr-2" />
-                      Ações
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Máxima por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.stocks.maxPositionPerTrade} ações
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Média por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.stocks.avgPositionPerTrade} ações
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Mediana por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.stocks.medianPositionPerTrade} ações
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Recomendada</span>
-                        <span className="font-medium text-blue-400">
-                          {positionSizingData.stocks.recommendedPosition} ações
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Risco por Trade</span>
-                        <span className="font-medium text-red-400">
-                          {formatMetric(positionSizingData.stocks.riskPerTrade, false, true)}
-                        </span>
-                      </div>
-                    </div>
+                {/* Asset Selector */}
+                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-blue-500 shadow-lg">
+                  <h4 className="text-md font-medium mb-3 flex items-center">
+                    <BarChartHorizontal className="w-5 h-5 text-blue-400 mr-2" />
+                    Seletor de Ativo
+                  </h4>
+                  
+                  {/* Asset Dropdown */}
+                  <div className="mb-4">
+                    <label className="block text-sm text-gray-400 mb-2">Selecione o Ativo:</label>
+                    <select 
+                      value={selectedAsset}
+                      onChange={(e) => setSelectedAsset(e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">Todos os Ativos</option>
+                      {getUniqueAssets().map((asset, index) => (
+                        <option key={index} value={asset}>
+                          {asset} ({detectAssetType(asset)})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  {/* Futures Section */}
-                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-green-500">
-                    <h4 className="text-lg font-medium mb-3 flex items-center">
-                      <TrendingUp className="w-5 h-5 text-green-400 mr-2" />
-                      Futuros
-                    </h4>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Máxima por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.futures.maxPositionPerTrade} contratos
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Média por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.futures.avgPositionPerTrade} contratos
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Mediana por Trade</span>
-                        <span className="font-medium">
-                          {positionSizingData.futures.medianPositionPerTrade} contratos
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Posição Recomendada</span>
-                        <span className="font-medium text-blue-400">
-                          {positionSizingData.futures.recommendedPosition} contratos
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-400">Risco por Trade</span>
-                        <span className="font-medium text-red-400">
-                          {formatMetric(positionSizingData.futures.riskPerTrade, false, true)}
-                        </span>
-                      </div>
+                  {/* Position Metrics */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gradient-to-br from-green-800 to-green-700 p-3 rounded-lg border border-green-500 shadow-md">
+                      <p className="text-sm text-green-200 mb-1">Posição Média</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
+                        } contratos
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-800 to-blue-700 p-3 rounded-lg border border-blue-500 shadow-md">
+                      <p className="text-sm text-blue-200 mb-1">Posição Mediana</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.medianPosition || 0
+                        } contratos
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-800 to-purple-700 p-3 rounded-lg border border-purple-500 shadow-md">
+                      <p className="text-sm text-purple-200 mb-1">Posição Máxima</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade)
+                          : getAssetPositionData(selectedAsset)?.maxPosition || 0
+                        } contratos
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Additional Position Metrics */}
-                <div className="bg-gray-800 rounded-lg p-4">
+                {/* Asset Analysis */}
+                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-green-500 shadow-lg">
                   <h4 className="text-md font-medium mb-3 flex items-center">
-                    <DollarSign className="w-5 h-5 text-yellow-400 mr-2" />
-                    Métricas de Risco e Posicionamento
+                    <TrendingUp className="w-5 h-5 text-green-400 mr-2" />
+                    Análise por Ativo
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-400 mb-1">Posições Abertas Máximas</p>
-                      <p className="text-lg font-medium">
-                        {positionSizingData.general.maxOpenPositions} posições
+                    <div className="bg-gradient-to-br from-orange-800 to-orange-700 p-3 rounded-lg border border-orange-500 shadow-md">
+                      <p className="text-sm text-orange-200 mb-1">Contratos Máximos</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? positionSizingData.general.maxOpenPositions
+                          : getAssetPositionData(selectedAsset)?.maxContractsPerDay || 0
+                        } contratos
                       </p>
                     </div>
-                    <div className="bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-400 mb-1">Setups Máximos por Dia</p>
-                      <p className="text-lg font-medium">
-                        {positionSizingData.general.setupsMaximosPorDia} setups
+                    <div className="bg-gradient-to-br from-teal-800 to-teal-700 p-3 rounded-lg border border-teal-500 shadow-md">
+                      <p className="text-sm text-teal-200 mb-1">Média de Contratos Diários</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? positionSizingData.general.setupsMaximosPorDia
+                          : getAssetPositionData(selectedAsset)?.avgContractsPerDay || 0
+                        } contratos
                       </p>
                     </div>
-                    <div className="bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-400 mb-1">Risco por Trade (2%)</p>
-                      <p className="text-lg font-medium text-blue-400">
-                        {formatMetric(positionSizingData.general.accountRisk, false, true)}
+                    <div className="bg-gradient-to-br from-indigo-800 to-indigo-700 p-3 rounded-lg border border-indigo-500 shadow-md">
+                      <p className="text-sm text-indigo-200 mb-1">Posição Recomendada</p>
+                      <p className="text-lg font-medium text-yellow-300">
+                        {selectedAsset === 'all' 
+                          ? (positionSizingData.stocks.recommendedPosition || positionSizingData.futures.recommendedPosition)
+                          : getAssetPositionData(selectedAsset)?.avgPosition || 0
+                        } contratos
                       </p>
                     </div>
-                    <div className="bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-400 mb-1">Risco Máximo por Trade (1%)</p>
-                      <p className="text-lg font-medium text-red-400">
-                        {formatMetric(positionSizingData.general.maxRiskPerTrade, false, true)}
+                    <div className="bg-gradient-to-br from-pink-800 to-pink-700 p-3 rounded-lg border border-pink-500 shadow-md">
+                      <p className="text-sm text-pink-200 mb-1">Total de Trades</p>
+                      <p className="text-lg font-medium text-white">
+                        {selectedAsset === 'all' 
+                          ? (tradeObject?.trades?.length || 0)
+                          : getAssetPositionData(selectedAsset)?.totalTrades || 0
+                        } trades
                       </p>
                     </div>
                   </div>
                 </div>
 
+                {/* Asset Type Info */}
+                {selectedAsset !== 'all' && getAssetPositionData(selectedAsset) && (
+                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-yellow-500 shadow-lg">
+                    <h4 className="text-md font-medium mb-3 flex items-center">
+                      <BarChart2 className="w-5 h-5 text-yellow-400 mr-2" />
+                      Informações do Ativo
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-gradient-to-br from-yellow-800 to-yellow-700 p-3 rounded-lg border border-yellow-500 shadow-md">
+                        <p className="text-sm text-yellow-200 mb-1">Tipo de Ativo</p>
+                        <p className="text-lg font-medium text-white capitalize">
+                          {getAssetPositionData(selectedAsset)?.assetType}
+                        </p>
+                      </div>
+                      <div className="bg-gradient-to-br from-red-800 to-red-700 p-3 rounded-lg border border-red-500 shadow-md">
+                        <p className="text-sm text-red-200 mb-1">Símbolo</p>
+                        <p className="text-lg font-medium text-white">
+                          {selectedAsset}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Risk Analysis */}
-                <div className="bg-blue-900 bg-opacity-20 border border-blue-800 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-blue-900 to-purple-900 border-2 border-blue-500 rounded-lg p-4 shadow-xl">
                   <div className="flex items-start">
-                    <TrendingDown className="w-5 h-5 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
+                    <TrendingDown className="w-6 h-6 text-yellow-400 mr-3 flex-shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-blue-300 mb-2">Análise de Risco e Position Sizing</h4>
-                      <ul className="text-sm text-blue-200 space-y-1">
-                        <li>• <strong>Account Risk (2%):</strong> {formatMetric(positionSizingData.general.accountRisk, false, true)} - Risco máximo por trade</li>
-                        <li>• <strong>Max Risk (1%):</strong> {formatMetric(positionSizingData.general.maxRiskPerTrade, false, true)} - Limite conservador por operação</li>
-                        <li>• <strong>Posição Recomendada:</strong> {positionSizingData.stocks.recommendedPosition || positionSizingData.futures.recommendedPosition} unidades baseada no risco</li>
-                        <li>• <strong>Máximo de {positionSizingData.general.maxOpenPositions} posições simultâneas</strong> - Controle de exposição</li>
-                        <li>• <strong>Limite de {positionSizingData.general.setupsMaximosPorDia} setups/dia</strong> - Gestão de disciplina</li>
-                        <li>• <strong>Fórmula aplicada:</strong> Position Size = Account Risk ÷ Trade Risk</li>
+                      <h4 className="font-bold text-yellow-300 mb-3 text-lg">Análise de Risco e Position Sizing</h4>
+                      <ul className="text-sm text-blue-200 space-y-2">
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
+                          <strong>Account Risk (2%):</strong> {formatMetric(positionSizingData.general.accountRisk, false, true)} - Risco máximo por trade
+                        </li>
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
+                          <strong>Max Risk (1%):</strong> {formatMetric(positionSizingData.general.maxRiskPerTrade, false, true)} - Limite conservador por operação
+                        </li>
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                          <strong>Posição Recomendada:</strong> {positionSizingData.stocks.recommendedPosition || positionSizingData.futures.recommendedPosition} unidades baseada no risco
+                        </li>
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
+                          <strong>Máximo de {positionSizingData.general.maxOpenPositions} posições simultâneas</strong> - Controle de exposição
+                        </li>
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
+                          <strong>Limite de {positionSizingData.general.setupsMaximosPorDia} setups/dia</strong> - Gestão de disciplina
+                        </li>
+                        <li className="flex items-center">
+                          <span className="w-2 h-2 bg-orange-400 rounded-full mr-2"></span>
+                          <strong>Fórmula aplicada:</strong> Position Size = Account Risk ÷ Trade Risk
+                        </li>
                       </ul>
                     </div>
                   </div>

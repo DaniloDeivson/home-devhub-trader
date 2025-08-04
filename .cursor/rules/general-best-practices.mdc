@@ -1,0 +1,59 @@
+# Regras Gerais de Boas Práticas
+
+## Estrutura de Dados
+- Sempre usar `useMemo` para cálculos complexos e processamento de dados
+- Garantir que todos os valores numéricos sejam convertidos com `Number()`
+- Implementar fallbacks para dados ausentes ou corrompidos
+- Usar interfaces TypeScript bem definidas para props e dados
+
+## Modo Individual vs Consolidado
+- **Modo Individual**: Combinar dados de estratégias selecionadas
+- **Modo Consolidado**: Calcular métricas totais baseadas em todos os dados
+- Sempre verificar `showConsolidated` antes de processar dados
+- Usar `selectedFiles` para controlar quais estratégias estão ativas
+
+## Tooltips e Interface do Usuário
+- Implementar tooltips customizados com dados específicos do contexto
+- Para modo individual: mostrar dados de cada estratégia separadamente
+- Para modo consolidado: mostrar métricas combinadas
+- Sempre incluir formatação de moeda: `.toLocaleString('pt-BR', { minimumFractionDigits: 2 })`
+
+## Cálculo de Drawdown
+- **Modo Individual**: Usar dados específicos de cada estratégia
+- **Modo Consolidado**: Calcular drawdown total baseado no saldo combinado
+- Sempre atualizar `runningPeak` quando saldo supera o peak anterior
+- Calcular drawdown percentual: `(currentDrawdown / runningPeak) * 100`
+
+## Salvamento e Carregamento de Dados
+- Incluir todos os dados necessários para recuperação completa
+- Manter compatibilidade com versões anteriores
+- Usar valores padrão para campos opcionais
+- Implementar logs detalhados para debug
+
+## Debug e Logs
+- Incluir logs detalhados para debug de dados
+- Logar estrutura de dados em cada etapa do processamento
+- Verificar se dados necessários estão disponíveis
+- Usar console.log com emojis para facilitar identificação
+
+## Tratamento de Erros
+- Implementar try-catch em operações assíncronas
+- Mostrar mensagens de erro claras para o usuário
+- Garantir fallbacks para dados ausentes ou corrompidos
+- Validar dados antes de processá-los
+
+## Performance
+- Usar `useMemo` para evitar recálculos desnecessários
+- Implementar lazy loading quando apropriado
+- Otimizar renderização de listas grandes
+- Evitar re-renders desnecessários
+
+## Acessibilidade
+- Incluir tooltips explicativos
+- Usar cores contrastantes
+- Implementar navegação por teclado
+- Fornecer feedback visual claro para ações do usuário
+description:
+globs:
+alwaysApply: false
+---

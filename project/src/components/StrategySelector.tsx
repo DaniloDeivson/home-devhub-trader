@@ -1,5 +1,5 @@
 import React from 'react';
-import { Filter, FileText, X, RefreshCw } from 'lucide-react';
+import { Filter, FileText } from 'lucide-react';
 
 interface StrategySelectorProps {
   selectedStrategy: string | null;
@@ -35,6 +35,12 @@ export function StrategySelector({
   onResetFilters
 }: StrategySelectorProps) {
   const hasMultipleFiles = files.length > 1;
+  
+  console.log('🔍 StrategySelector renderizado:', {
+    selectedStrategy,
+    availableStrategies,
+    hasMultipleFiles
+  });
 
   const handleFileToggle = (fileName: string) => {
     if (!setSelectedFiles) return;
@@ -75,7 +81,13 @@ export function StrategySelector({
             </label>
             <select
               value={selectedStrategy || ''}
-              onChange={(e) => setSelectedStrategy(e.target.value || null)}
+              onChange={(e) => {
+                console.log('🔍 StrategySelector onChange:', {
+                  value: e.target.value,
+                  willSetTo: e.target.value || null
+                });
+                setSelectedStrategy(e.target.value || null);
+              }}
               className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Todas as estratégias</option>

@@ -1,0 +1,52 @@
+# EquityCurveSection - Regras de Implementação
+
+## Estrutura de Dados
+- Sempre usar `useMemo` para `chartData` e `stats` para otimização
+- Processar dados baseado em `timeRange` (trade, daily, weekly, monthly)
+- Garantir que todos os valores numéricos sejam convertidos com `Number()`
+
+## Modo Individual vs Consolidado
+
+### Modo Individual
+- Quando `!showConsolidated && selectedFiles.length > 0`
+- Combinar dados de múltiplas estratégias selecionadas
+- Alinhar dados por data usando `allDates` Set
+- Usar `dataKey` específico para cada estratégia: `saldo_${strategyName}`, `drawdown_${strategyName}`
+- Renderizar múltiplas `Area` components com cores diferentes
+
+### Modo Consolidado
+- Quando `showConsolidated` é true
+- Para múltiplos arquivos: combinar dados de todas as estratégias
+- Calcular drawdown total baseado no saldo combinado:
+  ```typescript
+  let runningPeak = 0;
+  let runningSaldo = 0;
+  const currentDrawdown = runningSaldo - runningPeak;
+  ```
+
+## Tooltip Customizado
+- Implementar `CustomTooltip` com lógica específica para cada modo
+- Para modo individual: mostrar dados de cada estratégia separadamente
+- Para modo consolidado: mostrar drawdown total e peak
+- Sempre incluir formatação de moeda: `.toLocaleString('pt-BR', { minimumFractionDigits: 2 })`
+
+## Cálculo de Drawdown
+- **Modo Individual**: Usar dados específicos de cada estratégia
+- **Modo Consolidado**: Calcular drawdown total baseado no saldo combinado
+- Sempre atualizar `runningPeak` quando saldo supera o peak anterior
+- Calcular drawdown percentual: `(currentDrawdown / runningPeak) * 100`
+
+## Renderização do Gráfico
+- Usar `AreaChart` para ambos os tipos (resultado e drawdown)
+- Para drawdown: usar `dataKey="drawdown"` com cor vermelha
+- Para resultado: usar `dataKey="saldo"` com gradiente
+- Implementar média móvel apenas para tipo resultado
+
+## Debug e Logs
+- Incluir logs detalhados para debug de dados
+- Logar estrutura de dados em cada etapa do processamento
+- Verificar se `fileResults` e `data` estão disponíveis
+description:
+globs:
+alwaysApply: false
+---
