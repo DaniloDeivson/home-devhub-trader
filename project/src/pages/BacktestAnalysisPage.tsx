@@ -878,6 +878,13 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       });
     }
     
+    console.log('🔍 convertToMetricsDashboardFormat - Performance Metrics:', {
+      payoff: perfMetrics["Payoff"],
+      averageWin: perfMetrics["Average Win"],
+      averageLoss: perfMetrics["Average Loss"],
+      profitFactor: perfMetrics["Profit Factor"]
+    });
+    
     return {
       profitFactor: perfMetrics["Profit Factor"] ?? 0,
       winRate: perfMetrics["Win Rate (%)"] ?? 0,
@@ -1892,6 +1899,13 @@ useEffect(() => {
                         combinedMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
                       }
                       
+                      // Calcular payoff (averageWin / averageLoss)
+                      if (combinedMetrics.averageLoss > 0) {
+                        combinedMetrics.payoff = combinedMetrics.averageWin / combinedMetrics.averageLoss;
+                      } else {
+                        combinedMetrics.payoff = combinedMetrics.averageWin > 0 ? 999 : 0;
+                      }
+                      
                       metricsToUse = combinedMetrics;
                       tradesToUse = { trades: combinedTrades };
                       
@@ -1900,7 +1914,10 @@ useEffect(() => {
                         netProfit: combinedMetrics.netProfit,
                         winRate: combinedMetrics.winRate,
                         profitFactor: combinedMetrics.profitFactor,
-                        maxDrawdown: combinedMetrics.maxDrawdown
+                        maxDrawdown: combinedMetrics.maxDrawdown,
+                        payoff: combinedMetrics.payoff,
+                        averageWin: combinedMetrics.averageWin,
+                        averageLoss: combinedMetrics.averageLoss
                       });
                     }
                     // Se há estratégia específica selecionada, usar dados dessa estratégia
@@ -2082,6 +2099,13 @@ useEffect(() => {
                         allMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
                       }
                       
+                      // Calcular payoff (averageWin / averageLoss)
+                      if (allMetrics.averageLoss > 0) {
+                        allMetrics.payoff = allMetrics.averageWin / allMetrics.averageLoss;
+                      } else {
+                        allMetrics.payoff = allMetrics.averageWin > 0 ? 999 : 0;
+                      }
+                      
                       metricsToUse = allMetrics;
                       tradesToUse = { trades: allTrades };
                       
@@ -2091,6 +2115,9 @@ useEffect(() => {
                         winRate: allMetrics.winRate,
                         profitFactor: allMetrics.profitFactor,
                         maxDrawdown: allMetrics.maxDrawdown,
+                        payoff: allMetrics.payoff,
+                        averageWin: allMetrics.averageWin,
+                        averageLoss: allMetrics.averageLoss,
                         filesProcessed: Object.keys(fileResults).length
                       });
                     } else {
@@ -2098,7 +2125,10 @@ useEffect(() => {
                         winRate: metricsToUse.winRate,
                         profitFactor: metricsToUse.profitFactor,
                         maxDrawdown: metricsToUse.maxDrawdown,
-                        totalTrades: metricsToUse.totalTrades
+                        totalTrades: metricsToUse.totalTrades,
+                        payoff: metricsToUse.payoff,
+                        averageWin: metricsToUse.averageWin,
+                        averageLoss: metricsToUse.averageLoss
                       });
                     }
                     

@@ -89,6 +89,14 @@ export function MetricsDashboard({ metrics }: MetricsDashboardProps) {
 
   // Animate metrics when they change
   useEffect(() => {
+    console.log('🔍 MetricsDashboard - Dados recebidos:', {
+      payoff: metrics.payoff,
+      averageWin: metrics.averageWin,
+      averageLoss: metrics.averageLoss,
+      profitFactor: metrics.profitFactor,
+      winRate: metrics.winRate
+    });
+    
     // Set default values for metrics that might be missing
     const metricsWithDefaults = {
       ...metrics,
