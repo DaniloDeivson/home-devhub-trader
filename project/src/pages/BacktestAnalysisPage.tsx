@@ -516,7 +516,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         setEmocional(null);
       }
       
-      setTrades(datara);
+      const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
+        setTrades(parsedTrades);
     } catch (error) {
       console.error('Error fetching emotional data:', error);
       setEmocional(null);
@@ -617,7 +618,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           setEmocional(null);
         }
         
-        setTrades(datara);
+        const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
+        setTrades(parsedTrades);
       } catch (error) {
         console.error('Error fetching emotional data:', error);
         setEmocional(null);
@@ -752,7 +754,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           setEmocional(null);
         }
         
-        setTrades(datara);
+        const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
+        setTrades(parsedTrades);
       } catch (error) {
         console.error('Error fetching emotional data:', error);
         setEmocional(null);
@@ -1875,7 +1878,7 @@ useEffect(() => {
                     showDailyAnalysis={showDailyAnalysis}
                     setShowDailyAnalysis={setShowDailyAnalysis}
                     backtestResult={backtestResult}
-                    tradesData={trades}
+                    tradesData={{ trades }}
                     fileResults={fileResults}
                   />
                 </PlanRestrictedSection>

@@ -983,7 +983,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Total de Trades</p>
               <p className="text-3xl font-bold">
-                {tradeObject?.trades?.length || "0"}
+                {(tradeObject?.trades && tradeObject.trades.length > 0) ? tradeObject.trades.length : (metrics?.totalTrades ?? 0)}
               </p>
             </div>
 
@@ -1067,7 +1067,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Total de Trades</td>
                     <td className="py-2 text-right">
-                     {tradeObject?.trades?.length || "0"}
+                     {(tradeObject?.trades && tradeObject.trades.length > 0) ? tradeObject.trades.length : (metrics?.totalTrades ?? 0)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">

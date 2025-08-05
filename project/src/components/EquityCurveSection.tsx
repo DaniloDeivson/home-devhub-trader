@@ -111,8 +111,8 @@ export function EquityCurveSection({
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
   const [timeRange, setTimeRange] = useState<'trade' | 'daily' | 'weekly' | 'monthly'>('daily');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
-  // const [startDate, setStartDate] = useState('');
-  // const [endDate, setEndDate] = useState('');
+    const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [totalInvestment, setTotalInvestment] = useState<string>('100000');
 
   // Função para gerar cores únicas para cada estratégia
@@ -877,7 +877,8 @@ export function EquityCurveSection({
     }
 
     // Garantir que todos os valores sejam incluídos, mesmo os zeros
-    const processedData = selectedData.map((item: any) => ({
+    // --- PROCESSAMENTO PADRÃO DO PERÍODO ---
+    const processedDataBase = selectedData.map((item: any) => ({
       ...item,
       saldo: Number(item.saldo) || Number(item.resultado) || 0,  // Priorizar saldo
       valor: Number(item.valor) || 0,
@@ -885,8 +886,55 @@ export function EquityCurveSection({
       drawdown: Number(item.drawdown) || 0,
       drawdownPercent: Number(item.drawdownPercent) || 0,
       peak: Number(item.peak) || 0,
-      trades: Number(item.trades) || 0
+      trades: Number(item.trades) || 0,
+      resultado_periodo: Number(item.resultado_periodo) || 0 // garantir campo para períodos
     }));
+
+    // Recalcular saldo acumulado e drawdown para weekly/monthly para manter lógica consistente
+    if ((timeRange === 'weekly' || timeRange === 'monthly') && processedData.length > 0) {
+      const sorted = [...processedData].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      let runningTotal = 0;
+      let peak = 0;
+      const aligned = sorted.map((item: any, idx: number) => {
+        let periodResult: number;
+        if (item.resultado_periodo !== 0) {
+          periodResult = item.resultado_periodo;
+        } else if (item.saldo !== undefined && idx === 0) {
+          // Se o primeiro item já traz saldo acumulado, usamos a diferença a partir dele
+          runningTotal = 0; // garantir
+          periodResult = item.saldo;
+        } else if (item.saldo !== undefined) {
+          // Caso venha saldo acumulado, converte para variação do período
+          periodResult = item.saldo - runningTotal;
+        } else {
+          periodResult = item.resultado || 0;
+        }
+        runningTotal += periodResult;
+        if (runningTotal > peak) peak = runningTotal;
+        const ddRaw = peak - runningTotal;
+        const ddValue = chartType === 'drawdown' ? Math.max(0, ddRaw) : ddRaw;
+        const ddPct = peak !== 0 ? (Math.abs(ddValue) / peak) * 100 : 0;
+        return {
+          ...item,
+          saldo: runningTotal,
+          drawdown: Math.abs(ddValue),
+          drawdownPercent: ddPct,
+          peak: peak,
+          trades: idx + 1
+        };
+      });
+
+      // Aplicar filtro de datas se necessário
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return aligned.filter((item: any) => {
+          const itemDate = new Date(item.date);
+          return itemDate >= start && itemDate <= end;
+        });
+      }
+      return aligned;
+    }
 
     // Filtrar por período se especificado
     if (startDate && endDate) {
