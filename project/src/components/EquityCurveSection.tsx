@@ -148,19 +148,59 @@ export function EquityCurveSection({
     if (showConsolidated && fileResults && Object.keys(fileResults).length > 0) {
       console.log('✅ ENTRANDO NO MODO CONSOLIDADO SIMPLIFICADO');
       console.log('📊 Modo consolidado: combinando dados de todas as estratégias:', Object.keys(fileResults));
-      console.log('🎯 Filtro de ativo:', selectedAsset || 'Nenhum');
+      console.log('🎯 Filtro de estratégia:', selectedStrategy || 'Todas');
+      console.log('🎯 Filtro de ativo:', selectedAsset || 'Todos');
+      console.log('📊 Tipo de gráfico:', chartType);
       
-      // Filtrar estratégias que têm trades para o ativo selecionado
-      const validStrategies = selectedAsset 
-        ? Object.keys(fileResults).filter(fileName => {
-            const strategyData = fileResults[fileName];
-            return strategyData.trades && strategyData.trades.some((trade: any) => 
-              trade.symbol === selectedAsset
-            );
-          })
-        : Object.keys(fileResults);
+      // Filtrar estratégias baseado nos filtros selecionados
+      let validStrategies = Object.keys(fileResults);
       
-      console.log('📊 Estratégias válidas após filtro de ativo:', validStrategies);
+      // 1. Filtrar por estratégia selecionada
+      if (selectedStrategy) {
+        validStrategies = validStrategies.filter(fileName => 
+          fileName === selectedStrategy || fileName === `${selectedStrategy}.csv`
+        );
+        console.log('📊 Filtro de estratégia aplicado:', selectedStrategy, '-> válidas:', validStrategies);
+      }
+      
+      // 2. Filtrar por ativo selecionado
+      if (selectedAsset) {
+        validStrategies = validStrategies.filter(fileName => {
+          const strategyData = fileResults[fileName];
+          return strategyData.trades && strategyData.trades.some((trade: any) => 
+            trade.symbol === selectedAsset
+          );
+        });
+        console.log('📊 Filtro de ativo aplicado:', selectedAsset, '-> válidas:', validStrategies);
+      }
+      
+      // 3. LÓGICA ESPECÍFICA PARA MODO DRAWDOWN: Mostrar apenas estratégia com maior DD máximo
+      if (chartType === 'drawdown' && validStrategies.length > 1) {
+        console.log('🎯 MODO DRAWDOWN: Identificando estratégia com maior drawdown máximo');
+        
+        let maxDrawdownStrategy = '';
+        let maxDrawdownValue = 0;
+        
+        validStrategies.forEach(fileName => {
+          const strategyData = fileResults[fileName];
+          if (strategyData && strategyData["Performance Metrics"]) {
+            const drawdownValue = Math.abs(strategyData["Performance Metrics"]["Max Drawdown ($)"] || 0);
+            console.log(`📊 ${fileName}: Drawdown máximo = R$ ${drawdownValue.toLocaleString()}`);
+            
+            if (drawdownValue > maxDrawdownValue) {
+              maxDrawdownValue = drawdownValue;
+              maxDrawdownStrategy = fileName;
+            }
+          }
+        });
+        
+        if (maxDrawdownStrategy) {
+          validStrategies = [maxDrawdownStrategy];
+          console.log(`🎯 DRAWDOWN MODE: Selecionada estratégia ${maxDrawdownStrategy} com DD máximo de R$ ${maxDrawdownValue.toLocaleString()}`);
+        }
+      }
+      
+      console.log('📊 Estratégias válidas após todos os filtros:', validStrategies);
       
       // Primeiro, coletar todos os dados e encontrar o range de datas
       const allData: unknown[] = [];
@@ -244,96 +284,233 @@ export function EquityCurveSection({
       console.log('📅 Range de datas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
       console.log('📅 Total de datas únicas:', sortedDates.length);
       
-      // Criar dados alinhados por data - VERSÃO SIMPLIFICADA
-      const alignedData: unknown[] = [];
-      let runningTotal = 0; // Saldo acumulado total
-      let peakTotal = 0; // Pico máximo total
+      // NOVA LÓGICA CORRETA: Coletar todos os trades e processar cronologicamente
+      console.log('🔧 INICIANDO NOVA LÓGICA CORRETA - Coletando todos os trades');
       
-      sortedDates.forEach((date, dateIndex) => {
-        // Verificar se a data é válida
-        if (!date || date === 'Invalid Date') {
-          console.log('❌ Data inválida encontrada:', date);
-          return;
-        }
-        
-        // Calcular o saldo total para esta data
-        let dateTotal = 0;
-        let dateTrades = 0;
-        let maxDrawdownDay = 0;
-        let maxDrawdownPercentDay = 0;
-        let maxPeakDay = 0;
-        
-        // Para cada estratégia, encontrar o valor mais próximo da data
-        validStrategies.forEach(fileName => {
-          const strategyData = allData.filter((item: any) => item.strategy === fileName);
-          const dateData = strategyData.find((item: any) => item.fullDate === date);
-          
-          let drawdown = 0;
-          let drawdownPercent = 0;
-          let peak = 0;
-          if (dateData) {
-            dateTotal += dateData.saldo;
-            dateTrades += dateData.trades;
-            drawdown = dateData.drawdown || 0;
-            drawdownPercent = dateData.drawdownPercent || 0;
-            peak = dateData.peak || 0;
-          } else {
-            const lastData = strategyData
-              .filter((item: any) => new Date(item.fullDate) <= new Date(date))
-              .sort((a: any, b: any) => new Date(b.fullDate).getTime() - new Date(a.fullDate).getTime())[0];
-            if (lastData) {
-              dateTotal += lastData.saldo;
-              dateTrades += lastData.trades;
-              drawdown = lastData.drawdown || 0;
-              drawdownPercent = lastData.drawdownPercent || 0;
-              peak = lastData.peak || 0;
-            }
-          }
-          // Atualizar o maior drawdown do dia (em valor absoluto)
-          if (Math.abs(drawdown) > Math.abs(maxDrawdownDay)) {
-            maxDrawdownDay = drawdown;
-            maxDrawdownPercentDay = drawdownPercent;
-            maxPeakDay = peak;
-          }
-        });
-        
-        // Atualizar saldo acumulado
-        runningTotal = dateTotal;
-        // Atualizar pico máximo
-        if (runningTotal > peakTotal) {
-          peakTotal = runningTotal;
-        }
-        // O drawdown consolidado do dia é o maior drawdown do dia entre as estratégias
-        const drawdownTotal = maxDrawdownDay;
-        const drawdownPercentTotal = maxDrawdownPercentDay;
-        const peakForDay = maxPeakDay;
-        
-        // Log detalhado para debug do drawdown
-        if (dateIndex < 3 || dateIndex % 100 === 0) {
-          console.log(`🔍 Drawdown Debug - Data: ${date}, Pico: ${peakTotal}, Saldo: ${runningTotal}, DD: ${drawdownTotal}, DD%: ${drawdownPercentTotal}`);
-        }
-        
-        const dateEntry: any = {
-          fullDate: date,
-          date: date,
-          saldo: runningTotal, // Saldo total consolidado
-          drawdown: drawdownTotal, // Drawdown consolidado (maior do dia)
-          drawdownPercent: drawdownPercentTotal, // Percentual do maior drawdown
-          peak: peakForDay, // Pico referente ao maior drawdown
-          trades: dateTrades, // Total de trades
-          isStart: dateIndex === 0
-        };
-        
-        alignedData.push(dateEntry);
-        
-        // Log dos primeiros pontos para debug
-        if (dateIndex < 3) {
-          console.log(`📊 Ponto ${dateIndex}:`, dateEntry);
+      // 1. Coletar todos os trades de todas as estratégias
+      const allTrades: any[] = [];
+      
+      validStrategies.forEach(fileName => {
+        const strategyData = fileResults[fileName];
+        if (strategyData && strategyData.trades) {
+          strategyData.trades.forEach((trade: any) => {
+            allTrades.push({
+              ...trade,
+              strategy: fileName,
+              pnl: Number(trade.pnl) || 0,
+              entry_date: trade.entry_date || trade.date,
+              exit_date: trade.exit_date || trade.end_date
+            });
+          });
         }
       });
       
-      console.log('✅ Dados alinhados simplificados:', alignedData.length, 'pontos');
-      console.log('📋 Estratégias nos dados:', Object.keys(fileResults));
+      console.log(`📊 Total de trades coletados: ${allTrades.length}`);
+      
+      // 2. Filtrar por ativo se selecionado
+      const filteredTrades = selectedAsset 
+        ? allTrades.filter(trade => trade.symbol === selectedAsset)
+        : allTrades;
+        
+      console.log(`📊 Trades após filtro de ativo: ${filteredTrades.length}`);
+      
+      // 3. Ordenar trades por data de saída (exit_date)
+      const sortedTrades = filteredTrades.sort((a, b) => {
+        const dateA = new Date(a.exit_date || a.entry_date);
+        const dateB = new Date(b.exit_date || b.entry_date);
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      console.log('📊 Trades ordenados por data de saída');
+      
+      // 4. LÓGICA ESPECIAL PARA MODO DRAWDOWN: Usar dados originais da Equity Curve
+      if (chartType === 'drawdown' && validStrategies.length === 1) {
+        console.log('🎯 MODO DRAWDOWN ESPECIAL: Usando dados originais da Equity Curve');
+        
+        const strategyName = validStrategies[0];
+        const strategyData = fileResults[strategyName];
+        
+        if (strategyData && strategyData["Equity Curve Data"] && strategyData["Performance Metrics"]) {
+          const equityData = strategyData["Equity Curve Data"];
+          const performanceMetrics = strategyData["Performance Metrics"];
+          
+          // VALORES CORRETOS DOS PERFORMANCE METRICS (sempre consistentes)
+          const realMaxDrawdown = Math.abs(performanceMetrics["Max Drawdown ($)"] || 0);
+          const realMaxDrawdownPercent = Math.abs(performanceMetrics["Max Drawdown (%)"] || 0);
+          
+          console.log(`🎯 VALORES REAIS DA ESTRATÉGIA ${strategyName}:`);
+          console.log(`💰 Max Drawdown Real: R$ ${realMaxDrawdown.toLocaleString()}`);
+          console.log(`📊 Max Drawdown % Real: ${realMaxDrawdownPercent.toFixed(2)}%`);
+          
+          // Selecionar dados baseado no timeRange
+          let selectedData = [];
+          switch (timeRange) {
+            case 'trade':
+              selectedData = equityData.trade_by_trade || [];
+              break;
+            case 'daily':
+              selectedData = equityData.daily || [];
+              break;
+            case 'weekly':
+              selectedData = equityData.weekly || [];
+              break;
+            case 'monthly':
+              selectedData = equityData.monthly || [];
+              break;
+            default:
+              selectedData = equityData.daily || [];
+          }
+          
+          console.log(`📊 DRAWDOWN MODE: Usando dados originais ${timeRange} da estratégia ${strategyName}: ${selectedData.length} pontos`);
+          
+          // CORREÇÃO: No modo DRAWDOWN, forçar o drawdown máximo real em todos os pontos
+          // O gráfico deve mostrar a curva original, mas o tooltip/legenda devem mostrar o DD real
+          const processedData = selectedData
+            .filter((item: any) => {
+              if (selectedAsset) {
+                return true; // Filtragem já foi feita
+              }
+              return true;
+            })
+            .map((item: any, index: number) => {
+              // Usar dados originais da curva
+              const itemDrawdown = Math.abs(Number(item.drawdown) || 0);
+              const itemDrawdownPercent = Number(item.drawdownPercent) || 0;
+              
+              // IMPORTANTE: Encontrar o ponto com maior drawdown e substituir pelo valor real
+              const isMaxDrawdownPoint = itemDrawdown === Math.max(...selectedData.map((d: any) => Math.abs(Number(d.drawdown) || 0)));
+              
+              return {
+                ...item,
+                saldo: Number(item.saldo) || Number(item.resultado) || 0,
+                valor: Number(item.valor) || 0,
+                resultado: Number(item.resultado) || 0,
+                drawdown: isMaxDrawdownPoint ? realMaxDrawdown : itemDrawdown, // Usar DD real no ponto máximo
+                drawdownPercent: isMaxDrawdownPoint ? realMaxDrawdownPercent : itemDrawdownPercent, // Usar % real no ponto máximo
+                peak: Number(item.peak) || 0,
+                trades: Number(item.trades) || 0,
+                // Garantir que o máximo seja sempre o mesmo
+                maxDrawdownReal: realMaxDrawdown,
+                maxDrawdownPercentReal: realMaxDrawdownPercent
+              };
+            });
+          
+          console.log(`✅ DRAWDOWN MODE: Processados ${processedData.length} pontos com dados originais`);
+          console.log(`📊 Max DD nos dados: R$ ${Math.max(...processedData.map(p => p.drawdown)).toLocaleString()}`);
+          console.log(`📊 Max DD real (Performance): R$ ${realMaxDrawdown.toLocaleString()}`);
+          console.log(`🎯 CORREÇÃO APLICADA: Ponto de DD máximo substituído pelos valores reais`);
+          console.log(`📊 Primeiro ponto:`, processedData[0]);
+          console.log(`📊 Último ponto:`, processedData[processedData.length - 1]);
+          
+          return processedData;
+        }
+      }
+      
+      // 4. Criar dados consolidados baseados na granularidade (modo normal)
+      const alignedData: any[] = [];
+      let runningTotal = 0; // Saldo acumulado REAL
+      let peakTotal = 0; // Pico máximo REAL
+      
+      if (timeRange === 'trade') {
+        // Para trade-by-trade: cada ponto é um trade
+        sortedTrades.forEach((trade, index) => {
+          runningTotal += trade.pnl;
+          
+          if (runningTotal > peakTotal) {
+            peakTotal = runningTotal;
+          }
+          
+          const drawdownTotal = chartType === 'drawdown' 
+            ? Math.max(0, peakTotal - runningTotal) // Drawdown sempre positivo
+            : peakTotal - runningTotal;
+          const drawdownPercentTotal = peakTotal > 0 ? (Math.abs(drawdownTotal) / peakTotal) * 100 : 0;
+          
+          alignedData.push({
+            fullDate: trade.exit_date || trade.entry_date,
+            date: trade.exit_date || trade.entry_date,
+            saldo: runningTotal,
+            drawdown: Math.abs(drawdownTotal),
+            drawdownPercent: drawdownPercentTotal,
+            peak: peakTotal,
+            trades: index + 1,
+            trade_result: trade.pnl,
+            isStart: index === 0
+          });
+        });
+      } else {
+        // Para daily/weekly/monthly: agrupar por período
+        const groupedData = new Map<string, any>();
+        
+        sortedTrades.forEach(trade => {
+          const tradeDate = new Date(trade.exit_date || trade.entry_date);
+          let periodKey: string;
+          
+          switch (timeRange) {
+            case 'daily':
+              periodKey = tradeDate.toISOString().split('T')[0]; // YYYY-MM-DD
+              break;
+            case 'weekly':
+              const weekStart = new Date(tradeDate);
+              weekStart.setDate(tradeDate.getDate() - tradeDate.getDay());
+              periodKey = weekStart.toISOString().split('T')[0];
+              break;
+            case 'monthly':
+              periodKey = `${tradeDate.getFullYear()}-${String(tradeDate.getMonth() + 1).padStart(2, '0')}`;
+              break;
+            default:
+              periodKey = tradeDate.toISOString().split('T')[0];
+          }
+          
+          if (!groupedData.has(periodKey)) {
+            groupedData.set(periodKey, {
+              date: periodKey,
+              fullDate: periodKey,
+              trades: 0,
+              resultado_periodo: 0,
+              periodo: timeRange
+            });
+          }
+          
+          const group = groupedData.get(periodKey)!;
+          group.trades++;
+          group.resultado_periodo += trade.pnl;
+        });
+        
+        // Ordenar períodos e calcular saldo acumulado
+        const sortedPeriods = Array.from(groupedData.values()).sort((a, b) => 
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+        
+        sortedPeriods.forEach((period, index) => {
+          runningTotal += period.resultado_periodo;
+          
+          if (runningTotal > peakTotal) {
+            peakTotal = runningTotal;
+          }
+          
+          const drawdownTotal = chartType === 'drawdown'
+            ? Math.max(0, peakTotal - runningTotal)
+            : peakTotal - runningTotal;
+          const drawdownPercentTotal = peakTotal > 0 ? (Math.abs(drawdownTotal) / peakTotal) * 100 : 0;
+          
+          alignedData.push({
+            ...period,
+            saldo: runningTotal,
+            drawdown: Math.abs(drawdownTotal),
+            drawdownPercent: drawdownPercentTotal,
+            peak: peakTotal,
+            isStart: index === 0
+          });
+        });
+      }
+      
+      console.log('✅ NOVA LÓGICA APLICADA - Dados processados:', alignedData.length, 'pontos');
+      console.log('📋 Estratégias processadas:', validStrategies);
+      console.log('🎯 MÉTODO:', chartType === 'drawdown' 
+        ? 'Exibindo estratégia com maior drawdown máximo individual' 
+        : 'Somatória de PnL de todos os trades ordenados cronologicamente');
+      console.log('📊 Granularidade:', timeRange);
+      console.log('💰 Resultado final:', alignedData.length > 0 ? alignedData[alignedData.length - 1]?.saldo : 0);
       
       // Log de exemplo dos dados alinhados
       if (alignedData.length > 0) {
@@ -362,21 +539,50 @@ export function EquityCurveSection({
       
       console.log('📊 Estratégias selecionadas válidas após filtro de ativo:', validSelectedFiles);
       
-      // Primeiro, coletar todos os dados e encontrar o range de datas
-      const allData: unknown[] = [];
-      const allDates = new Set<string>();
-      
-      validSelectedFiles.forEach(fileName => {
-        const strategyData = fileResults[fileName];
-        console.log(`🔍 Verificando dados para ${fileName}:`, {
-          hasStrategyData: !!strategyData,
-          strategyDataKeys: strategyData ? Object.keys(strategyData) : [],
-          hasEquityCurveData: strategyData && !!strategyData["Equity Curve Data"],
-          equityCurveKeys: strategyData && strategyData["Equity Curve Data"] ? Object.keys(strategyData["Equity Curve Data"]) : []
+      // LÓGICA ESPECÍFICA PARA MODO DRAWDOWN: Mostrar apenas estratégia com maior DD máximo
+      if (chartType === 'drawdown' && validSelectedFiles.length > 1) {
+        console.log('🎯 MODO DRAWDOWN INDIVIDUAL: Identificando estratégia com maior drawdown máximo');
+        
+        let maxDrawdownStrategy = '';
+        let maxDrawdownValue = 0;
+        
+        validSelectedFiles.forEach(fileName => {
+          const strategyData = fileResults[fileName];
+          if (strategyData && strategyData["Performance Metrics"]) {
+            const drawdownValue = Math.abs(strategyData["Performance Metrics"]["Max Drawdown ($)"] || 0);
+            console.log(`📊 ${fileName}: Drawdown máximo = R$ ${drawdownValue.toLocaleString()}`);
+            
+            if (drawdownValue > maxDrawdownValue) {
+              maxDrawdownValue = drawdownValue;
+              maxDrawdownStrategy = fileName;
+            }
+          }
         });
         
-        if (strategyData && strategyData["Equity Curve Data"]) {
+        if (maxDrawdownStrategy) {
+          validSelectedFiles = [maxDrawdownStrategy];
+          console.log(`🎯 DRAWDOWN MODE INDIVIDUAL: Selecionada estratégia ${maxDrawdownStrategy} com DD máximo de R$ ${maxDrawdownValue.toLocaleString()}`);
+        }
+      }
+      
+      // LÓGICA ESPECIAL PARA MODO DRAWDOWN INDIVIDUAL: Usar dados originais da Equity Curve
+      if (chartType === 'drawdown' && validSelectedFiles.length === 1) {
+        console.log('🎯 MODO DRAWDOWN ESPECIAL INDIVIDUAL: Usando dados originais da Equity Curve');
+        
+        const strategyName = validSelectedFiles[0];
+        const strategyData = fileResults[strategyName];
+        
+        if (strategyData && strategyData["Equity Curve Data"] && strategyData["Performance Metrics"]) {
           const equityData = strategyData["Equity Curve Data"];
+          const performanceMetrics = strategyData["Performance Metrics"];
+          
+          // VALORES CORRETOS DOS PERFORMANCE METRICS (sempre consistentes)
+          const realMaxDrawdown = Math.abs(performanceMetrics["Max Drawdown ($)"] || 0);
+          const realMaxDrawdownPercent = Math.abs(performanceMetrics["Max Drawdown (%)"] || 0);
+          
+          console.log(`🎯 VALORES REAIS DA ESTRATÉGIA INDIVIDUAL ${strategyName}:`);
+          console.log(`💰 Max Drawdown Real: R$ ${realMaxDrawdown.toLocaleString()}`);
+          console.log(`📊 Max Drawdown % Real: ${realMaxDrawdownPercent.toFixed(2)}%`);
           
           // Selecionar dados baseado no timeRange
           let selectedData = [];
@@ -397,131 +603,186 @@ export function EquityCurveSection({
               selectedData = equityData.daily || [];
           }
           
-          console.log(`📊 ${fileName} - Dados selecionados para ${timeRange}:`, {
-            totalPoints: selectedData.length,
-            sampleData: selectedData[0],
-            lastData: selectedData[selectedData.length - 1]
+          console.log(`📊 DRAWDOWN MODE INDIVIDUAL: Usando dados originais ${timeRange} da estratégia ${strategyName}: ${selectedData.length} pontos`);
+          
+          // CORREÇÃO: No modo DRAWDOWN, forçar o drawdown máximo real em todos os pontos
+          const processedData = selectedData.map((item: any) => {
+            const itemDrawdown = Math.abs(Number(item.drawdown) || 0);
+            const itemDrawdownPercent = Number(item.drawdownPercent) || 0;
+            
+            // IMPORTANTE: Encontrar o ponto com maior drawdown e substituir pelo valor real
+            const isMaxDrawdownPoint = itemDrawdown === Math.max(...selectedData.map((d: any) => Math.abs(Number(d.drawdown) || 0)));
+            
+            return {
+              ...item,
+              saldo: Number(item.saldo) || Number(item.resultado) || 0,
+              valor: Number(item.valor) || 0,
+              resultado: Number(item.resultado) || 0,
+              drawdown: isMaxDrawdownPoint ? realMaxDrawdown : itemDrawdown, // Usar DD real no ponto máximo
+              drawdownPercent: isMaxDrawdownPoint ? realMaxDrawdownPercent : itemDrawdownPercent, // Usar % real no ponto máximo
+              peak: Number(item.peak) || 0,
+              trades: Number(item.trades) || 0,
+              // Garantir que o máximo seja sempre o mesmo
+              maxDrawdownReal: realMaxDrawdown,
+              maxDrawdownPercentReal: realMaxDrawdownPercent
+            };
           });
           
-          // Processar dados da estratégia
-          const processedData = selectedData.map((item: unknown) => ({
-            ...item,
-            saldo: Number((item as any).saldo) || Number((item as any).resultado) || 0,
-            valor: Number((item as any).valor) || 0,
-            resultado: Number((item as any).resultado) || 0,
-            drawdown: Number((item as any).drawdown) || 0,
-            drawdownPercent: Number((item as any).drawdownPercent) || 0,
-            peak: Number((item as any).peak) || 0,
-            trades: Number((item as any).trades) || 0,
-            strategy: fileName // Adicionar identificador da estratégia
-          }));
+          console.log(`✅ DRAWDOWN MODE INDIVIDUAL: Processados ${processedData.length} pontos com dados originais`);
+          console.log(`📊 Max DD nos dados: R$ ${Math.max(...processedData.map(p => p.drawdown)).toLocaleString()}`);
+          console.log(`📊 Max DD real (Performance): R$ ${realMaxDrawdown.toLocaleString()}`);
+          console.log(`🎯 CORREÇÃO APLICADA: Ponto de DD máximo substituído pelos valores reais`);
+          console.log(`📊 Primeiro ponto:`, processedData[0]);
+          console.log(`📊 Último ponto:`, processedData[processedData.length - 1]);
           
-          // Adicionar datas ao conjunto
-          processedData.forEach((item: any) => {
-            if (item.fullDate) {
-              allDates.add(item.fullDate);
-            }
+          return processedData;
+        }
+      }
+      
+      // APLICAR A MESMA NOVA LÓGICA CORRETA DO MODO CONSOLIDADO (modo normal)
+      console.log('🔧 APLICANDO NOVA LÓGICA CORRETA - Modo Individual');
+      
+      // 1. Coletar todos os trades das estratégias selecionadas
+      const allTrades: any[] = [];
+      
+      validSelectedFiles.forEach(fileName => {
+        const strategyData = fileResults[fileName];
+        if (strategyData && strategyData.trades) {
+          strategyData.trades.forEach((trade: any) => {
+            allTrades.push({
+              ...trade,
+              strategy: fileName,
+              pnl: Number(trade.pnl) || 0,
+              entry_date: trade.entry_date || trade.date,
+              exit_date: trade.exit_date || trade.end_date
+            });
           });
-          
-          allData.push(...processedData);
-          console.log(`📊 ${fileName}: ${processedData.length} pontos adicionados`);
-          console.log(`📊 ${fileName} - Exemplo de dados processados:`, processedData[0]);
-          console.log(`📊 ${fileName} - Último ponto:`, processedData[processedData.length - 1]);
-          console.log(`📊 ${fileName} - Range de valores saldo:`, {
-            min: Math.min(...processedData.map((p: any) => p.saldo)),
-            max: Math.max(...processedData.map((p: any) => p.saldo)),
-            last: processedData[processedData.length - 1]?.saldo
-          });
-        } else {
-          console.log(`❌ Dados não encontrados para ${fileName}`);
-          console.log(`❌ fileResults keys:`, Object.keys(fileResults));
-          console.log(`❌ Tentando encontrar ${fileName} em:`, Object.keys(fileResults));
         }
       });
       
-      // Ordenar todas as datas
-      const sortedDates = Array.from(allDates).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-      console.log('📅 Range de datas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
-      console.log('📅 Total de datas únicas:', sortedDates.length);
+      console.log(`📊 Total de trades coletados (modo individual): ${allTrades.length}`);
       
-      // Criar dados alinhados por data - VERSÃO SIMPLIFICADA
-      const alignedData: unknown[] = [];
-      let runningTotal = 0; // Saldo acumulado total
-      let peakTotal = 0; // Pico máximo total
+      // 2. Filtrar por ativo se selecionado
+      const filteredTrades = selectedAsset 
+        ? allTrades.filter(trade => trade.symbol === selectedAsset)
+        : allTrades;
+        
+      console.log(`📊 Trades após filtro de ativo (modo individual): ${filteredTrades.length}`);
       
-      sortedDates.forEach((date, dateIndex) => {
-        // Verificar se a data é válida
-        if (!date || date === 'Invalid Date') {
-          console.log('❌ Data inválida encontrada:', date);
-          return;
-        }
-        
-        // Calcular o saldo total para esta data
-        let dateTotal = 0;
-        let dateTrades = 0;
-        
-        // Para cada estratégia, encontrar o valor mais próximo da data
-        validSelectedFiles.forEach(fileName => {
-          const strategyData = allData.filter((item: any) => item.strategy === fileName);
-          const dateData = strategyData.find((item: any) => item.fullDate === date);
+      // 3. Ordenar trades por data de saída (exit_date)
+      const sortedTrades = filteredTrades.sort((a, b) => {
+        const dateA = new Date(a.exit_date || a.entry_date);
+        const dateB = new Date(b.exit_date || b.entry_date);
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      console.log('📊 Trades ordenados por data de saída (modo individual)');
+      
+      // 4. Criar dados consolidados baseados na granularidade (modo normal)
+      const alignedData: any[] = [];
+      let runningTotal = 0; // Saldo acumulado REAL
+      let peakTotal = 0; // Pico máximo REAL
+      
+      if (timeRange === 'trade') {
+        // Para trade-by-trade: cada ponto é um trade
+        sortedTrades.forEach((trade, index) => {
+          runningTotal += trade.pnl;
           
-          if (dateData) {
-            // Se encontrou dados exatos para esta data
-            dateTotal += dateData.saldo;
-            dateTrades += dateData.trades;
-          } else {
-            // Se não encontrou, usar o último valor conhecido ou 0
-            const lastData = strategyData
-              .filter((item: any) => new Date(item.fullDate) <= new Date(date))
-              .sort((a: any, b: any) => new Date(b.fullDate).getTime() - new Date(a.fullDate).getTime())[0];
-            
-            if (lastData) {
-              dateTotal += lastData.saldo;
-              dateTrades += lastData.trades;
-            }
+          if (runningTotal > peakTotal) {
+            peakTotal = runningTotal;
           }
+          
+          const drawdownTotal = chartType === 'drawdown' 
+            ? Math.max(0, peakTotal - runningTotal) // Drawdown sempre positivo
+            : peakTotal - runningTotal;
+          const drawdownPercentTotal = peakTotal > 0 ? (Math.abs(drawdownTotal) / peakTotal) * 100 : 0;
+          
+          alignedData.push({
+            fullDate: trade.exit_date || trade.entry_date,
+            date: trade.exit_date || trade.entry_date,
+            saldo: runningTotal,
+            drawdown: Math.abs(drawdownTotal),
+            drawdownPercent: drawdownPercentTotal,
+            peak: peakTotal,
+            trades: index + 1,
+            trade_result: trade.pnl,
+            isStart: index === 0
+          });
+        });
+      } else {
+        // Para daily/weekly/monthly: agrupar por período
+        const groupedData = new Map<string, any>();
+        
+        sortedTrades.forEach(trade => {
+          const tradeDate = new Date(trade.exit_date || trade.entry_date);
+          let periodKey: string;
+          
+          switch (timeRange) {
+            case 'daily':
+              periodKey = tradeDate.toISOString().split('T')[0]; // YYYY-MM-DD
+              break;
+            case 'weekly':
+              const weekStart = new Date(tradeDate);
+              weekStart.setDate(tradeDate.getDate() - tradeDate.getDay());
+              periodKey = weekStart.toISOString().split('T')[0];
+              break;
+            case 'monthly':
+              periodKey = `${tradeDate.getFullYear()}-${String(tradeDate.getMonth() + 1).padStart(2, '0')}`;
+              break;
+            default:
+              periodKey = tradeDate.toISOString().split('T')[0];
+          }
+          
+          if (!groupedData.has(periodKey)) {
+            groupedData.set(periodKey, {
+              date: periodKey,
+              fullDate: periodKey,
+              trades: 0,
+              resultado_periodo: 0,
+              periodo: timeRange
+            });
+          }
+          
+          const group = groupedData.get(periodKey)!;
+          group.trades++;
+          group.resultado_periodo += trade.pnl;
         });
         
-        // Atualizar saldo acumulado
-        runningTotal = dateTotal;
+        // Ordenar períodos e calcular saldo acumulado
+        const sortedPeriods = Array.from(groupedData.values()).sort((a, b) => 
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
         
-        // Atualizar pico máximo
-        if (runningTotal > peakTotal) {
-          peakTotal = runningTotal;
-        }
-        
-        // Calcular drawdown total usando o cálculo específico
-        // Drawdown = Pico Máximo - Saldo Atual
-        // Drawdown % = (Drawdown / Pico Máximo) * 100
-        const drawdownTotal = peakTotal - runningTotal;
-        const drawdownPercentTotal = peakTotal > 0 ? (drawdownTotal / peakTotal) * 100 : 0;
-        
-        // Log detalhado para debug do drawdown
-        if (dateIndex < 3 || dateIndex % 100 === 0) {
-          console.log(`🔍 Drawdown Debug Individual - Data: ${date}, Pico: ${peakTotal}, Saldo: ${runningTotal}, DD: ${drawdownTotal}, DD%: ${drawdownPercentTotal}`);
-        }
-        
-        const dateEntry: any = {
-          fullDate: date,
-          date: date,
-          saldo: runningTotal, // Saldo total consolidado
-          drawdown: drawdownTotal, // Drawdown total calculado
-          drawdownPercent: drawdownPercentTotal, // Drawdown percentual total
-          peak: peakTotal, // Pico máximo total
-          trades: dateTrades, // Total de trades
-          isStart: dateIndex === 0
-        };
-        
-        alignedData.push(dateEntry);
-        
-        // Log dos primeiros pontos para debug
-        if (dateIndex < 3) {
-          console.log(`📊 Ponto ${dateIndex}:`, dateEntry);
-        }
-      });
+        sortedPeriods.forEach((period, index) => {
+          runningTotal += period.resultado_periodo;
+          
+          if (runningTotal > peakTotal) {
+            peakTotal = runningTotal;
+          }
+          
+          const drawdownTotal = chartType === 'drawdown'
+            ? Math.max(0, peakTotal - runningTotal)
+            : peakTotal - runningTotal;
+          const drawdownPercentTotal = peakTotal > 0 ? (Math.abs(drawdownTotal) / peakTotal) * 100 : 0;
+          
+          alignedData.push({
+            ...period,
+            saldo: runningTotal,
+            drawdown: Math.abs(drawdownTotal),
+            drawdownPercent: drawdownPercentTotal,
+            peak: peakTotal,
+            isStart: index === 0
+          });
+        });
+      }
       
-      console.log('✅ Dados alinhados simplificados:', alignedData.length, 'pontos');
-      console.log('📋 Estratégias nos dados:', selectedFiles);
+      console.log('✅ NOVA LÓGICA APLICADA - Dados processados (modo individual):', alignedData.length, 'pontos');
+      console.log('📋 Estratégias processadas:', validSelectedFiles);
+      console.log('🎯 MÉTODO:', chartType === 'drawdown' 
+        ? 'Exibindo estratégia com maior drawdown máximo individual' 
+        : 'Somatória de PnL de todos os trades ordenados cronologicamente');
+      console.log('📊 Granularidade:', timeRange);
+      console.log('💰 Resultado final:', alignedData.length > 0 ? alignedData[alignedData.length - 1]?.saldo : 0);
       
       // Log de exemplo dos dados alinhados
       if (alignedData.length > 0) {
@@ -638,7 +899,7 @@ export function EquityCurveSection({
     }
 
     return processedData;
-  }, [data, timeRange, selectedStrategy, selectedAsset, fileResults, showConsolidated, selectedFiles, selectedAsset]);
+  }, [data, timeRange, selectedStrategy, selectedAsset, fileResults, showConsolidated, selectedFiles, chartType]);
 
   // Calcular média móvel
   const dataWithMA = useMemo(() => {
@@ -741,14 +1002,16 @@ export function EquityCurveSection({
           combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
         }
         
-        // Calcular drawdown máximo baseado nos dados consolidados
+        // IMPORTANTE: No modo DRAWDOWN, manter sempre os valores dos Performance Metrics
+        // NÃO sobrescrever com dados do gráfico que podem estar agrupados incorretamente
+        console.log('🎯 MODO DRAWDOWN: Mantendo valores originais dos Performance Metrics');
+        console.log(`📊 Max DD Performance: R$ ${Math.abs(combinedStats.maxDrawdown).toLocaleString()}`);
+        console.log(`📊 Max DD % Performance: ${Math.abs(combinedStats.maxDrawdownPercent).toFixed(2)}%`);
+        
+        // Calcular apenas para comparação (não sobrescrever)
         const maxDrawdownFromChart = Math.max(...allDrawdowns);
-        if (maxDrawdownFromChart > Math.abs(combinedStats.maxDrawdown)) {
-          combinedStats.maxDrawdown = -maxDrawdownFromChart;
-          // Calcular percentual baseado no pico máximo
-          const maxPeak = Math.max(...chartData.map((item: any) => item.peak || 0));
-          combinedStats.maxDrawdownPercent = maxPeak > 0 ? (maxDrawdownFromChart / maxPeak) * 100 : 0;
-        }
+        console.log(`📊 Max DD do Gráfico: R$ ${maxDrawdownFromChart.toLocaleString()}`);
+        console.log(`🔍 Diferença detectada: ${maxDrawdownFromChart !== Math.abs(combinedStats.maxDrawdown) ? 'SIM' : 'NÃO'}`)
       }
       
       console.log('✅ Estatísticas combinadas (dados reais):', combinedStats);
@@ -833,14 +1096,16 @@ export function EquityCurveSection({
           combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
         }
         
-        // Calcular drawdown máximo baseado nos dados consolidados
+        // IMPORTANTE: No modo DRAWDOWN, manter sempre os valores dos Performance Metrics
+        // NÃO sobrescrever com dados do gráfico que podem estar agrupados incorretamente
+        console.log('🎯 MODO DRAWDOWN: Mantendo valores originais dos Performance Metrics');
+        console.log(`📊 Max DD Performance: R$ ${Math.abs(combinedStats.maxDrawdown).toLocaleString()}`);
+        console.log(`📊 Max DD % Performance: ${Math.abs(combinedStats.maxDrawdownPercent).toFixed(2)}%`);
+        
+        // Calcular apenas para comparação (não sobrescrever)
         const maxDrawdownFromChart = Math.max(...allDrawdowns);
-        if (maxDrawdownFromChart > Math.abs(combinedStats.maxDrawdown)) {
-          combinedStats.maxDrawdown = -maxDrawdownFromChart;
-          // Calcular percentual baseado no pico máximo
-          const maxPeak = Math.max(...chartData.map((item: any) => item.peak || 0));
-          combinedStats.maxDrawdownPercent = maxPeak > 0 ? (maxDrawdownFromChart / maxPeak) * 100 : 0;
-        }
+        console.log(`📊 Max DD do Gráfico: R$ ${maxDrawdownFromChart.toLocaleString()}`);
+        console.log(`🔍 Diferença detectada: ${maxDrawdownFromChart !== Math.abs(combinedStats.maxDrawdown) ? 'SIM' : 'NÃO'}`)
       }
       
       console.log('✅ Estatísticas combinadas (dados reais):', combinedStats);
@@ -883,9 +1148,18 @@ export function EquityCurveSection({
         // Contar pontos com dados
         const pontosComDados = dadosValidos.length;
         
+        // IMPORTANTE: SEMPRE usar Performance Metrics para drawdown máximo (consistência garantida)
+        const maxDrawdownReal = Math.abs(metrics["Max Drawdown ($)"] || 0);
+        const maxDrawdownPercentReal = Math.abs(metrics["Max Drawdown (%)"] || 0);
+        
+        console.log('🎯 ESTRATÉGIA ÚNICA - Usando Performance Metrics para DD Máximo');
+        console.log(`📊 DD Gráfico: R$ ${maxDrawdownGrafico.toLocaleString()}`);
+        console.log(`📊 DD Performance: R$ ${maxDrawdownReal.toLocaleString()}`);
+        console.log(`📊 Usando DD Performance (correto): R$ ${maxDrawdownReal.toLocaleString()}`);
+
         return {
           resultado: resultadoGrafico,
-          maxDrawdown: maxDrawdownGrafico,
+          maxDrawdown: maxDrawdownReal, // SEMPRE usar Performance Metrics
           avgDrawdown: avgDrawdownCalculated,
           roi: (resultadoGrafico / parseFloat(totalInvestment || "100000")) * 100,
           fatorLucro: metrics["Profit Factor"] || 0,
@@ -896,7 +1170,7 @@ export function EquityCurveSection({
           avgWin: metrics["Average Win"] || 0,
           avgLoss: Math.abs(metrics["Average Loss"] || 0),
           activeDays: metrics["Active Days"] || 0,
-          maxDrawdownPercent: maxDrawdownPercentGrafico,
+          maxDrawdownPercent: maxDrawdownPercentReal, // SEMPRE usar Performance Metrics
           pontosComDados: pontosComDados
         };
       }
@@ -929,10 +1203,15 @@ export function EquityCurveSection({
       // Contar pontos com dados
       const pontosComDados = dadosValidos.length;
       
-      // Usar dados do gráfico quando disponível, senão usar API
+      // IMPORTANTE: SEMPRE usar Performance Metrics para drawdown máximo (consistência garantida)
       const resultadoFinal = resultadoGrafico !== 0 ? resultadoGrafico : (metrics["Net Profit"] || 0);
-      const maxDrawdownFinal = maxDrawdownGrafico !== 0 ? maxDrawdownGrafico : Math.abs(metrics["Max Drawdown ($)"] || 0);
-      const maxDrawdownPercentFinal = maxDrawdownPercentGrafico !== 0 ? maxDrawdownPercentGrafico : Math.abs(metrics["Max Drawdown (%)"] || 0);
+      const maxDrawdownFinal = Math.abs(metrics["Max Drawdown ($)"] || 0); // SEMPRE usar Performance Metrics
+      const maxDrawdownPercentFinal = Math.abs(metrics["Max Drawdown (%)"] || 0); // SEMPRE usar Performance Metrics
+      
+      console.log('🎯 CONSISTÊNCIA GARANTIDA - Usando sempre Performance Metrics para DD Máximo');
+      console.log(`📊 DD Gráfico: R$ ${maxDrawdownGrafico.toLocaleString()}`);
+      console.log(`📊 DD Performance: R$ ${maxDrawdownFinal.toLocaleString()}`);
+      console.log(`📊 Usando DD Performance (correto): R$ ${maxDrawdownFinal.toLocaleString()}`);
       
       // PADRONIZAÇÃO: Usar valores padronizados quando disponíveis
       const maxDrawdownPadronizado = metrics["Max Drawdown Padronizado ($)"] || maxDrawdownFinal;
