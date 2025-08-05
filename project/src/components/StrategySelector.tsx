@@ -127,11 +127,15 @@ export function StrategySelector({
             <select
               value={selectedStrategy || ''}
               onChange={(e) => {
-                console.log('🔍 StrategySelector onChange:', {
-                  value: e.target.value,
-                  willSetTo: e.target.value || null
-                });
-                setSelectedStrategy(e.target.value || null);
+                const value = e.target.value || null;
+                setSelectedStrategy(value);
+                if (setSelectedFiles && value) {
+                  setSelectedFiles([`${value}.csv`]);
+                  if (setShowConsolidated) setShowConsolidated(false); // Força modo individual
+                } else if (setSelectedFiles && !value) {
+                  setSelectedFiles(files.map(f => f.name));
+                  if (setShowConsolidated) setShowConsolidated(true); // Volta para consolidado
+                }
               }}
               className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >

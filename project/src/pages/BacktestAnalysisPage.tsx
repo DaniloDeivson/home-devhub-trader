@@ -1948,12 +1948,8 @@ useEffect(() => {
                           combinedMetrics.maxConsecutiveLosses = Math.max(combinedMetrics.maxConsecutiveLosses, metrics["Max Consecutive Losses"] || 0);
                           combinedMetrics.maxConsecutiveWins = Math.max(combinedMetrics.maxConsecutiveWins, metrics["Max Consecutive Wins"] || 0);
                           
-                          // Manter o maior drawdown
-                          const currentDrawdown = Math.abs(metrics["Max Drawdown ($)"] || 0);
-                          if (currentDrawdown > combinedMetrics.maxDrawdownAmount) {
-                            combinedMetrics.maxDrawdownAmount = currentDrawdown;
-                            combinedMetrics.maxDrawdown = Math.abs(metrics["Max Drawdown (%)"] || 0);
-                          }
+                          // ❌ REMOVIDO: Não mais usar maior drawdown individual
+                          // Drawdown consolidado será calculado após coleta de todos os trades
                           
                           // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
                           // combinedMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
@@ -2000,6 +1996,52 @@ useEffect(() => {
                       
                       if (lossTradesData.length > 0) {
                         combinedMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
+                      }
+                      
+                      // 🎯 CORREÇÃO CRÍTICA: Calcular drawdown consolidado cronológico
+                      console.log('🔧 CALCULANDO DRAWDOWN CONSOLIDADO CRONOLÓGICO');
+                      console.log(`📊 Total de trades consolidados: ${combinedTrades.length}`);
+                      
+                      if (combinedTrades.length > 0) {
+                        // Ordenar trades cronologicamente
+                        const sortedTrades = combinedTrades.sort((a, b) => {
+                          const dateA = new Date(a.exit_date || a.entry_date || a.date);
+                          const dateB = new Date(b.exit_date || b.entry_date || b.date);
+                          return dateA.getTime() - dateB.getTime();
+                        });
+                        
+                        // Aplicar metodologia Python: equity = pnl.cumsum(), peak = equity.cummax()
+                        let equity = 0.0;
+                        let peak = 0.0;
+                        let maxDrawdown = 0.0;
+                        
+                        console.log('📊 Primeiros 5 trades consolidados:');
+                        sortedTrades.forEach((trade, index) => {
+                          equity += (trade.pnl || 0); // cumsum()
+                          if (equity > peak) {
+                            peak = equity; // cummax()
+                          }
+                          const drawdown = peak - equity; // saldo_maximo - saldo_atual (sempre positivo)
+                          if (drawdown > maxDrawdown) {
+                            maxDrawdown = drawdown;
+                          }
+                          
+                          // Log dos primeiros trades para debug
+                          if (index < 5) {
+                            console.log(`  Trade ${index + 1}: pnl=${trade.pnl?.toFixed(2)}, equity=${equity.toFixed(2)}, peak=${peak.toFixed(2)}, dd=${drawdown.toFixed(2)}`);
+                          }
+                        });
+                        
+                        // Atualizar métricas com drawdown consolidado correto
+                        combinedMetrics.maxDrawdownAmount = maxDrawdown;
+                        combinedMetrics.maxDrawdown = peak > 0 ? (maxDrawdown / peak) * 100 : 0;
+                        
+                        console.log(`🎯 DRAWDOWN CONSOLIDADO FINAL: R$ ${maxDrawdown.toFixed(2)} (${combinedMetrics.maxDrawdown.toFixed(2)}%)`);
+                        console.log(`📊 Equity final: R$ ${equity.toFixed(2)}, Peak máximo: R$ ${peak.toFixed(2)}`);
+                      } else {
+                        console.log('⚠️ Nenhum trade encontrado para calcular drawdown consolidado');
+                        combinedMetrics.maxDrawdownAmount = 0;
+                        combinedMetrics.maxDrawdown = 0;
                       }
                       
                       // Calcular payoff (averageWin / averageLoss)
@@ -2168,12 +2210,8 @@ useEffect(() => {
                           allMetrics.maxConsecutiveLosses = Math.max(allMetrics.maxConsecutiveLosses, metrics["Max Consecutive Losses"] || 0);
                           allMetrics.maxConsecutiveWins = Math.max(allMetrics.maxConsecutiveWins, metrics["Max Consecutive Wins"] || 0);
                           
-                          // Manter o maior drawdown
-                          const currentDrawdown = Math.abs(metrics["Max Drawdown ($)"] || 0);
-                          if (currentDrawdown > allMetrics.maxDrawdownAmount) {
-                            allMetrics.maxDrawdownAmount = currentDrawdown;
-                            allMetrics.maxDrawdown = Math.abs(metrics["Max Drawdown (%)"] || 0);
-                          }
+                          // ❌ REMOVIDO: Não mais usar maior drawdown individual
+                          // Drawdown consolidado será calculado após coleta de todos os trades
                           
                           // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
                           // allMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
@@ -2214,6 +2252,45 @@ useEffect(() => {
                       
                       if (lossTradesData.length > 0) {
                         allMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
+                      }
+                      
+                      // 🎯 CORREÇÃO CRÍTICA: Calcular drawdown consolidado cronológico (seção allMetrics)
+                      console.log('🔧 CALCULANDO DRAWDOWN CONSOLIDADO CRONOLÓGICO (ALL METRICS)');
+                      console.log(`📊 Total de trades ALL: ${allTrades.length}`);
+                      
+                      if (allTrades.length > 0) {
+                        // Ordenar trades cronologicamente
+                        const sortedAllTrades = allTrades.sort((a, b) => {
+                          const dateA = new Date(a.exit_date || a.entry_date || a.date);
+                          const dateB = new Date(b.exit_date || b.entry_date || b.date);
+                          return dateA.getTime() - dateB.getTime();
+                        });
+                        
+                        // Aplicar metodologia Python: equity = pnl.cumsum(), peak = equity.cummax()
+                        let equity = 0.0;
+                        let peak = 0.0;
+                        let maxDrawdown = 0.0;
+                        
+                        sortedAllTrades.forEach((trade, index) => {
+                          equity += (trade.pnl || 0); // cumsum()
+                          if (equity > peak) {
+                            peak = equity; // cummax()
+                          }
+                          const drawdown = peak - equity; // saldo_maximo - saldo_atual (sempre positivo)
+                          if (drawdown > maxDrawdown) {
+                            maxDrawdown = drawdown;
+                          }
+                        });
+                        
+                        // Atualizar allMetrics com drawdown consolidado correto
+                        allMetrics.maxDrawdownAmount = maxDrawdown;
+                        allMetrics.maxDrawdown = peak > 0 ? (maxDrawdown / peak) * 100 : 0;
+                        
+                        console.log(`🎯 DRAWDOWN CONSOLIDADO ALL FINAL: R$ ${maxDrawdown.toFixed(2)} (${allMetrics.maxDrawdown.toFixed(2)}%)`);
+                      } else {
+                        console.log('⚠️ Nenhum trade encontrado para calcular drawdown consolidado (ALL)');
+                        allMetrics.maxDrawdownAmount = 0;
+                        allMetrics.maxDrawdown = 0;
                       }
                       
                       // Calcular payoff (averageWin / averageLoss)
@@ -2261,7 +2338,7 @@ useEffect(() => {
                     
                     return (
                       <MetricsDashboard 
-                        metrics={metricsToUse}  
+                        metrics={metricsToUse}  // Já contém o DD consolidado correto
                         tradeObject={tradesToUse}
                         showConsolidated={showConsolidated}
                         selectedFiles={selectedFiles}

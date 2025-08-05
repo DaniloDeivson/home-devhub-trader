@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { buildApiUrl } from '../config/api';
 import { DailyMetrics, TradesData } from '../types/backtest';
+import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
 interface DailyMetricsCardsProps {
   tradesData?: TradesData | null;
@@ -36,22 +37,11 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         // Consolidar trades de todos os CSVs
         const allTrades: unknown[] = [];
-        let maxDrawdown = 0;
-        
-        // Processar todos os CSVs e consolidar dados
         Object.keys(fileResults).forEach(fileName => {
           const strategyData = fileResults[fileName] as any;
           if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
             // Adicionar todas as trades de cada CSV
             allTrades.push(...strategyData.trades);
-            
-            // Manter o maior drawdown entre todos os CSVs
-            if (strategyData["Performance Metrics"] && strategyData["Performance Metrics"]["Max Drawdown ($)"]) {
-              const currentDrawdown = Math.abs(strategyData["Performance Metrics"]["Max Drawdown ($)"]);
-              if (currentDrawdown > maxDrawdown) {
-                maxDrawdown = currentDrawdown;
-              }
-            }
           }
         });
 
@@ -77,10 +67,11 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
 
         data = await response.json();
         
-        // Usar o maior drawdown encontrado entre todos os CSVs
-        if (maxDrawdown > 0) {
-          data.metricas_principais.drawdown_maximo = maxDrawdown;
-          data.metricas_principais.drawdown_maximo_pct = (maxDrawdown / Math.abs(data.metricas_principais.resultado_liquido)) * 100;
+        // Usar o drawdown consolidado correto
+        const consolidatedDD = calculateDirectConsolidation(fileResults);
+        if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
+          data.metricas_principais.drawdown_maximo = consolidatedDD.maxDrawdownAbsoluto;
+          data.metricas_principais.drawdown_maximo_pct = consolidatedDD.maxDrawdownPercent;
         }
 
         console.log('📊 Métricas diárias consolidadas calculadas:', {
