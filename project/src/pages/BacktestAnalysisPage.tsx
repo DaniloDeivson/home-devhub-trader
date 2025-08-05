@@ -528,7 +528,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       }
 
       data = await response.json();
-      setDrata(data);
       
       // Para 1 arquivo, não há correlação, mas podemos definir dados vazios
       data.dateDirectionCorrelation = {
@@ -544,6 +543,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           tipo_analise: "insuficiente"
         }
       };
+      
+      setDrata(data);
       
       console.log(JSON.stringify(data.EquityCurveData))
     } else if (files.length >= 2) {
@@ -637,15 +638,15 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         
         // Usar dados consolidados como principal
         data = responseData.consolidado;
-        setDrata(data);
         
         console.log('📊 Resultados individuais processados:', Object.keys(responseData.individuais));
       } else {
         // Fallback para formato antigo
         data = responseData;
-        setDrata(data);
 
       }
+      
+      setDrata(data);
 
       // 4. ADICIONAR DADOS DE CORRELAÇÃO (CÓDIGO CORRIGIDO)
       if (correlationData && files.length === 2) {
@@ -766,13 +767,14 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       }
 
       data = await response.json();
-      setDrata(data);
       
       // Adicionar dados de correlação matricial
       if (correlationData) {
         data.correlationMatricial = correlationData;
         data.dateDirectionCorrelation = correlationData;
       }
+      
+      setDrata(data);
       
       setCsvContent(`Análise consolidada de ${files.length} arquivos: ${files.map(f => f.name).join(', ')}`);
     }
@@ -1814,17 +1816,109 @@ useEffect(() => {
             {backtestResult && (
               <div className="space-y-6">
                 {/* Equity Curve Section - Available to all users */}
-                <EquityCurveSection 
-                  showEquityCurve={showEquityCurve}
-                  setShowEquityCurve={setShowEquityCurve}
-                  selectedStrategy={selectedStrategy}
-                  selectedAsset={selectedAsset}
-                  fileResults={fileResults}
-                  data={drata}
-                  showConsolidated={showConsolidated}
-                  selectedFiles={selectedFiles}
-                  files={files}
-                />
+                {(() => {
+                  // 🎯 CALCULAR MÉTRICAS CONSOLIDADAS PARA EQUITY CURVE SECTION
+                  let consolidatedMetricsForEquity = undefined;
+                  
+                  if (showConsolidated && fileResults && Object.keys(fileResults).length > 1) {
+                    console.log('🔧 CALCULANDO MÉTRICAS CONSOLIDADAS PARA EQUITY CURVE SECTION');
+                    
+                    const allTrades: any[] = [];
+                    
+                    // Coletar todos os trades de todas as estratégias
+                    Object.keys(fileResults).forEach(fileName => {
+                      const strategyData = fileResults[fileName];
+                      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+                        allTrades.push(...strategyData.trades);
+                      }
+                    });
+                    
+                    console.log(`📊 Total de trades coletados para Equity Curve: ${allTrades.length}`);
+                    
+                    if (allTrades.length > 0) {
+                      // Ordenar trades cronologicamente
+                      const sortedTrades = allTrades.sort((a, b) => {
+                        const dateA = new Date(a.exit_date || a.entry_date || a.date);
+                        const dateB = new Date(b.exit_date || b.entry_date || b.date);
+                        return dateA.getTime() - dateB.getTime();
+                      });
+                      
+                      // Calcular métricas consolidadas usando metodologia Python
+                      let equity = 0.0;
+                      let peak = 0.0;
+                      let maxDrawdown = 0.0;
+                      let totalProfit = 0.0;
+                      let grossProfit = 0.0;
+                      let grossLoss = 0.0;
+                      let profitableTrades = 0;
+                      let lossTrades = 0;
+                      
+                      sortedTrades.forEach((trade) => {
+                        const pnl = trade.pnl || 0;
+                        totalProfit += pnl;
+                        
+                        if (pnl > 0) {
+                          grossProfit += pnl;
+                          profitableTrades++;
+                        } else {
+                          grossLoss += Math.abs(pnl);
+                          lossTrades++;
+                        }
+                        
+                        equity += pnl; // cumsum()
+                        if (equity > peak) {
+                          peak = equity; // cummax()
+                        }
+                        const drawdown = peak - equity; // saldo_maximo - saldo_atual
+                        if (drawdown > maxDrawdown) {
+                          maxDrawdown = drawdown;
+                        }
+                      });
+                      
+                      // Calcular métricas derivadas
+                      const totalTrades = sortedTrades.length;
+                      const winRate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
+                      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
+                      const roi = totalProfit / 100000 * 100; // Assumindo investimento de R$ 100.000
+                      
+                      consolidatedMetricsForEquity = {
+                        resultado: totalProfit,
+                        maxDrawdown: maxDrawdown,
+                        maxDrawdownPercent: peak > 0 ? (maxDrawdown / peak) * 100 : 0,
+                        avgDrawdown: 0, // Será calculado se necessário
+                        fatorLucro: profitFactor,
+                        winRate: winRate,
+                        roi: roi,
+                        pontosComDados: totalTrades
+                      };
+                      
+                      console.log('✅ MÉTRICAS CONSOLIDADAS CALCULADAS PARA EQUITY CURVE:', {
+                        resultado: totalProfit,
+                        maxDrawdown: maxDrawdown,
+                        maxDrawdownPercent: peak > 0 ? (maxDrawdown / peak) * 100 : 0,
+                        fatorLucro: profitFactor,
+                        winRate: winRate,
+                        roi: roi,
+                        totalTrades: totalTrades
+                      });
+                    }
+                  }
+                  
+                  return (
+                    <EquityCurveSection 
+                      showEquityCurve={showEquityCurve}
+                      setShowEquityCurve={setShowEquityCurve}
+                      selectedStrategy={selectedStrategy}
+                      selectedAsset={selectedAsset}
+                      fileResults={fileResults}
+                      data={drata}
+                      showConsolidated={showConsolidated}
+                      selectedFiles={selectedFiles}
+                      files={files}
+                      consolidatedMetrics={consolidatedMetricsForEquity}
+                    />
+                  );
+                })()}
                 
                 {/* Debug: Verificar dados passados */}
                 {Object.keys(fileResults).length > 0 && (
@@ -1886,7 +1980,7 @@ useEffect(() => {
                 {/* Metrics Dashboard - Available to all users */}
                 <div>
                   {(() => {
-                    // Se há estratégia selecionada e fileResults disponível, usar dados individuais
+                    // 🎯 CORREÇÃO: Usar sempre os dados corretos da API
                     let metricsToUse = convertToMetricsDashboardFormat(backtestResult);
                     let tradesToUse = { trades: Array.isArray(trades) ? trades : [] };
                     
@@ -1897,186 +1991,11 @@ useEffect(() => {
                       backtestResultKeys: backtestResult ? Object.keys(backtestResult) : []
                     });
                     
-                    // Se está no modo individual e há estratégias selecionadas, calcular métricas combinadas
-                    if (!showConsolidated && selectedFiles.length > 0 && fileResults) {
-                      console.log('📊 Calculando métricas combinadas para estratégias selecionadas:', selectedFiles);
-                      
-                      const combinedMetrics = {
-                        profitFactor: 0,
-                        winRate: 0,
-                        payoff: 0,
-                        maxDrawdown: 0,
-                        maxDrawdownAmount: 0,
-                        netProfit: 0,
-                        grossProfit: 0,
-                        grossLoss: 0,
-                        totalTrades: 0,
-                        profitableTrades: 0,
-                        lossTrades: 0,
-                        averageWin: 0,
-                        averageLoss: 0,
-                        sharpeRatio: 0,
-                        averageTrade: 0,
-                        averageTradeDuration: "0",
-                        dayOfWeekAnalysis: {},
-                        monthlyAnalysis: {},
-                        bestDay: null,
-                        worstDay: null,
-                        bestMonth: null,
-                        worstMonth: null,
-                        maxConsecutiveLosses: 0,
-                        maxConsecutiveWins: 0,
-                        maiorGanho: 0,
-                        maiorPerda: 0,
-                        recoveryFactor: 0
-                      };
-                      
-                      const combinedTrades: any[] = [];
-                      
-                      selectedFiles.forEach(fileName => {
-                        const strategyData = fileResults[fileName];
-                        if (strategyData && strategyData["Performance Metrics"]) {
-                          const metrics = strategyData["Performance Metrics"];
-                          
-                          // Somar métricas
-                          combinedMetrics.totalTrades += metrics["Total Trades"] || 0;
-                          combinedMetrics.netProfit += metrics["Net Profit"] || 0;
-                          combinedMetrics.grossProfit += metrics["Gross Profit"] || 0;
-                          combinedMetrics.grossLoss += Math.abs(metrics["Gross Loss"] || 0);
-                          combinedMetrics.maiorGanho = Math.max(combinedMetrics.maiorGanho, metrics["Max Trade Gain"] || 0);
-                          combinedMetrics.maiorPerda = Math.min(combinedMetrics.maiorPerda, -(metrics["Max Trade Loss"] || 0));
-                          combinedMetrics.maxConsecutiveLosses = Math.max(combinedMetrics.maxConsecutiveLosses, metrics["Max Consecutive Losses"] || 0);
-                          combinedMetrics.maxConsecutiveWins = Math.max(combinedMetrics.maxConsecutiveWins, metrics["Max Consecutive Wins"] || 0);
-                          
-                          // ❌ REMOVIDO: Não mais usar maior drawdown individual
-                          // Drawdown consolidado será calculado após coleta de todos os trades
-                          
-                          // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
-                          // combinedMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
-                          // combinedMetrics.recoveryFactor += metrics["Recovery Factor"] || 0;
-                          
-                          // Adicionar trades da estratégia
-                          if (strategyData.trades && Array.isArray(strategyData.trades)) {
-                            combinedTrades.push(...strategyData.trades);
-                          }
-                          
-                          console.log(`📊 ${fileName}:`, {
-                            totalTrades: metrics["Total Trades"] || 0,
-                            netProfit: metrics["Net Profit"] || 0,
-                            maxDrawdown: metrics["Max Drawdown ($)"] || 0
-                          });
-                        }
-                      });
-                      
-                      // Calcular métricas derivadas
-                      if (combinedMetrics.totalTrades > 0) {
-                        combinedMetrics.averageTrade = combinedMetrics.netProfit / combinedMetrics.totalTrades;
-                      }
-                      
-                      if (combinedMetrics.grossLoss > 0) {
-                        combinedMetrics.profitFactor = combinedMetrics.grossProfit / combinedMetrics.grossLoss;
-                      }
-                      
-                      if (combinedMetrics.totalTrades > 0) {
-                        // Calcular win rate baseado nos trades lucrativos vs perdedores
-                        const profitableTrades = combinedTrades.filter(trade => trade.pnl > 0).length;
-                        const lossTrades = combinedTrades.filter(trade => trade.pnl < 0).length;
-                        combinedMetrics.profitableTrades = profitableTrades;
-                        combinedMetrics.lossTrades = lossTrades;
-                        combinedMetrics.winRate = (profitableTrades / combinedMetrics.totalTrades) * 100;
-                      }
-                      
-                      // Calcular average win/loss
-                      const profitableTradesData = combinedTrades.filter(trade => trade.pnl > 0);
-                      const lossTradesData = combinedTrades.filter(trade => trade.pnl < 0);
-                      
-                      if (profitableTradesData.length > 0) {
-                        combinedMetrics.averageWin = profitableTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / profitableTradesData.length;
-                      }
-                      
-                      if (lossTradesData.length > 0) {
-                        combinedMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
-                      }
-                      
-                      // 🎯 CORREÇÃO CRÍTICA: Calcular drawdown consolidado cronológico
-                      console.log('🔧 CALCULANDO DRAWDOWN CONSOLIDADO CRONOLÓGICO');
-                      console.log(`📊 Total de trades consolidados: ${combinedTrades.length}`);
-                      
-                      if (combinedTrades.length > 0) {
-                        // Ordenar trades cronologicamente
-                        const sortedTrades = combinedTrades.sort((a, b) => {
-                          const dateA = new Date(a.exit_date || a.entry_date || a.date);
-                          const dateB = new Date(b.exit_date || b.entry_date || b.date);
-                          return dateA.getTime() - dateB.getTime();
-                        });
-                        
-                        // Aplicar metodologia Python: equity = pnl.cumsum(), peak = equity.cummax()
-                        let equity = 0.0;
-                        let peak = 0.0;
-                        let maxDrawdown = 0.0;
-                        
-                        console.log('📊 Primeiros 5 trades consolidados:');
-                        sortedTrades.forEach((trade, index) => {
-                          equity += (trade.pnl || 0); // cumsum()
-                          if (equity > peak) {
-                            peak = equity; // cummax()
-                          }
-                          const drawdown = peak - equity; // saldo_maximo - saldo_atual (sempre positivo)
-                          if (drawdown > maxDrawdown) {
-                            maxDrawdown = drawdown;
-                          }
-                          
-                          // Log dos primeiros trades para debug
-                          if (index < 5) {
-                            console.log(`  Trade ${index + 1}: pnl=${trade.pnl?.toFixed(2)}, equity=${equity.toFixed(2)}, peak=${peak.toFixed(2)}, dd=${drawdown.toFixed(2)}`);
-                          }
-                        });
-                        
-                        // Atualizar métricas com drawdown consolidado correto
-                        combinedMetrics.maxDrawdownAmount = maxDrawdown;
-                        combinedMetrics.maxDrawdown = peak > 0 ? (maxDrawdown / peak) * 100 : 0;
-                        
-                        console.log(`🎯 DRAWDOWN CONSOLIDADO FINAL: R$ ${maxDrawdown.toFixed(2)} (${combinedMetrics.maxDrawdown.toFixed(2)}%)`);
-                        console.log(`📊 Equity final: R$ ${equity.toFixed(2)}, Peak máximo: R$ ${peak.toFixed(2)}`);
-                      } else {
-                        console.log('⚠️ Nenhum trade encontrado para calcular drawdown consolidado');
-                        combinedMetrics.maxDrawdownAmount = 0;
-                        combinedMetrics.maxDrawdown = 0;
-                      }
-                      
-                      // Calcular payoff (averageWin / averageLoss)
-                      if (combinedMetrics.averageLoss > 0) {
-                        combinedMetrics.payoff = combinedMetrics.averageWin / combinedMetrics.averageLoss;
-                      } else {
-                        combinedMetrics.payoff = combinedMetrics.averageWin > 0 ? 999 : 0;
-                      }
-                      
-                      // Usar valores recalculados se disponíveis, senão usar valores calculados pelo frontend
-                      if (recalculatedMetrics && recalculatedMetrics.metricas_principais) {
-                        console.log('📊 Usando valores recalculados pelo backend');
-                        combinedMetrics.sharpeRatio = recalculatedMetrics.metricas_principais.sharpe_ratio || 0;
-                        combinedMetrics.recoveryFactor = recalculatedMetrics.metricas_principais.fator_recuperacao || 0;
-                        // Profit Factor é calculado pelo frontend com base nos dados consolidados
-                      } else {
-                        console.log('📊 Usando valores calculados pelo frontend para Sharpe Ratio e Recovery Factor');
-                      }
-                      
-                      metricsToUse = combinedMetrics;
-                      tradesToUse = { trades: combinedTrades };
-                      
-                      console.log('📊 Métricas combinadas calculadas:', {
-                        totalTrades: combinedMetrics.totalTrades,
-                        netProfit: combinedMetrics.netProfit,
-                        winRate: combinedMetrics.winRate,
-                        profitFactor: combinedMetrics.profitFactor,
-                        maxDrawdown: combinedMetrics.maxDrawdown,
-                        payoff: combinedMetrics.payoff,
-                        averageWin: combinedMetrics.averageWin,
-                        averageLoss: combinedMetrics.averageLoss
-                      });
-                    }
+                    // 🎯 CORREÇÃO: Sempre usar dados da API para garantir consistência
+                    console.log('✅ Usando dados corretos da API para MetricsDashboard');
+                    
                     // Se há estratégia específica selecionada, usar dados dessa estratégia
-                    else if (selectedStrategy && fileResults && Object.keys(fileResults).length > 0) {
+                    if (selectedStrategy && fileResults && Object.keys(fileResults).length > 0) {
                       console.log('✅ Entrou na condição para buscar dados da estratégia');
                       
                       // Tentar encontrar o arquivo correspondente à estratégia
@@ -2152,9 +2071,13 @@ useEffect(() => {
                         }
                       }
                     }
-                    // Se há fileResults disponível mas nenhuma estratégia selecionada, calcular métricas de todos os CSVs
-                    else if (fileResults && Object.keys(fileResults).length > 0 && !selectedStrategy) {
-                      console.log('📊 Calculando métricas automáticas de todos os CSVs carregados');
+                    // 🎯 CORREÇÃO: Sempre usar dados da API para garantir consistência
+                    console.log('✅ Usando dados corretos da API para MetricsDashboard (modo consolidado)');
+                    
+                    if (fileResults && Object.keys(fileResults).length > 0 && !selectedStrategy) {
+                      console.log('✅ Usando dados corretos da API para MetricsDashboard (modo consolidado)');
+                      // ❌ REMOVIDO: Todo o processamento adicional foi removido para usar dados da API
+                      // console.log('📊 Calculando métricas automáticas de todos os CSVs carregados');
                       
                       const allMetrics = {
                         profitFactor: 0,
@@ -2340,9 +2263,8 @@ useEffect(() => {
                       <MetricsDashboard 
                         metrics={metricsToUse}  // Já contém o DD consolidado correto
                         tradeObject={tradesToUse}
-                        showConsolidated={showConsolidated}
-                        selectedFiles={selectedFiles}
                         fileResults={fileResults}
+                        showTitle={true}
                       />
                     );
                   })()}

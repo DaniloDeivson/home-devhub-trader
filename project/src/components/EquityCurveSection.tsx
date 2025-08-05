@@ -84,6 +84,17 @@ interface EquityCurveSectionProps {
   showConsolidated?: boolean;
   selectedFiles?: string[];
   files?: File[];
+  // NOVAS PROPS: Métricas já calculadas pelo BacktestAnalysisPage
+  consolidatedMetrics?: {
+    resultado: number;
+    maxDrawdown: number;
+    maxDrawdownPercent: number;
+    avgDrawdown: number;
+    fatorLucro: number;
+    winRate: number;
+    roi: number;
+    pontosComDados: number;
+  };
 }
 
 export function EquityCurveSection({
@@ -95,7 +106,8 @@ export function EquityCurveSection({
   data,
   showConsolidated = true,
   selectedFiles = [],
-  files = []
+  files = [],
+  consolidatedMetrics
 }: EquityCurveSectionProps) {
   
   // Debug logs para verificar se os dados estão chegando
@@ -800,186 +812,73 @@ export function EquityCurveSection({
       return alignedData;
     }
     
-    // Se há estratégia selecionada, buscar dados reais do CSV correspondente
+    // Se há estratégia selecionada, usar dados reais da estratégia
     if (selectedStrategy && fileResults) {
-      console.log('✅ Condição atendida: estratégia selecionada e fileResults disponível');
-      
       // Tentar encontrar os dados da estratégia com e sem extensão .csv
       const strategyData = fileResults[selectedStrategy] || fileResults[`${selectedStrategy}.csv`];
-      console.log('📊 strategyData encontrado:', !!strategyData);
-      console.log('🔍 Procurando por:', selectedStrategy, 'ou', `${selectedStrategy}.csv`);
+      console.log('🔍 Buscando dados da estratégia:', {
+        selectedStrategy,
+        hasStrategyData: !!strategyData,
+        availableKeys: Object.keys(fileResults)
+      });
       
-      if (strategyData && strategyData["Equity Curve Data"]) {
-        console.log('📈 Equity Curve Data encontrado');
-        const equityData = strategyData["Equity Curve Data"];
-        console.log('📋 Tipos de dados disponíveis:', Object.keys(equityData));
+      if (strategyData && strategyData["Performance Metrics"]) {
+        const metrics = strategyData["Performance Metrics"];
         
-        // Selecionar dados baseado no timeRange
-        let selectedData = [];
-        switch (timeRange) {
-          case 'trade':
-            selectedData = equityData.trade_by_trade || [];
-            break;
-          case 'daily':
-            selectedData = equityData.daily || [];
-            break;
-          case 'weekly':
-            selectedData = equityData.weekly || [];
-            break;
-          case 'monthly':
-            selectedData = equityData.monthly || [];
-            break;
-          default:
-            selectedData = equityData.daily || [];
-        }
-
-        console.log('📊 Dados selecionados:', selectedData.length, 'pontos');
-        console.log('📅 TimeRange:', timeRange);
-
-        // Processar dados reais
-        const processedData = selectedData.map((item: unknown) => ({
-          ...item,
-          saldo: Number((item as any).saldo) || Number((item as any).resultado) || 0,
-          valor: Number((item as any).valor) || 0,
-          resultado: Number((item as any).resultado) || 0,
-          drawdown: Number((item as any).drawdown) || 0,
-          drawdownPercent: Number((item as any).drawdownPercent) || 0,
-          peak: Number((item as any).peak) || 0,
-          trades: Number((item as any).trades) || 0
-        }));
-
-        console.log('✅ Dados processados:', processedData.length, 'pontos');
-        console.log('🔧 CORREÇÃO: NÃO retornando mais - prosseguindo para consolidação');
-        // return processedData;
-      } else {
-        console.log('❌ strategyData ou Equity Curve Data não encontrado');
-      }
-    } else {
-      console.log('❌ Condição não atendida: selectedStrategy ou fileResults não disponível');
-    }
-    
-    // Caso contrário, usar dados da equity curve consolidada (comportamento atual)
-    if (!data?.["Equity Curve Data"]) {
-      return [];
-    }
-
-    const equityData = data["Equity Curve Data"];
-    
-    // Selecionar dados baseado no timeRange
-    let selectedData = [];
-    switch (timeRange) {
-      case 'trade':
-        selectedData = equityData.trade_by_trade || [];
-        break;
-      case 'daily':
-        selectedData = equityData.daily || [];
-        break;
-      case 'weekly':
-        selectedData = equityData.weekly || [];
-        break;
-      case 'monthly':
-        selectedData = equityData.monthly || [];
-        break;
-      default:
-        selectedData = equityData.daily || [];
-    }
-
-    // CORREÇÃO CRÍTICA: No modo drawdown, usar dados consolidados
-    let processedDataBase;
-    // Garantir que alignedData só é usada se existir
-    if (typeof alignedData !== 'undefined' && alignedData) {
-      console.log(`🔍 DEBUG CONSOLIDAÇÃO: chartType=${chartType}, alignedData.length=${alignedData.length}, showConsolidated=${showConsolidated}`);
-    }
-    console.log('🚨 EQUITY CURVE SECTION EXECUTANDO - Se você vê esta mensagem, o componente está ativo');
-    // Usar dados consolidados sempre que há múltiplos CSVs
-    const isMultipleFiles = fileResults && (Array.isArray(fileResults) ? fileResults.length > 1 : Object.keys(fileResults).length > 1);
-    if (typeof alignedData !== 'undefined' && alignedData && alignedData.length > 0 && showConsolidated && isMultipleFiles) {
-      console.log('🔧 MÚLTIPLOS CSVs CONSOLIDADOS: Usando dados consolidados cronológicos');
-      console.log(`📊 Dados consolidados: ${alignedData.length} pontos`);
-      console.log(`📊 Primeiro ponto consolidado:`, alignedData[0]);
-      console.log(`📊 Último ponto consolidado:`, alignedData[alignedData.length - 1]);
-      console.log(`📊 DD máximo nos dados consolidados:`, Math.max(...alignedData.map(d => d.drawdown)));
-      processedDataBase = alignedData;
-    } else {
-    // --- PROCESSAMENTO PADRÃO DO PERÍODO ---
-      processedDataBase = selectedData.map((item: any) => ({
-      ...item,
-      saldo: Number(item.saldo) || Number(item.resultado) || 0,  // Priorizar saldo
-      valor: Number(item.valor) || 0,
-      resultado: Number(item.resultado) || 0,
-      drawdown: Number(item.drawdown) || 0,
-      drawdownPercent: Number(item.drawdownPercent) || 0,
-      peak: Number(item.peak) || 0,
-      trades: Number(item.trades) || 0,
-      resultado_periodo: Number(item.resultado_periodo) || 0 // garantir campo para períodos
-    }));
-    }
-    
-    const processedData = processedDataBase;
-
-    // Recalcular saldo acumulado e drawdown para weekly/monthly para manter lógica consistente
-    if ((timeRange === 'weekly' || timeRange === 'monthly') && processedData.length > 0) {
-      const sorted = [...processedData].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      let runningTotal = 0;
-      let peak = 0;
-      const aligned = sorted.map((item: any, idx: number) => {
-        let periodResult: number;
-        if (item.resultado_periodo !== 0) {
-          periodResult = item.resultado_periodo;
-        } else if (item.saldo !== undefined && idx === 0) {
-          // Se o primeiro item já traz saldo acumulado, usamos a diferença a partir dele
-          runningTotal = 0; // garantir
-          periodResult = item.saldo;
-        } else if (item.saldo !== undefined) {
-          // Caso venha saldo acumulado, converte para variação do período
-          periodResult = item.saldo - runningTotal;
-        } else {
-          periodResult = item.resultado || 0;
-        }
-        runningTotal += periodResult;
-        if (runningTotal > peak) peak = runningTotal;
-        const ddRaw = peak - runningTotal;
-        const ddValue = chartType === 'drawdown' ? Math.max(0, ddRaw) : ddRaw;
-        const ddPct = peak !== 0 ? (Math.abs(ddValue) / peak) * 100 : 0;
+        console.log('✅ Usando dados corretos da API para estratégia selecionada');
+        
         return {
-          ...item,
-          saldo: runningTotal,
-          drawdown: Math.abs(ddValue),
-          drawdownPercent: ddPct,
-          peak: peak,
-          trades: idx + 1
+          resultado: metrics["Net Profit"] || 0,
+          maxDrawdown: Math.abs(metrics["Max Drawdown ($)"] || 0),
+          maxDrawdownPercent: Math.abs(metrics["Max Drawdown (%)"] || 0),
+          avgDrawdown: 0, // Será calculado se necessário
+          fatorLucro: metrics["Profit Factor"] || 0,
+          winRate: metrics["Win Rate (%)"] || 0,
+          roi: metrics["Net Profit"] ? (metrics["Net Profit"] / 100000) * 100 : 0,
+          pontosComDados: metrics["Total Trades"] || 0
         };
-      });
-
-      // Aplicar filtro de datas se necessário
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        return aligned.filter((item: any) => {
-          const itemDate = new Date(item.date);
-          return itemDate >= start && itemDate <= end;
-        });
       }
-      return aligned;
     }
-
-    // Filtrar por período se especificado
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      return processedData.filter((item: any) => {
-        const itemDate = new Date(item.date);
-        return itemDate >= start && itemDate <= end;
-      });
+    
+    // Caso contrário, usar dados consolidados
+    if (data?.["Performance Metrics"] && chartData.length > 0) {
+      const metrics = data["Performance Metrics"];
+      
+      console.log('✅ Usando dados corretos da API (caso padrão)');
+      
+      return {
+        resultado: metrics["Net Profit"] || 0,
+        maxDrawdown: Math.abs(metrics["Max Drawdown ($)"] || 0),
+        maxDrawdownPercent: Math.abs(metrics["Max Drawdown (%)"] || 0),
+        avgDrawdown: 0, // Será calculado se necessário
+        fatorLucro: metrics["Profit Factor"] || 0,
+        winRate: metrics["Win Rate (%)"] || 0,
+        roi: metrics["Net Profit"] ? (metrics["Net Profit"] / 100000) * 100 : 0,
+        pontosComDados: metrics["Total Trades"] || 0
+      };
     }
-
-    console.log('🔧 CONSOLIDAÇÃO FINAL: Retornando dados consolidados cronologicamente');
-    return processedData;
+    
+    return {
+      resultado: 0,
+      maxDrawdown: 0,
+      avgDrawdown: 0,
+      roi: 0,
+      fatorLucro: 0,
+      winRate: 0,
+      sharpeRatio: 0,
+      grossProfit: 0,
+      grossLoss: 0,
+      avgWin: 0,
+      avgLoss: 0,
+      activeDays: 0,
+      maxDrawdownPercent: 0,
+      pontosComDados: 0
+    };
   }, [data, timeRange, selectedStrategy, selectedAsset, fileResults, showConsolidated, selectedFiles, totalInvestment, chartType]);
 
   // Calcular média móvel
   const dataWithMA = useMemo(() => {
-    if (movingAverage === 'nenhuma' || chartData.length === 0) return chartData;
+    if (movingAverage === 'nenhuma' || !Array.isArray(chartData) || chartData.length === 0) return chartData;
     
     const maPeriod = parseInt(movingAverage);
     return chartData.map((item: any, index: number) => {
@@ -1000,358 +899,57 @@ export function EquityCurveSection({
 
   // Calcular estatísticas usando dados reais do gráfico quando possível
   const stats = useMemo(() => {
-    if (showConsolidated && fileResults && Object.keys(fileResults).length > 1 && dailyMetricsFromApi) {
-      return {
-        resultado: dailyMetricsFromApi.metricas_principais.resultado_liquido,
-        maxDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_maximo,
-        maxDrawdownPercent: dailyMetricsFromApi.metricas_principais.drawdown_maximo_pct,
-        avgDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_medio,
-        roi: dailyMetricsFromApi.metricas_principais.roi,
-        fatorLucro: dailyMetricsFromApi.metricas_principais.fator_lucro,
-        winRate: dailyMetricsFromApi.metricas_principais.win_rate,
-        sharpeRatio: dailyMetricsFromApi.metricas_principais.sharpe_ratio,
-        grossProfit: dailyMetricsFromApi.metricas_principais.gross_profit,
-        grossLoss: dailyMetricsFromApi.metricas_principais.gross_loss,
-        avgWin: dailyMetricsFromApi.metricas_principais.average_win,
-        avgLoss: dailyMetricsFromApi.metricas_principais.average_loss,
-        activeDays: dailyMetricsFromApi.metricas_principais.dias_operados,
+    // 🎯 CORREÇÃO: Usar dados da API correta (dailyMetricsFromApi) como DailyMetricsCards
+    // Para múltiplos CSVs: Usa dailyMetricsFromApi + calculateDirectConsolidation
+    // Para CSV único: Usa dailyMetricsFromApi
+    
+    if (dailyMetricsFromApi) {
+      console.log('✅ CORREÇÃO: Usando dados da API correta (dailyMetricsFromApi) como DailyMetricsCards');
+      
+      // Para múltiplos CSVs, aplicar calculateDirectConsolidation como DailyMetricsCards faz
+      if (fileResults && Object.keys(fileResults).length > 1) {
+        console.log('🔧 MÚLTIPLOS CSVs: Aplicando calculateDirectConsolidation como DailyMetricsCards');
+        
+        try {
+          const consolidatedDD = calculateDirectConsolidation(fileResults);
+          console.log('✅ Drawdown consolidado calculado:', consolidatedDD);
+          
+          if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
+            const result = {
+              resultado: dailyMetricsFromApi.metricas_principais.resultado_liquido || 0,
+              maxDrawdown: consolidatedDD.maxDrawdownAbsoluto, // ✅ R$ 976,00
+              maxDrawdownPercent: consolidatedDD.maxDrawdownPercent,
+              avgDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_medio || 0,
+              fatorLucro: dailyMetricsFromApi.metricas_principais.fator_lucro || 0,
+              winRate: dailyMetricsFromApi.metricas_principais.win_rate || 0,
+              roi: dailyMetricsFromApi.metricas_principais.roi || 0,
+              pontosComDados: dailyMetricsFromApi.metricas_principais.dias_operados || 0
+            };
+            console.log('✅ Retornando métricas consolidadas (corrigido):', result);
+            return result;
+          }
+        } catch (error) {
+          console.error('❌ Erro ao calcular drawdown consolidado:', error);
+        }
+      }
+      
+      // Para CSV único, usar dados da API diretamente
+      const result = {
+        resultado: dailyMetricsFromApi.metricas_principais.resultado_liquido || 0,
+        maxDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_maximo || 0,
+        maxDrawdownPercent: dailyMetricsFromApi.metricas_principais.drawdown_maximo_pct || 0,
+        avgDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_medio || 0,
+        fatorLucro: dailyMetricsFromApi.metricas_principais.fator_lucro || 0,
+        winRate: dailyMetricsFromApi.metricas_principais.win_rate || 0,
+        roi: dailyMetricsFromApi.metricas_principais.roi || 0,
         pontosComDados: dailyMetricsFromApi.metricas_principais.dias_operados || 0
       };
+      console.log('✅ Retornando métricas da API (corrigido):', result);
+      return result;
     }
-    // Se está no modo consolidado, calcular estatísticas combinadas de todas as estratégias
-    if (showConsolidated && fileResults && Object.keys(fileResults).length > 0 && chartData.length > 0) {
-      console.log('📊 Calculando estatísticas para modo consolidado');
-      console.log('📊 fileResults keys:', Object.keys(fileResults));
-      console.log('📊 chartData length:', chartData.length);
-      console.log('📊 Primeiro ponto chartData:', chartData[0]);
-      console.log('📊 Último ponto chartData:', chartData[chartData.length - 1]);
-      
-      const combinedStats = {
-        resultado: 0,
-        maxDrawdown: 0,
-        maxDrawdownPercent: 0,
-        avgDrawdown: 0,
-        fatorLucro: 0,
-        winRate: 0,
-        roi: 0,
-        pontosComDados: chartData.length
-      };
-      
-      // Calcular estatísticas combinadas usando dados reais das estratégias
-      let totalTrades = 0;
-      let grossProfit = 0;
-      let grossLoss = 0;
-      
-      Object.keys(fileResults).forEach(fileName => {
-        const strategyData = fileResults[fileName];
-        if (strategyData && strategyData["Performance Metrics"]) {
-          const metrics = strategyData["Performance Metrics"];
-          
-          // Somar métricas de performance
-          combinedStats.resultado += metrics["Net Profit"] || 0;
-          grossProfit += metrics["Gross Profit"] || 0;
-          grossLoss += Math.abs(metrics["Gross Loss"] || 0);
-          totalTrades += metrics["Total Trades"] || 0;
-          
-          // Calcular drawdown máximo
-          const currentDrawdown = Math.abs(metrics["Max Drawdown ($)"] || 0);
-          if (currentDrawdown > Math.abs(combinedStats.maxDrawdown)) {
-            combinedStats.maxDrawdown = -(metrics["Max Drawdown ($)"] || 0);
-            combinedStats.maxDrawdownPercent = metrics["Max Drawdown (%)"] || 0;
-          }
-          
-          console.log(`📊 ${fileName} - Métricas reais:`, {
-            netProfit: metrics["Net Profit"] || 0,
-            grossProfit: metrics["Gross Profit"] || 0,
-            grossLoss: metrics["Gross Loss"] || 0,
-            totalTrades: metrics["Total Trades"] || 0,
-            maxDrawdown: metrics["Max Drawdown ($)"] || 0,
-            winRate: metrics["Win Rate (%)"] || 0
-          });
-        }
-      });
-      
-      // Calcular métricas derivadas
-      if (grossLoss > 0) {
-        combinedStats.fatorLucro = grossProfit / grossLoss;
-      }
-      
-      if (totalTrades > 0) {
-        // Calcular win rate baseado nos dados reais
-        const totalWins = (combinedStats.fatorLucro * grossLoss) / (1 + combinedStats.fatorLucro);
-        combinedStats.winRate = (totalWins / grossProfit) * 100;
-      }
-      
-      if (combinedStats.resultado !== 0) {
-        combinedStats.roi = (combinedStats.resultado / 100000) * 100;
-      }
-      
-      // Calcular drawdown médio baseado nos dados do gráfico consolidado
-      if (chartData.length > 0) {
-        const allDrawdowns = chartData
-          .filter((item: any) => !item.isStart) // Excluir ponto inicial
-          .map((item: any) => Math.abs(item.drawdown || 0)); // Manter valores absolutos para cálculo de máximo
-        
-        if (allDrawdowns.length > 0) {
-          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
-        }
-        
-        // IMPORTANTE: No modo DRAWDOWN, manter sempre os valores dos Performance Metrics
-        // NÃO sobrescrever com dados do gráfico que podem estar agrupados incorretamente
-        console.log('🎯 MODO DRAWDOWN: Mantendo valores originais dos Performance Metrics');
-        console.log(`📊 Max DD Performance: R$ ${Math.abs(combinedStats.maxDrawdown).toLocaleString()}`);
-        console.log(`📊 Max DD % Performance: ${Math.abs(combinedStats.maxDrawdownPercent).toFixed(2)}%`);
-        
-        // Calcular apenas para comparação (não sobrescrever)
-        const maxDrawdownFromChart = Math.max(...allDrawdowns);
-        console.log(`📊 Max DD do Gráfico: R$ ${maxDrawdownFromChart.toLocaleString()}`);
-        console.log(`🔍 Diferença detectada: ${maxDrawdownFromChart !== Math.abs(combinedStats.maxDrawdown) ? 'SIM' : 'NÃO'}`)
-      }
-      
-      console.log('✅ Estatísticas combinadas (dados reais):', combinedStats);
-      return combinedStats;
-    }
-    
-    // Se está no modo individual, calcular estatísticas combinadas das estratégias selecionadas
-    if (!showConsolidated && selectedFiles.length > 0 && chartData.length > 0) {
-      console.log('📊 Calculando estatísticas para modo individual');
-      console.log('📊 selectedFiles:', selectedFiles);
-      console.log('📊 chartData length:', chartData.length);
-      console.log('📊 Primeiro ponto chartData:', chartData[0]);
-      console.log('📊 Último ponto chartData:', chartData[chartData.length - 1]);
-      
-      const combinedStats = {
-        resultado: 0,
-        maxDrawdown: 0,
-        maxDrawdownPercent: 0,
-        avgDrawdown: 0,
-        fatorLucro: 0,
-        winRate: 0,
-        roi: 0,
-        pontosComDados: chartData.length
-      };
-      
-      // Calcular estatísticas combinadas usando dados reais das estratégias
-      let totalTrades = 0;
-      let grossProfit = 0;
-      let grossLoss = 0;
-      
-      selectedFiles.forEach(fileName => {
-        const strategyData = fileResults?.[fileName];
-        if (strategyData && strategyData["Performance Metrics"]) {
-          const metrics = strategyData["Performance Metrics"];
-          
-          // Somar métricas de performance
-          combinedStats.resultado += metrics["Net Profit"] || 0;
-          grossProfit += metrics["Gross Profit"] || 0;
-          grossLoss += Math.abs(metrics["Gross Loss"] || 0);
-          totalTrades += metrics["Total Trades"] || 0;
-          
-          // Calcular drawdown máximo
-          const currentDrawdown = Math.abs(metrics["Max Drawdown ($)"] || 0);
-          if (currentDrawdown > Math.abs(combinedStats.maxDrawdown)) {
-            combinedStats.maxDrawdown = -(metrics["Max Drawdown ($)"] || 0);
-            combinedStats.maxDrawdownPercent = metrics["Max Drawdown (%)"] || 0;
-          }
-          
-          console.log(`📊 ${fileName} - Métricas reais:`, {
-            netProfit: metrics["Net Profit"] || 0,
-            grossProfit: metrics["Gross Profit"] || 0,
-            grossLoss: metrics["Gross Loss"] || 0,
-            totalTrades: metrics["Total Trades"] || 0,
-            maxDrawdown: metrics["Max Drawdown ($)"] || 0,
-            winRate: metrics["Win Rate (%)"] || 0
-          });
-        }
-      });
-      
-      // Calcular métricas derivadas
-      if (grossLoss > 0) {
-        combinedStats.fatorLucro = grossProfit / grossLoss;
-      }
-      
-      if (totalTrades > 0) {
-        // Calcular win rate baseado nos dados reais
-        const totalWins = (combinedStats.fatorLucro * grossLoss) / (1 + combinedStats.fatorLucro);
-        combinedStats.winRate = (totalWins / grossProfit) * 100;
-      }
-      
-      if (combinedStats.resultado !== 0) {
-        combinedStats.roi = (combinedStats.resultado / 100000) * 100;
-      }
-      
-      // Calcular drawdown médio baseado nos dados do gráfico consolidado
-      if (chartData.length > 0) {
-        const allDrawdowns = chartData
-          .filter((item: any) => !item.isStart) // Excluir ponto inicial
-          .map((item: any) => Math.abs(item.drawdown || 0)); // Manter valores absolutos para cálculo de máximo
-        
-        if (allDrawdowns.length > 0) {
-          combinedStats.avgDrawdown = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
-        }
-        
-        // IMPORTANTE: No modo DRAWDOWN, manter sempre os valores dos Performance Metrics
-        // NÃO sobrescrever com dados do gráfico que podem estar agrupados incorretamente
-        console.log('🎯 MODO DRAWDOWN: Mantendo valores originais dos Performance Metrics');
-        console.log(`📊 Max DD Performance: R$ ${Math.abs(combinedStats.maxDrawdown).toLocaleString()}`);
-        console.log(`📊 Max DD % Performance: ${Math.abs(combinedStats.maxDrawdownPercent).toFixed(2)}%`);
-        
-        // Calcular apenas para comparação (não sobrescrever)
-        const maxDrawdownFromChart = Math.max(...allDrawdowns);
-        console.log(`📊 Max DD do Gráfico: R$ ${maxDrawdownFromChart.toLocaleString()}`);
-        console.log(`🔍 Diferença detectada: ${maxDrawdownFromChart !== Math.abs(combinedStats.maxDrawdown) ? 'SIM' : 'NÃO'}`)
-      }
-      
-      console.log('✅ Estatísticas combinadas (dados reais):', combinedStats);
-      return combinedStats;
-    }
-    
-    // Se há estratégia selecionada, usar dados reais da estratégia
-    if (selectedStrategy && fileResults) {
-      // Tentar encontrar os dados da estratégia com e sem extensão .csv
-      const strategyData = fileResults[selectedStrategy] || fileResults[`${selectedStrategy}.csv`];
-      console.log('🔍 Buscando dados da estratégia:', {
-        selectedStrategy,
-        hasStrategyData: !!strategyData,
-        availableKeys: Object.keys(fileResults)
-      });
-      
-      if (strategyData && strategyData["Performance Metrics"]) {
-        const metrics = strategyData["Performance Metrics"];
-        
-        // Calcular estatísticas dos dados do gráfico
-        const dadosValidos = chartData.filter((item: any) => !item.isStart);
-        
-        // Resultado total do gráfico (último valor)
-        const ultimoValor = chartData.length > 0 ? chartData[chartData.length - 1] : null;
-        const resultadoGrafico = ultimoValor ? (ultimoValor.saldo || ultimoValor.resultado || 0) : 0;
-        
-        // Drawdown máximo do gráfico
-        const drawdownsGrafico = dadosValidos.map((item: any) => Math.abs(item.drawdown || 0));
-        const maxDrawdownGrafico = drawdownsGrafico.length > 0 ? Math.max(...drawdownsGrafico) : 0;
-        
-        // Drawdown médio do gráfico
-        const avgDrawdownCalculated = drawdownsGrafico.length > 0 
-          ? drawdownsGrafico.reduce((acc: number, dd: number) => acc + dd, 0) / drawdownsGrafico.length
-          : 0;
-        
-        // Drawdown percentual máximo do gráfico
-        const drawdownsPercentGrafico = dadosValidos.map((item: any) => Math.abs(item.drawdownPercent || 0));
-        const maxDrawdownPercentGrafico = drawdownsPercentGrafico.length > 0 ? Math.max(...drawdownsPercentGrafico) : 0;
-        
-        // Contar pontos com dados
-        const pontosComDados = dadosValidos.length;
-        
-        // IMPORTANTE: SEMPRE usar drawdown consolidado quando há múltiplos CSVs
-        const isMultipleFiles = Object.keys(fileResults).length > 1;
-        const maxDrawdownReal = (showConsolidated && isMultipleFiles) 
-          ? maxDrawdownGrafico  // Usar valor consolidado calculado
-          : Math.abs(metrics["Max Drawdown ($)"] || 0); // Usar Performance Metrics
-        const maxDrawdownPercentReal = (showConsolidated && isMultipleFiles)
-          ? (maxDrawdownGrafico / pontosComDados * 100) // Calcular % baseado no consolidado
-          : Math.abs(metrics["Max Drawdown (%)"] || 0);
-        
-        console.log((showConsolidated && isMultipleFiles)
-          ? '🎯 MÚLTIPLOS CSVs - Usando drawdown consolidado calculado cronologicamente'
-          : '🎯 ESTRATÉGIA ÚNICA - Usando Performance Metrics para DD Máximo');
-        console.log(`📊 DD Gráfico: R$ ${maxDrawdownGrafico.toLocaleString()}`);
-        console.log(`📊 DD Performance: R$ ${maxDrawdownReal.toLocaleString()}`);
-        console.log(`📊 Usando DD Performance (correto): R$ ${maxDrawdownReal.toLocaleString()}`);
 
-        return {
-          resultado: resultadoGrafico,
-          maxDrawdown: maxDrawdownReal, // SEMPRE usar Performance Metrics
-          avgDrawdown: avgDrawdownCalculated,
-          roi: (resultadoGrafico / parseFloat(totalInvestment || "100000")) * 100,
-          fatorLucro: metrics["Profit Factor"] || 0,
-          winRate: metrics["Win Rate (%)"] || 0,
-          sharpeRatio: metrics["Sharpe Ratio"] || 0,
-          grossProfit: metrics["Gross Profit"] || 0,
-          grossLoss: Math.abs(metrics["Gross Loss"] || 0),
-          avgWin: metrics["Average Win"] || 0,
-          avgLoss: Math.abs(metrics["Average Loss"] || 0),
-          activeDays: metrics["Active Days"] || 0,
-          maxDrawdownPercent: maxDrawdownPercentReal, // SEMPRE usar Performance Metrics
-          pontosComDados: pontosComDados
-        };
-      }
-    }
-    
-    // Caso contrário, usar dados consolidados
-    if (data?.["Performance Metrics"] && chartData.length > 0) {
-      const metrics = data["Performance Metrics"];
-      
-      // Calcular estatísticas dos dados do gráfico
-      const dadosValidos = chartData.filter(item => !item.isStart);
-      
-      // Resultado total do gráfico (último valor)
-      const ultimoValor = chartData.length > 0 ? chartData[chartData.length - 1] : null;
-      const resultadoGrafico = ultimoValor ? (ultimoValor.saldo || ultimoValor.resultado || 0) : 0;
-      
-      // Drawdown máximo do gráfico
-      const drawdownsGrafico = dadosValidos.map(item => Math.abs(item.drawdown || 0));
-      const maxDrawdownGrafico = drawdownsGrafico.length > 0 ? Math.max(...drawdownsGrafico) : 0;
-      
-      // Drawdown médio do gráfico
-      const avgDrawdownCalculated = drawdownsGrafico.length > 0 
-        ? drawdownsGrafico.reduce((acc, dd) => acc + dd, 0) / drawdownsGrafico.length
-        : 0;
-      
-      // Drawdown percentual máximo do gráfico
-      const drawdownsPercentGrafico = dadosValidos.map(item => Math.abs(item.drawdownPercent || 0));
-      const maxDrawdownPercentGrafico = drawdownsPercentGrafico.length > 0 ? Math.max(...drawdownsPercentGrafico) : 0;
-      
-      // Contar pontos com dados
-      const pontosComDados = dadosValidos.length;
-      
-      // IMPORTANTE: SEMPRE usar drawdown consolidado quando há múltiplos CSVs
-      const resultadoFinal = resultadoGrafico !== 0 ? resultadoGrafico : (metrics["Net Profit"] || 0);
-      const isMultipleFiles = Object.keys(fileResults).length > 1;
-      const maxDrawdownFinal = (showConsolidated && isMultipleFiles) 
-        ? maxDrawdownGrafico  // Usar valor consolidado calculado
-        : Math.abs(metrics["Max Drawdown ($)"] || 0); // Usar Performance Metrics
-      const maxDrawdownPercentFinal = (showConsolidated && isMultipleFiles)
-        ? (maxDrawdownGrafico / pontosComDados * 100) // Calcular % baseado no consolidado
-        : Math.abs(metrics["Max Drawdown (%)"] || 0);
-      
-      console.log((showConsolidated && isMultipleFiles)
-        ? '🎯 MÚLTIPLOS CSVs - Usando drawdown consolidado calculado cronologicamente (seção 2)'
-        : '🎯 CONSISTÊNCIA GARANTIDA - Usando sempre Performance Metrics para DD Máximo');
-      console.log(`📊 DD Gráfico: R$ ${maxDrawdownGrafico.toLocaleString()}`);
-      console.log(`📊 DD Performance: R$ ${maxDrawdownFinal.toLocaleString()}`);
-      console.log(`📊 Usando DD Performance (correto): R$ ${maxDrawdownFinal.toLocaleString()}`);
-      
-      // PADRONIZAÇÃO: Usar valores padronizados quando disponíveis
-      const maxDrawdownPadronizado = metrics["Max Drawdown Padronizado ($)"] || maxDrawdownFinal;
-      const maxDrawdownPctPadronizado = metrics["Max Drawdown Padronizado (%)"] || maxDrawdownPercentFinal;
-      
-      // PADRONIZAÇÃO: Log para debug dos valores de drawdown
-      console.log("🔍 DEBUG - Drawdown values:", {
-        maxDrawdownGrafico,
-        maxDrawdownPercentGrafico,
-        apiDrawdown: metrics["Max Drawdown ($)"],
-        apiDrawdownPercent: metrics["Max Drawdown (%)"],
-        finalDrawdown: maxDrawdownFinal,
-        finalDrawdownPercent: maxDrawdownPercentFinal
-      });
-      
-      return {
-        resultado: resultadoFinal,
-        maxDrawdown: maxDrawdownPadronizado,
-        avgDrawdown: avgDrawdownCalculated,
-        roi: (resultadoFinal / parseFloat(totalInvestment || "100000")) * 100,
-        fatorLucro: metrics["Profit Factor"] || 0,
-        winRate: metrics["Win Rate (%)"] || 0,
-        sharpeRatio: metrics["Sharpe Ratio"] || 0,
-        grossProfit: metrics["Gross Profit"] || 0,
-        grossLoss: Math.abs(metrics["Gross Loss"] || 0),
-        avgWin: metrics["Average Win"] || 0,
-        avgLoss: Math.abs(metrics["Average Loss"] || 0),
-        activeDays: metrics["Active Days"] || 0,
-        maxDrawdownPercent: maxDrawdownPctPadronizado,
-        pontosComDados: pontosComDados
-      };
-    }
+    // 🎯 SIMPLIFICAÇÃO: Remover toda lógica complexa e usar apenas dados da API
+    // Se não há dados da API, retornar valores padrão
     
     return {
       resultado: 0,
@@ -1369,7 +967,7 @@ export function EquityCurveSection({
       maxDrawdownPercent: 0,
       pontosComDados: 0
     };
-  }, [data, totalInvestment, selectedStrategy, selectedAsset, fileResults, timeRange, showConsolidated, selectedFiles, chartData, dailyMetricsFromApi]);
+  }, [data, totalInvestment, selectedStrategy, selectedAsset, fileResults, timeRange, showConsolidated, selectedFiles, chartData, dailyMetricsFromApi, consolidatedMetrics]);
 
   // Componente de Tooltip customizado
   const CustomTooltip = ({ active, payload, label }: unknown) => {
@@ -1574,7 +1172,7 @@ export function EquityCurveSection({
               </div>
             )}
             
-            {chartData.length > 0 ? (
+            {Array.isArray(chartData) && chartData.length > 0 ? (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   {chartType === 'resultado' ? (

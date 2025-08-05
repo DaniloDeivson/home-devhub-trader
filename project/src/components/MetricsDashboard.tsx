@@ -14,6 +14,7 @@ import {
   BarChart
 } from "lucide-react";
 import { PositionSizingSection } from './PositionSizingSection';
+import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
 interface MetricsDashboardProps {
   tradeObject: {
@@ -39,6 +40,7 @@ interface MetricsDashboardProps {
     file?: File;
   };
   showTitle?: boolean;
+  fileResults?: { [key: string]: unknown } | null; // Adicionado para múltiplos CSVs
   metrics: {
     profitFactor?: number;
     payoff?: number;
@@ -82,7 +84,7 @@ interface MetricsDashboardProps {
   };
 }
 
-export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: MetricsDashboardProps) {
+export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle = true }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showPositionSizing, setShowPositionSizing] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState('all');
@@ -680,6 +682,32 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
     // Set default values for metrics that might be missing with proper null checks
     const safeMetrics = metrics || {};
 
+    // 🎯 LÓGICA CORRETA PARA DRAWDOWN:
+    // Para múltiplos CSVs: Usa calculateDirectConsolidation() para calcular drawdown consolidado
+    // Para CSV único: Usa dados da API (backtestResult["Performance Metrics"]["Max Drawdown ($)"])
+    
+    let maxDrawdownAmount = Number(safeMetrics.maxDrawdownAmount) || 0;
+    let maxDrawdown = Number(safeMetrics.maxDrawdown) || 0;
+    
+    if (fileResults && Object.keys(fileResults).length > 1) {
+      console.log('🔧 MÚLTIPLOS CSVs: Calculando drawdown consolidado com calculateDirectConsolidation()');
+      
+      try {
+        const consolidatedDD = calculateDirectConsolidation(fileResults);
+        console.log('✅ Drawdown consolidado calculado:', consolidatedDD);
+        
+        if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
+          maxDrawdownAmount = consolidatedDD.maxDrawdownAbsoluto;
+          maxDrawdown = consolidatedDD.maxDrawdownPercent;
+          console.log('✅ Usando drawdown consolidado:', { maxDrawdownAmount, maxDrawdown });
+        }
+      } catch (error) {
+        console.error('❌ Erro ao calcular drawdown consolidado:', error);
+      }
+    } else {
+      console.log('✅ CSV ÚNICO: Usando drawdown da API');
+    }
+
     const metricsWithDefaults = {
       profitFactor: Number(safeMetrics.profitFactor) || 0,
       sharpeRatio: Number(safeMetrics.sharpeRatio) || 0,
@@ -694,8 +722,8 @@ export function MetricsDashboard({ metrics, tradeObject, showTitle = true }: Met
       averageWin: Number(safeMetrics.averageWin) || 0,
       averageLoss: Number(safeMetrics.averageLoss) || 0,
       netProfit: Number(safeMetrics.netProfit) || 0,
-      maxDrawdown: Number(safeMetrics.maxDrawdown) || 0,
-      maxDrawdownAmount: Number(safeMetrics.maxDrawdownAmount) || 0,
+      maxDrawdown: maxDrawdown,
+      maxDrawdownAmount: maxDrawdownAmount,
       averageTrade: Number(safeMetrics.averageTrade) || 0,
       winRate: Number(safeMetrics.winRate) || 0,
       grossProfit: Number(safeMetrics.grossProfit) || 0,
