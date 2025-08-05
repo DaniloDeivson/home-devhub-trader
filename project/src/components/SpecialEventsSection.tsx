@@ -412,9 +412,27 @@ const calculateSpecialEventsMetrics = (tradesData) => {
 export function SpecialEventsSection({
   showSpecialEvents,
   setShowSpecialEvents,
-  tadesData // data.EquityCurveData.daily
+  tadesData // data.EquityCurveData.daily ou fileResults para múltiplos CSV
 }) {
-  const tradesData = tadesData.trades;
+  // Para múltiplos CSV, consolidar todos os trades
+  let tradesData;
+  if (tadesData && typeof tadesData === 'object' && !tadesData.trades) {
+    // É fileResults (múltiplos CSV)
+    console.log('📊 MÚLTIPLOS CSVs: Consolidando trades para Eventos Especiais');
+    const allTrades = [];
+    Object.keys(tadesData).forEach(fileName => {
+      const strategyData = tadesData[fileName] as any;
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        allTrades.push(...strategyData.trades);
+      }
+    });
+    tradesData = allTrades;
+    console.log(`📊 Consolidados ${allTrades.length} trades de ${Object.keys(tadesData).length} CSVs`);
+  } else {
+    // É trades único
+    tradesData = tadesData?.trades || [];
+  }
+  
   // Debug: verificar estrutura dos dados
   console.log('Dados recebidos para eventos especiais:', tadesData);
   

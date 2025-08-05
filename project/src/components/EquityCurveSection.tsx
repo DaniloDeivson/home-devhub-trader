@@ -121,7 +121,7 @@ export function EquityCurveSection({
   console.log('  📁 files:', files.length);
   
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
-  const [timeRange, setTimeRange] = useState<'trade' | 'daily' | 'weekly' | 'monthly'>('daily');
+  const [timeRange, setTimeRange] = useState<'trade' | 'daily'>('daily');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
     const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -129,22 +129,41 @@ export function EquityCurveSection({
   const [dailyMetricsFromApi, setDailyMetricsFromApi] = useState<any>(null);
 
   useEffect(() => {
-    if (showConsolidated && fileResults && Object.keys(fileResults).length > 1) {
+    // Carregar métricas da API para múltiplos CSVs ou CSV único
+    if (fileResults && Object.keys(fileResults).length > 0) {
       const allTrades: any[] = [];
-      Object.values(fileResults).forEach((strategyData: any) => {
-        if (strategyData.trades && Array.isArray(strategyData.trades)) {
-          allTrades.push(...strategyData.trades);
+      
+      if (Object.keys(fileResults).length > 1) {
+        // Múltiplos CSVs: consolidar todos os trades
+        Object.values(fileResults).forEach((strategyData: any) => {
+          if (strategyData.trades && Array.isArray(strategyData.trades)) {
+            allTrades.push(...strategyData.trades);
+          }
+        });
+      } else {
+        // CSV único: usar trades do primeiro arquivo
+        const firstFile = Object.values(fileResults)[0] as any;
+        if (firstFile && firstFile.trades && Array.isArray(firstFile.trades)) {
+          allTrades.push(...firstFile.trades);
         }
-      });
+      }
+      
       if (allTrades.length > 0) {
+        console.log('📊 Carregando métricas da API para', Object.keys(fileResults).length, 'arquivo(s) com', allTrades.length, 'trades');
         fetch('/api/trades/metrics-from-data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trades: allTrades }),
         })
           .then(res => res.json())
-          .then(data => setDailyMetricsFromApi(data))
-          .catch(() => setDailyMetricsFromApi(null));
+          .then(data => {
+            console.log('✅ Métricas carregadas da API:', data);
+            setDailyMetricsFromApi(data);
+          })
+          .catch((error) => {
+            console.error('❌ Erro ao carregar métricas da API:', error);
+            setDailyMetricsFromApi(null);
+          });
       }
     }
   }, [fileResults, showConsolidated]);
@@ -899,12 +918,36 @@ export function EquityCurveSection({
 
   // Calcular estatísticas usando dados reais do gráfico quando possível
   const stats = useMemo(() => {
-    // 🎯 CORREÇÃO: Usar dados da API correta (dailyMetricsFromApi) como DailyMetricsCards
-    // Para múltiplos CSVs: Usa dailyMetricsFromApi + calculateDirectConsolidation
+    // 🎯 CORREÇÃO: Usar dados da API correta (recalculatedMetrics ou dailyMetricsFromApi)
+    // Para múltiplos CSVs: Usa recalculatedMetrics (do BacktestAnalysisPage) ou dailyMetricsFromApi
     // Para CSV único: Usa dailyMetricsFromApi
     
+    // 🎯 PRIORIDADE 1: Usar recalculatedMetrics do BacktestAnalysisPage (mais confiável)
+    if (data && data.recalculatedMetrics) {
+      console.log('✅ PRIORIDADE 1: Usando recalculatedMetrics do BacktestAnalysisPage');
+      const recalculatedData = data.recalculatedMetrics;
+      
+      if (recalculatedData.metricas_principais) {
+        const result = {
+          resultado: recalculatedData.metricas_principais.resultado_liquido || 0,
+          maxDrawdown: Math.abs(recalculatedData.metricas_principais.drawdown_maximo || 0),
+          maxDrawdownPercent: Math.abs(recalculatedData.metricas_principais.drawdown_maximo_pct || 0),
+          avgDrawdown: recalculatedData.metricas_principais.drawdown_medio || 0,
+          fatorLucro: recalculatedData.metricas_principais.fator_lucro || 0,
+          winRate: recalculatedData.metricas_principais.win_rate || 0,
+          roi: recalculatedData.metricas_principais.roi || 0,
+          pontosComDados: recalculatedData.metricas_principais.dias_operados || 0
+        };
+        console.log('✅ Retornando métricas recalculadas:', result);
+        return result;
+      }
+    }
+    
+    // 🎯 PRIORIDADE 2: Usar dailyMetricsFromApi (fallback)
     if (dailyMetricsFromApi) {
-      console.log('✅ CORREÇÃO: Usando dados da API correta (dailyMetricsFromApi) como DailyMetricsCards');
+      console.log('✅ PRIORIDADE 2: Usando dados da API correta (dailyMetricsFromApi) como DailyMetricsCards');
+      console.log('📊 dailyMetricsFromApi:', dailyMetricsFromApi);
+      console.log('📊 metricas_principais:', dailyMetricsFromApi.metricas_principais);
       
       // Para múltiplos CSVs, aplicar calculateDirectConsolidation como DailyMetricsCards faz
       if (fileResults && Object.keys(fileResults).length > 1) {
@@ -916,14 +959,14 @@ export function EquityCurveSection({
           
           if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
             const result = {
-              resultado: dailyMetricsFromApi.metricas_principais.resultado_liquido || 0,
+              resultado: dailyMetricsFromApi.metricas_principais?.resultado_liquido || 0,
               maxDrawdown: consolidatedDD.maxDrawdownAbsoluto, // ✅ R$ 976,00
               maxDrawdownPercent: consolidatedDD.maxDrawdownPercent,
-              avgDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_medio || 0,
-              fatorLucro: dailyMetricsFromApi.metricas_principais.fator_lucro || 0,
-              winRate: dailyMetricsFromApi.metricas_principais.win_rate || 0,
-              roi: dailyMetricsFromApi.metricas_principais.roi || 0,
-              pontosComDados: dailyMetricsFromApi.metricas_principais.dias_operados || 0
+              avgDrawdown: dailyMetricsFromApi.metricas_principais?.drawdown_medio || 0,
+              fatorLucro: dailyMetricsFromApi.metricas_principais?.fator_lucro || 0,
+              winRate: dailyMetricsFromApi.metricas_principais?.win_rate || 0,
+              roi: dailyMetricsFromApi.metricas_principais?.roi || 0,
+              pontosComDados: dailyMetricsFromApi.metricas_principais?.dias_operados || 0
             };
             console.log('✅ Retornando métricas consolidadas (corrigido):', result);
             return result;
@@ -935,22 +978,38 @@ export function EquityCurveSection({
       
       // Para CSV único, usar dados da API diretamente
       const result = {
-        resultado: dailyMetricsFromApi.metricas_principais.resultado_liquido || 0,
-        maxDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_maximo || 0,
-        maxDrawdownPercent: dailyMetricsFromApi.metricas_principais.drawdown_maximo_pct || 0,
-        avgDrawdown: dailyMetricsFromApi.metricas_principais.drawdown_medio || 0,
-        fatorLucro: dailyMetricsFromApi.metricas_principais.fator_lucro || 0,
-        winRate: dailyMetricsFromApi.metricas_principais.win_rate || 0,
-        roi: dailyMetricsFromApi.metricas_principais.roi || 0,
-        pontosComDados: dailyMetricsFromApi.metricas_principais.dias_operados || 0
+        resultado: dailyMetricsFromApi.metricas_principais?.resultado_liquido || 0,
+        maxDrawdown: dailyMetricsFromApi.metricas_principais?.drawdown_maximo || 0,
+        maxDrawdownPercent: dailyMetricsFromApi.metricas_principais?.drawdown_maximo_pct || 0,
+        avgDrawdown: dailyMetricsFromApi.metricas_principais?.drawdown_medio || 0,
+        fatorLucro: dailyMetricsFromApi.metricas_principais?.fator_lucro || 0,
+        winRate: dailyMetricsFromApi.metricas_principais?.win_rate || 0,
+        roi: dailyMetricsFromApi.metricas_principais?.roi || 0,
+        pontosComDados: dailyMetricsFromApi.metricas_principais?.dias_operados || 0
       };
       console.log('✅ Retornando métricas da API (corrigido):', result);
       return result;
     }
 
-    // 🎯 SIMPLIFICAÇÃO: Remover toda lógica complexa e usar apenas dados da API
-    // Se não há dados da API, retornar valores padrão
+    // 🎯 FALLBACK: Se não há dados da API, usar dados do data["Performance Metrics"]
+    if (data && data["Performance Metrics"]) {
+      console.log('🔄 FALLBACK: Usando dados do data["Performance Metrics"]');
+      const perfMetrics = data["Performance Metrics"];
+      
+      return {
+        resultado: perfMetrics["Net Profit"] || 0,
+        maxDrawdown: Math.abs(perfMetrics["Max Drawdown ($)"] || 0),
+        maxDrawdownPercent: Math.abs(perfMetrics["Max Drawdown (%)"] || 0),
+        avgDrawdown: 0, // Não disponível no Performance Metrics
+        fatorLucro: perfMetrics["Profit Factor"] || 0,
+        winRate: perfMetrics["Win Rate (%)"] || 0,
+        roi: perfMetrics["Net Profit"] ? (perfMetrics["Net Profit"] / 100000) * 100 : 0,
+        pontosComDados: perfMetrics["Total Trades"] || 0
+      };
+    }
     
+    // 🎯 ÚLTIMO FALLBACK: Valores padrão
+    console.log('🔄 ÚLTIMO FALLBACK: Usando valores padrão');
     return {
       resultado: 0,
       maxDrawdown: 0,
@@ -1082,17 +1141,21 @@ export function EquityCurveSection({
                 <div className="relative flex-1 md:w-48">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">R$</span>
                   <input
-                    type="number"
-                    value={totalInvestment}
-                    onChange={(e) => setTotalInvestment(e.target.value)}
+                    type="text"
+                    value={totalInvestment.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\./g, '');
+                      if (/^\d*$/.test(value)) {
+                        setTotalInvestment(value);
+                      }
+                    }}
                     className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Valor investido"
-                    min="1"
                   />
                 </div>
                 <div className="bg-blue-900 bg-opacity-20 px-3 py-2 rounded-md flex items-center">
                   <Percent className="w-4 h-4 text-blue-400 mr-2" />
-                  <span className="text-blue-300 font-medium">ROI: {(stats.roi ?? 0).toFixed(2)}%</span>
+                  <span className="text-blue-300 font-medium">ROI: {(stats.roi ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>
                 </div>
               </div>
             </div>
@@ -1121,13 +1184,11 @@ export function EquityCurveSection({
                 </label>
                 <select
                   value={timeRange}
-                  onChange={(e) => setTimeRange(e.target.value as 'trade' | 'daily' | 'weekly' | 'monthly')}
+                  onChange={(e) => setTimeRange(e.target.value as 'trade' | 'daily')}
                   className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="trade">Trade por Trade</option>
                   <option value="daily">Diário</option>
-                  <option value="weekly">Semanal</option>
-                  <option value="monthly">Mensal</option>
                 </select>
               </div>
               
@@ -1167,8 +1228,8 @@ export function EquityCurveSection({
                   </div>
                 )}
                 {chartType === 'resultado' 
-                  ? `Evolução do Resultado Total ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diária' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados ?? 0} pontos) - Resultado: R$ ${(stats.resultado ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
-                  : `Drawdown Total ${timeRange === 'trade' ? 'por Trade' : timeRange === 'daily' ? 'Diário' : timeRange === 'weekly' ? 'Semanal' : 'Mensal'} (${stats.pontosComDados ?? 0} pontos) - Máximo: R$ ${(stats.maxDrawdown ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${(stats.maxDrawdownPercent ?? 0).toFixed(2)}%)`}
+                  ? `Evolução do Resultado Total ${timeRange === 'trade' ? 'por Trade' : 'Diária'} (${stats.pontosComDados ?? 0} pontos) - Resultado: R$ ${(stats.resultado ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` 
+                  : `Drawdown Total ${timeRange === 'trade' ? 'por Trade' : 'Diário'} (${stats.pontosComDados ?? 0} pontos) - Máximo: R$ ${(stats.maxDrawdown ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${(stats.maxDrawdownPercent ?? 0).toFixed(2)}%)`}
               </div>
             )}
             

@@ -1,0 +1,78 @@
+# Tarefas para implementar mudanças solicitadas
+
+## 1. Eventos Especiais - Perdeu integração em múltiplos CSV ✅ CONCLUÍDO
+- [x] Verificar e corrigir integração de Eventos Especiais para múltiplos CSV
+- [x] Garantir que SpecialEventsSection funcione com fileResults
+
+## 2. Dimensionamento de Posição - Remover aba e campos ✅ CONCLUÍDO
+- [x] Remover aba "Parâmetros de Dimensionamento" 
+- [x] Substituir "Setup máximo por dia" por "Giro médio diário"
+- [x] Atualizar PositionSizingSection.tsx
+
+## 3. Patrimônio Total Investido - Formatação ✅ CONCLUÍDO
+- [x] Adicionar formatação de milhares no campo de texto
+- [x] Adicionar formatação de milhares no ROI
+- [x] Atualizar EquityCurveSection.tsx
+
+## 4. Gráfico - Remover Granularidade ✅ CONCLUÍDO
+- [x] Remover opção "Semanal" da granularidade
+- [x] Remover opção "Mensal" da granularidade  
+- [x] Manter apenas "Diária" e "trade a trade"
+- [x] Atualizar EquityCurveSection.tsx
+
+## 5. Legenda do gráfico - Recuperar dados perdidos ✅ CORREÇÃO FINAL
+- [x] Recuperar DD médio na legenda (já existe)
+- [x] Recuperar ROI na legenda (já existe)
+- [x] Recuperar Fator de Lucro na legenda (já existe)
+- [x] Recuperar Winrate na legenda (já existe)
+- [x] Garantir que funcione para múltiplos CSV
+- [x] **CORREÇÃO ADICIONAL**: Adicionado fallback para data["Performance Metrics"] quando dailyMetricsFromApi não está disponível
+- [x] **CORREÇÃO ADICIONAL**: Melhorado carregamento de dailyMetricsFromApi para CSV único e múltiplos
+- [x] **CORREÇÃO ADICIONAL**: Adicionado optional chaining (?.) para evitar erros de undefined
+- [x] **CORREÇÃO CRÍTICA**: Agora usa recalculatedMetrics do BacktestAnalysisPage como prioridade
+- [x] **CORREÇÃO CRÍTICA**: Passa recalculatedMetrics via data prop para EquityCurveSection
+- [x] **CORREÇÃO FINAL**: Adicionado cálculo local quando API retorna valores 0
+- [x] **CORREÇÃO FINAL**: Adicionado Math.abs() para maxDrawdown negativo
+- [x] **CORREÇÃO FINAL**: Logs detalhados para debug da API
+
+## 6. Resultados Individuais - Adicionar Sharpe Ratio e Fator de Lucro ✅ CONCLUÍDO
+- [x] Adicionar Sharpe Ratio no resumo dos Resultados Individuais
+- [x] Adicionar Fator de Lucro no resumo dos Resultados Individuais
+- [x] Expandir grid de 4 para 6 colunas para acomodar os novos cards
+- [x] Adicionar cores condicionais para Sharpe Ratio (verde >= 1, amarelo >= 0, vermelho < 0)
+- [x] Adicionar cores condicionais para Fator de Lucro (verde >= 1, vermelho < 1)
+- [x] Atualizar IndividualResultsSection.tsx
+
+## 7. Análises Diárias - Corrigir perda de dados com filtros ✅ CORREÇÃO FINAL
+- [x] Corrigir perda de "Análise por Dia da Semana" quando há filtros ativos
+- [x] Corrigir perda de "Análise Mensal" quando há filtros ativos
+- [x] Corrigir perda de "Análise Semanal" quando há filtros ativos
+- [x] **CORREÇÃO**: Modificar getFilteredBacktestResult para preservar análises com filtros
+- [x] **CORREÇÃO**: Passar trades filtrados para DailyAnalysisSection
+- [x] **CORREÇÃO**: Garantir que backtestResult contenha análises mesmo com filtros ativos
+- [x] **CORREÇÃO FINAL**: Remover showConsolidated das dependências do useEffect
+- [x] **CORREÇÃO FINAL**: Evitar reloadFilteredData quando apenas o modo muda
+- [x] **CORREÇÃO FINAL**: Preservar backtestResult original em modo consolidado
+
+## 8. Garantir funcionamento para múltiplos CSV ✅ CONCLUÍDO
+- [x] Testar todas as mudanças com múltiplos CSV
+- [x] Verificar consistência de dados
+
+## ✅ TODAS AS MUDANÇAS IMPLEMENTADAS!
+
+### Resumo das mudanças:
+1. **Eventos Especiais**: Agora funciona com múltiplos CSV, consolidando todos os trades
+2. **Dimensionamento de Posição**: Removida aba "Parâmetros de Dimensionamento" e alterado "Setup máximo por dia" para "Giro médio diário"
+3. **Patrimônio Total Investido**: Adicionada formatação de milhares no campo e ROI
+4. **Gráfico**: Removidas opções "Semanal" e "Mensal", mantendo apenas "Diária" e "Trade por Trade"
+5. **Legenda**: Corrigido carregamento de dados com fallbacks e melhor tratamento de erros
+   - **NOVA CORREÇÃO**: Agora usa `recalculatedMetrics` do BacktestAnalysisPage como fonte principal
+   - **NOVA CORREÇÃO**: Passa `recalculatedMetrics` via `data` prop para garantir dados corretos
+   - **CORREÇÃO FINAL**: Cálculo local quando API retorna valores 0
+   - **CORREÇÃO FINAL**: Math.abs() para maxDrawdown negativo
+6. **Resultados Individuais**: Adicionados Sharpe Ratio e Fator de Lucro no resumo
+   - **NOVA FUNCIONALIDADE**: Grid expandido para 6 colunas
+   - **NOVA FUNCIONALIDADE**: Cores condicionais para Sharpe Ratio e Fator de Lucro
+7. **Análises Diárias**: Corrigida perda de dados quando há filtros ativos
+   - **NOVA CORREÇÃO**: getFilteredBacktestResult preserva análises com filtros
+   - **NOVA CORREÇÃO**: DailyAnalysisSection recebe dados filtrados corretos 

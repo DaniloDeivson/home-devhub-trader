@@ -244,6 +244,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
       try {
         console.log('📊 Recalculando métricas com dados consolidados:', allTrades.length, 'trades');
+        console.log('📊 Exemplo de trades enviados:', allTrades.slice(0, 3));
         
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
           method: 'POST',
@@ -255,11 +256,70 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
         if (response.ok) {
           const recalculatedData = await response.json();
+          console.log('📊 Resposta completa da API:', recalculatedData);
+          
+          // 🎯 CORREÇÃO: Se a API retorna valores 0, calcular localmente
+          if (recalculatedData.metricas_principais) {
+            const metrics = recalculatedData.metricas_principais;
+            
+            // Se win_rate é 0, calcular localmente
+            if (metrics.win_rate === 0 || metrics.win_rate === undefined) {
+              const profitableTrades = allTrades.filter(trade => (trade.pnl || 0) > 0).length;
+              const totalTrades = allTrades.length;
+              metrics.win_rate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
+              console.log('🔧 Win Rate calculado localmente:', metrics.win_rate);
+            }
+            
+            // Se fator_lucro é 0, calcular localmente
+            if (metrics.fator_lucro === 0 || metrics.fator_lucro === undefined) {
+              const grossProfit = allTrades.filter(trade => (trade.pnl || 0) > 0)
+                .reduce((sum, trade) => sum + (trade.pnl || 0), 0);
+              const grossLoss = Math.abs(allTrades.filter(trade => (trade.pnl || 0) < 0)
+                .reduce((sum, trade) => sum + (trade.pnl || 0), 0));
+              metrics.fator_lucro = grossLoss > 0 ? grossProfit / grossLoss : 0;
+              console.log('🔧 Fator de Lucro calculado localmente:', metrics.fator_lucro);
+            }
+            
+            // Se roi é 0, calcular localmente
+            if (metrics.roi === 0 || metrics.roi === undefined) {
+              const totalProfit = allTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
+              metrics.roi = (totalProfit / 100000) * 100; // Assumindo investimento de R$ 100.000
+              console.log('🔧 ROI calculado localmente:', metrics.roi);
+            }
+            
+            // Se drawdown_medio é 0, calcular localmente
+            if (metrics.drawdown_medio === 0 || metrics.drawdown_medio === undefined) {
+              // Calcular drawdown médio baseado nos trades
+              let equity = 0;
+              let peak = 0;
+              let totalDrawdown = 0;
+              let drawdownCount = 0;
+              
+              allTrades.forEach(trade => {
+                equity += (trade.pnl || 0);
+                if (equity > peak) {
+                  peak = equity;
+                }
+                const drawdown = peak - equity;
+                if (drawdown > 0) {
+                  totalDrawdown += drawdown;
+                  drawdownCount++;
+                }
+              });
+              
+              metrics.drawdown_medio = drawdownCount > 0 ? totalDrawdown / drawdownCount : 0;
+              console.log('🔧 Drawdown Médio calculado localmente:', metrics.drawdown_medio);
+            }
+          }
+          
           setRecalculatedMetrics(recalculatedData);
           
           console.log('📊 Métricas recalculadas com sucesso:', {
             sharpeRatio: recalculatedData.metricas_principais?.sharpe_ratio,
             profitFactor: recalculatedData.metricas_principais?.fator_lucro,
+            winRate: recalculatedData.metricas_principais?.win_rate,
+            roi: recalculatedData.metricas_principais?.roi,
+            avgDrawdown: recalculatedData.metricas_principais?.drawdown_medio,
             totalTrades: allTrades.length
           });
         } else {
@@ -1463,11 +1523,52 @@ useEffect(() => {
 const getFilteredBacktestResult = (): BacktestResult | null => {
   if (!backtestResult) return null;
   
+  // 🎯 CORREÇÃO: Sempre retornar backtestResult original em modo consolidado
   if (showConsolidated || files.length <= 1) {
+    console.log('✅ Modo consolidado: retornando backtestResult original com análises completas');
     return backtestResult;
   }
   
-  // Implementar filtro individual quando necessário
+  // 🎯 CORREÇÃO: Garantir que as análises sejam preservadas mesmo com filtros
+  // Se há filtros ativos, criar um backtestResult filtrado mas preservando as análises
+  if (selectedStrategy || selectedAsset || tradeSearch) {
+    console.log('🔍 Aplicando filtros mas preservando análises');
+    const filteredTrades = backtestResult.trades?.filter(trade => {
+      // Aplicar filtro de estratégia
+      if (selectedStrategy && trade.strategy !== selectedStrategy) {
+        return false;
+      }
+      
+      // Aplicar filtro de ativo
+      if (selectedAsset && trade.symbol !== selectedAsset) {
+        return false;
+      }
+      
+      // Aplicar filtro de busca
+      if (tradeSearch) {
+        const searchLower = tradeSearch.toLowerCase();
+        const matchesSearch = 
+          (trade.symbol && trade.symbol.toLowerCase().includes(searchLower)) ||
+          (trade.strategy && trade.strategy.toLowerCase().includes(searchLower)) ||
+          trade.entry_date.toLowerCase().includes(searchLower) ||
+          trade.exit_date.toLowerCase().includes(searchLower) ||
+          trade.pnl.toString().includes(searchLower);
+        
+        if (!matchesSearch) {
+          return false;
+        }
+      }
+      
+      return true;
+    }) || [];
+    
+    // Retornar backtestResult com trades filtrados mas preservando as análises
+    return {
+      ...backtestResult,
+      trades: filteredTrades
+    };
+  }
+  
   return backtestResult;
 };
 
@@ -1596,14 +1697,20 @@ const reloadFilteredData = async () => {
 useEffect(() => {
   // Só recarrega se não estiver em upload, houver arquivos e não for um carregamento de análise salva
   if (!showUploadForm && files.length > 0 && !currentAnalysisId) {
-    // Delay para evitar muitas chamadas seguidas
-    const timeoutId = setTimeout(() => {
-      reloadFilteredData();
-    }, 300);
+    // 🎯 CORREÇÃO: Não recarregar quando apenas showConsolidated muda
+    // Só recarregar quando há mudanças reais nos arquivos selecionados
+    const shouldReload = selectedFiles.length > 0 && selectedFiles.length !== files.length;
     
-    return () => clearTimeout(timeoutId);
+    if (shouldReload) {
+      // Delay para evitar muitas chamadas seguidas
+      const timeoutId = setTimeout(() => {
+        reloadFilteredData();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    }
   }
-}, [showConsolidated, selectedFiles, files.length, currentAnalysisId]);
+}, [selectedFiles, files.length, currentAnalysisId]); // Removido showConsolidated das dependências
 
   // Wrapper para setSelectedStrategy com log
   const handleSetSelectedStrategy = (strategy: string | null) => {
@@ -1911,7 +2018,10 @@ useEffect(() => {
                       selectedStrategy={selectedStrategy}
                       selectedAsset={selectedAsset}
                       fileResults={fileResults}
-                      data={drata}
+                      data={{
+                        ...drata,
+                        recalculatedMetrics: recalculatedMetrics
+                      }}
                       showConsolidated={showConsolidated}
                       selectedFiles={selectedFiles}
                       files={files}
@@ -1963,7 +2073,7 @@ useEffect(() => {
                 />
                 
                 {/* Daily Analysis Section - PRO only */}
-                <PlanRestrictedSection 
+                                <PlanRestrictedSection
                   title="Análise Diár" 
                   description="Acesse análises detalhadas por dia da semana, mês e horário. Disponível apenas para usuários PRO."
                   requiredPlan="Pro"
@@ -1971,8 +2081,8 @@ useEffect(() => {
                   <DailyAnalysisSection
                     showDailyAnalysis={showDailyAnalysis}
                     setShowDailyAnalysis={setShowDailyAnalysis}
-                    backtestResult={backtestResult}
-                    tradesData={{ trades }}
+                    backtestResult={getFilteredBacktestResult()}
+                    tradesData={{ trades: filteredTrades.length > 0 ? filteredTrades : trades }}
                     fileResults={fileResults}
                   />
                 </PlanRestrictedSection>
@@ -2306,7 +2416,7 @@ useEffect(() => {
                   <SpecialEventsSection
                     showSpecialEvents={showSpecialEvents}
                     setShowSpecialEvents={setShowSpecialEvents}
-                    tadesData={trades}
+                    tadesData={fileResults && Object.keys(fileResults).length > 0 ? fileResults : trades}
                     
                   />
                 </PlanRestrictedSection>

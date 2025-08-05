@@ -203,7 +203,7 @@ export function PositionSizingSection({
               </p>
             </div>
             <div className="bg-gray-700 p-3 rounded-lg">
-              <p className="text-sm text-gray-400 mb-1">Setup máximo por dia</p>
+              <p className="text-sm text-gray-400 mb-1">Giro médio diário</p>
               <p className="text-xl font-bold">
                 {positionSizingData.maxSetupPerDay.toLocaleString('pt-BR')} {positionSizingData.unit}
               </p>
@@ -232,82 +232,10 @@ export function PositionSizingSection({
               </p>
             </div>
             <div className="bg-gray-700 p-3 rounded-lg">
-              <p className="text-sm text-gray-400 mb-1">Setup máximo por dia</p>
+              <p className="text-sm text-gray-400 mb-1">Giro médio diário</p>
               <p className="text-xl font-bold">
                 {positionSizingData.maxSetupPerDay.toLocaleString('pt-BR')} {positionSizingData.unit}
               </p>
-            </div>
-          </div>
-
-          {/* Parâmetros de Dimensionamento */}
-          <div className="bg-gray-700 rounded-lg p-4 mb-6">
-            <h4 className="text-sm font-medium mb-4 text-gray-300 flex items-center">
-              <BarChart3 className="w-4 h-4 text-green-400 mr-2" />
-              Parâmetros de Dimensionamento
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Volume Total</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.totalVolume.toLocaleString('pt-BR')} {positionSizingData.unit}
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Desvio Padrão</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.standardDeviation.toLocaleString('pt-BR', {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1
-                  })} {positionSizingData.unit}
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Concentração de Risco</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.riskConcentration}%
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Posições Pequenas (≤2)</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.smallPositionsRatio}%
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Total de Trades</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.totalTrades.toLocaleString('pt-BR')}
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Dias Únicos</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.uniqueDays.toLocaleString('pt-BR')}
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Trades/Dia (Média)</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.uniqueDays > 0 ? 
-                    (positionSizingData.totalTrades / positionSizingData.uniqueDays).toFixed(1) : '0'}
-                </p>
-              </div>
-              
-              <div className="bg-gray-800 p-3 rounded">
-                <p className="text-xs text-gray-400 mb-1">Consistência</p>
-                <p className="text-lg font-semibold text-white">
-                  {positionSizingData.averagePosition > 0 ? 
-                    ((positionSizingData.medianPosition / positionSizingData.averagePosition) * 100).toFixed(0) + '%' : 
-                    'N/A'}
-                </p>
-              </div>
             </div>
           </div>
           

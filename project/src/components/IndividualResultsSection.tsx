@@ -137,7 +137,7 @@ export function IndividualResultsSection({
                 ) : (
                   <>
                     {/* Métricas principais em cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
                       {metrics && (
                         <>
                           <div className="bg-gray-800 p-3 rounded-lg">
@@ -177,6 +177,26 @@ export function IndividualResultsSection({
                             </div>
                             <p className="text-lg font-semibold text-red-400">
                               {formatCurrency(metrics["Max Drawdown ($)"] || 0)}
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-800 p-3 rounded-lg">
+                            <div className="flex items-center mb-1">
+                              <BarChart3 className="w-4 h-4 text-yellow-400 mr-1" />
+                              <span className="text-xs text-gray-400">Fator de Lucro</span>
+                            </div>
+                            <p className={`text-lg font-semibold ${(metrics["Profit Factor"] || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                              {(metrics["Profit Factor"] || 0).toFixed(2)}
+                            </p>
+                          </div>
+
+                          <div className="bg-gray-800 p-3 rounded-lg">
+                            <div className="flex items-center mb-1">
+                              <TrendingUp className="w-4 h-4 text-purple-400 mr-1" />
+                              <span className="text-xs text-gray-400">Sharpe Ratio</span>
+                            </div>
+                            <p className={`text-lg font-semibold ${(metrics["Sharpe Ratio"] || 0) >= 1 ? 'text-green-400' : (metrics["Sharpe Ratio"] || 0) >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {(metrics["Sharpe Ratio"] || 0).toFixed(2)}
                             </p>
                           </div>
                         </>
