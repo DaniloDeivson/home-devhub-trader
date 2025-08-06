@@ -129,6 +129,11 @@ def calcular_performance(df, cdi=0.12):
     dd_ser = equity - peak
     max_dd = abs(dd_ser.min()) if not dd_ser.empty else 0  # Valor positivo
     pct_dd = (max_dd / peak.max() * 100) if peak.max() != 0 else 0  # Baseado no pico máximo
+    
+    # CALCULAR DD MÉDIO - CORREÇÃO ADICIONADA
+    # Calcular drawdown médio baseado nos trades individuais
+    drawdown_values = dd_ser[dd_ser < 0].abs()  # Apenas valores negativos (drawdowns)
+    avg_drawdown = drawdown_values.mean() if len(drawdown_values) > 0 else 0
 
     recovery = net_profit / abs(max_dd) if max_dd != 0 else None
     recovery_3x = net_profit / (3 * abs(max_dd)) if max_dd != 0 else None
@@ -174,6 +179,17 @@ def calcular_performance(df, cdi=0.12):
         dur_loss = (loss_trades[exit_col] - loss_trades[entry_col]).mean() if len(loss_trades) > 0 else timedelta(0)
     else:
         avg_dur = dur_win = dur_loss = timedelta(0)
+    
+    # CALCULAR DIAS VENCEDORES E PERDEDORES
+    # Agrupar por dia e calcular se o dia foi vencedor ou perdedor
+    if entry_col:
+        df['date'] = df[entry_col].dt.date
+        daily_pnl = df.groupby('date')[pnl_col].sum()
+        winning_days = len(daily_pnl[daily_pnl > 0])
+        losing_days = len(daily_pnl[daily_pnl < 0])
+    else:
+        winning_days = 0
+        losing_days = 0
 
     max_trade_gain = pnl.max()
     max_trade_loss = pnl.min()
@@ -195,6 +211,7 @@ def calcular_performance(df, cdi=0.12):
         "Max Consecutive Losses": max_seq_loss_cnt,
         "Max Drawdown ($)": max_dd,
         "Max Drawdown (%)": pct_dd,
+        "Average Drawdown ($)": avg_drawdown,  # NOVO: DD Médio
         "Max Drawdown Padronizado ($)": max_dd,  # Valor padronizado
         "Max Drawdown Padronizado (%)": pct_dd,  # Percentual padronizado
         "Max Trade Drawdown ($)": trade_dd,
@@ -206,6 +223,8 @@ def calcular_performance(df, cdi=0.12):
         "Sharpe Ratio": sharpe_dd_simplificado,
         "Avg Trades/Active Day": media_operacoes_por_dia,
         "Active Days": dias_com_operacoes,
+        "Winning Days": winning_days,
+        "Losing Days": losing_days,
     }
 
 def calcular_day_of_week(df, cdi=0.12):
@@ -251,7 +270,7 @@ def calcular_day_of_week(df, cdi=0.12):
             "Net Profit": lucro,
             "Profit Factor": pf,
             "Win Rate (%)": round(win_rate, 2),
-            "Sharpe Ratio": sharpe_simp,
+            "Sharpe Ratio": sharpe,
             "Average Win": round(avg_win, 2),
             "Average Loss": round(avg_loss, 2),
             "Rentabilidade ($)": round(rentabilidade_total, 2)
@@ -345,7 +364,7 @@ def calcular_monthly(df, cdi=0.12):
                 "Win Rate (%)": round(win_rate, 2),
                 "Net Profit": lucro,
                 "Profit Factor": pf,
-                "Sharpe Ratio": sharpe_simp,
+                "Sharpe Ratio": sharpe,
                 "Average Win": round(avg_win, 2),
                 "Average Loss": round(avg_loss, 2),
                 "Max Drawdown ($)": round(max_drawdown_mes, 2),

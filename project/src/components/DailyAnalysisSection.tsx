@@ -611,6 +611,9 @@ export function DailyAnalysisSection({
                   Fator de Lucro
                 </th>
                 <th className="px-4 py-3 text-center">
+                  Sharpe Ratio
+                </th>
+                <th className="px-4 py-3 text-center">
                   Média Ganho
                 </th>
                 <th className="px-4 py-3 text-center">
@@ -687,6 +690,19 @@ export function DailyAnalysisSection({
                         }`}
                       >
                         {formatMetric(data["Profit Factor"])}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          (data["Sharpe Ratio"] || 0) >= 1.0
+                            ? "bg-green-900 text-green-300"
+                            : (data["Sharpe Ratio"] || 0) >= 0.5
+                            ? "bg-yellow-900 text-yellow-300"
+                            : "bg-red-900 text-red-300"
+                        }`}
+                      >
+                        {formatMetric(data["Sharpe Ratio"])}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">

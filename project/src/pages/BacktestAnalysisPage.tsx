@@ -25,6 +25,8 @@ import { supabase } from '../lib/supabase';
 import { FileFilter } from '../components/FileFilter';
 import { ActiveFilesInfo } from '../components/ActiveFilesInfo';
 import { buildApiUrl } from '../config/api';
+import { PositionSizingSection } from '../components/PositionSizingSection';
+import { TradeDurationSection } from '../components/TradeDurationSection';
 
 // Special events data
 const specialEvents = [
@@ -165,6 +167,8 @@ interface SavedAnalysis {
   showEmotionalProfile: boolean;
   showStrategySelector: boolean;
   showChat: boolean;
+  showPositionSizing: boolean;
+  showTradeDuration: boolean;
 }
 
 export function BacktestAnalysisPage() {
@@ -192,6 +196,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   const [showEmotionalProfile, setShowEmotionalProfile] = useState(false);
   const [showStrategySelector, setShowStrategySelector] = useState(true);
   const [showChat, setShowChat] = useState(false);
+  const [showPositionSizing, setShowPositionSizing] = useState(true);
+  const [showTradeDuration, setShowTradeDuration] = useState(true);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [csvContent, setCsvContent] = useState<string | null>(null);
@@ -333,7 +339,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     };
 
     recalculateMetrics();
-  }, [fileResults, showConsolidated, selectedFiles, selectedStrategy]);
+  }, [fileResults, showConsolidated, selectedFiles]);
   const [filteredTrades, setFilteredTrades] = useState<Trade[]>([]);
   const [tradeSearch, setTradeSearch] = useState('');
   const [emocional, setEmocional] = useState<any>(null);
@@ -348,6 +354,49 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   const [renameName, setRenameName] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // ✅ CORREÇÃO: Estado para congelar métricas originais
+  const [frozenMetrics, setFrozenMetrics] = useState<any>(null);
+  const [frozenTrades, setFrozenTrades] = useState<any>(null);
+  
+  // ✅ CORREÇÃO: Estados para congelar análises originais
+  const [frozenEmocional, setFrozenEmocional] = useState<any>(null);
+  const [frozenAnalysisResult, setFrozenAnalysisResult] = useState<any>(null);
+  const [frozenDrata, setFrozenDrata] = useState<any>(null);
+  
+  // ✅ CORREÇÃO: Congelar métricas originais quando dados são carregados
+  useEffect(() => {
+    if (backtestResult && !frozenMetrics) {
+      console.log('✅ CONGELANDO métricas originais para sempre');
+      const originalMetrics = convertToMetricsDashboardFormat(backtestResult);
+      const originalTrades = { trades: Array.isArray(trades) ? trades : [] };
+      
+      setFrozenMetrics(originalMetrics);
+      setFrozenTrades(originalTrades);
+      
+      console.log('✅ Métricas congeladas:', originalMetrics);
+      console.log('✅ Trades congelados:', originalTrades);
+    }
+  }, [backtestResult, frozenMetrics, trades]);
+  
+  // ✅ CORREÇÃO: Congelar análises originais quando dados são carregados
+  useEffect(() => {
+    if (backtestResult && !frozenEmocional && !frozenAnalysisResult && !frozenDrata) {
+      console.log('✅ CONGELANDO análises originais para sempre');
+      
+      // Congelar análises originais dos dados da API
+      setFrozenEmocional(emocional);
+      setFrozenAnalysisResult(analysisResult);
+      setFrozenDrata(drata);
+      
+      console.log('✅ Análises congeladas:', {
+        emocional: emocional,
+        analysisResult: analysisResult,
+        drata: drata
+      });
+    }
+  }, [backtestResult, emocional, analysisResult, drata, frozenEmocional, frozenAnalysisResult, frozenDrata]);
+
   function createFormData(file) {
   const formData = new FormData();
   formData.append('file', file);
@@ -418,7 +467,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
               showCorrelation: analysisData.showCorrelation ?? false,
               showEmotionalProfile: analysisData.showEmotionalProfile ?? false,
               showStrategySelector: analysisData.showStrategySelector ?? true,
-              showChat: analysisData.showChat ?? true
+              showChat: analysisData.showChat ?? true,
+              showPositionSizing: analysisData.showPositionSizing ?? true,
+              showTradeDuration: analysisData.showTradeDuration ?? true
             };
           });
           
@@ -468,7 +519,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   } else {
     setFilteredTrades([]);
   }
-}, [backtestResult?.trades, selectedStrategy, selectedAsset, tradeSearch]);
+}, [backtestResult?.trades, selectedAsset, tradeSearch]);
 
   // Atualizar estratégias disponíveis baseadas nos dados do backend
   useEffect(() => {
@@ -535,6 +586,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
   setIsLoading(true);
   setError(null);
+  
+  // ✅ CORREÇÃO: Limpar dados congelados quando novos dados são carregados
+  setFrozenMetrics(null);
+  setFrozenTrades(null);
 
   try {
     let response;
@@ -578,6 +633,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       
       const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
         setTrades(parsedTrades);
+        console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
+        if (parsedTrades.length > 0) {
+          console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
+        }
     } catch (error) {
       console.error('Error fetching emotional data:', error);
       setEmocional(null);
@@ -588,6 +647,14 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       }
 
       data = await response.json();
+      
+      // ✅ CORREÇÃO: Criar fileResults para arquivo único
+      const fileName = files[0].name;
+      const fileResultsData = {
+        [fileName]: data
+      };
+      setFileResults(fileResultsData);
+      console.log('📊 FileResults criado para arquivo único:', fileName);
       
       // Para 1 arquivo, não há correlação, mas podemos definir dados vazios
       data.dateDirectionCorrelation = {
@@ -681,6 +748,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         
         const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
         setTrades(parsedTrades);
+        console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
+        if (parsedTrades.length > 0) {
+          console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
+        }
       } catch (error) {
         console.error('Error fetching emotional data:', error);
         setEmocional(null);
@@ -700,10 +771,29 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         data = responseData.consolidado;
         
         console.log('📊 Resultados individuais processados:', Object.keys(responseData.individuais));
+        console.log('📊 Dados consolidados processados:', Object.keys(responseData.consolidado));
       } else {
-        // Fallback para formato antigo
+        // Fallback para formato antigo - criar fileResults manualmente
+        console.log('⚠️ Formato antigo detectado, criando fileResults manualmente');
+        
+        // Para arquivo único, criar fileResults com o nome do arquivo
+        if (files.length === 1) {
+          const fileName = files[0].name;
+          const fileResultsData = {
+            [fileName]: responseData
+          };
+          setFileResults(fileResultsData);
+          console.log('📊 FileResults criado para arquivo único:', fileName);
+        } else {
+          // Para múltiplos arquivos sem dados individuais, usar dados consolidados
+          const fileResultsData = {
+            'consolidado': responseData
+          };
+          setFileResults(fileResultsData);
+          console.log('📊 FileResults criado para dados consolidados');
+        }
+        
         data = responseData;
-
       }
       
       setDrata(data);
@@ -817,6 +907,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         
         const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
         setTrades(parsedTrades);
+        console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
+        if (parsedTrades.length > 0) {
+          console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
+        }
       } catch (error) {
         console.error('Error fetching emotional data:', error);
         setEmocional(null);
@@ -855,6 +949,41 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       setShowUploadForm(false);
       setShowChat(true);
       setCurrentAnalysisId(null);
+      
+      // ✅ CORREÇÃO: CONGELAR DADOS ORIGINAIS para garantir consistência
+      console.log('🔒 CONGELANDO DADOS ORIGINAIS para preservar análises');
+      
+      // Congelar métricas originais
+      if (!frozenMetrics) {
+        const metricsToFreeze = convertToMetricsDashboardFormat(data);
+        setFrozenMetrics(metricsToFreeze);
+        console.log('🔒 Métricas congeladas:', metricsToFreeze ? Object.keys(metricsToFreeze) : 'null');
+      }
+      
+      // Congelar trades originais
+      if (!frozenTrades) {
+        const tradesToFreeze = { trades: Array.isArray(trades) ? trades : (data.trades || []) };
+        setFrozenTrades(tradesToFreeze);
+        console.log('🔒 Trades congelados:', tradesToFreeze.trades.length);
+      }
+      
+      // Congelar dados emocionais originais
+      if (!frozenEmocional && emocional) {
+        setFrozenEmocional(emocional);
+        console.log('🔒 Dados emocionais congelados');
+      }
+      
+      // Congelar dados de análise originais
+      if (!frozenAnalysisResult && analysisResult) {
+        setFrozenAnalysisResult(analysisResult);
+        console.log('🔒 Dados de análise congelados');
+      }
+      
+      // Congelar dados drata originais
+      if (!frozenDrata && drata) {
+        setFrozenDrata(drata);
+        console.log('🔒 Dados drata congelados');
+      }
       
       // Extract available assets from the data if possible
       if (data.trades && data.trades.length > 0) {
@@ -917,53 +1046,35 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   };
 
   const handleReset = () => {
-    setFile(null);
     setFiles([]);
+    setFile(null);
     setBacktestResult(null);
-    setShowUploadForm(true);
     setError(null);
-    setShowChat(false);
-    setFilteredTrades([]);
-    setCurrentAnalysisId(null);
-    // Limpar dados de correlação original
-    setOriginalCorrelationData(null);
-    setRecalculatedMetrics(null);
-    
-    // Resetar estados de visualização
-    setShowMetrics(true);
-    setShowDailyResults(false);
-    setShowDailyAnalysis(true);
-    setShowTrades(false);
-    setShowEquityCurve(true);
-    setShowSpecialEvents(false);
-    setShowCorrelation(false);
-    setShowEmotionalProfile(false);
-    setShowStrategySelector(true);
-    
-    // Resetar dados de análise
-    setTrades([]);
-    setEmocional(null);
-    setAnalysisResult(null);
-    setDrata(null);
-    setCsvContent(null);
-    setTradeSearch('');
-    
-    // Resetar seleções
+    setIsLoading(false);
+    setCsvContent('');
+    setFileResults({});
+    setSelectedFiles([]);
+    setShowConsolidated(true);
     setSelectedStrategy(null);
     setSelectedAsset(null);
-    setAvailableStrategies(['Estratégia 1', 'Estratégia 2', 'Estratégia 3']);
-    setAvailableAssets(['WINFUT', 'WDOFUT', 'PETR4', 'VALE3']);
+    setTradeSearch('');
+    setTrades([]);
+    setFilteredTrades([]);
+    setAvailableStrategies([]);
+    setAvailableAssets([]);
+    setRecalculatedMetrics(null);
+    // ✅ CORREÇÃO: NÃO resetar análises - elas devem ser congeladas
+    // setEmocional(null);
+    // setAnalysisResult(null);
+    // setDrata(null);
+    setOriginalCorrelationData(null);
     
-    // Resetar estados de análise
-    setIndividualAnalysisMode(false);
-    setShowConsolidated(true);
-    setSelectedFiles([]);
-    setFileResults({});
-    
-    // Resetar input de arquivo
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    // ✅ CORREÇÃO: Limpar dados congelados no reset
+    setFrozenMetrics(null);
+    setFrozenTrades(null);
+    setFrozenEmocional(null);
+    setFrozenAnalysisResult(null);
+    setFrozenDrata(null);
   };
 
   
@@ -1129,7 +1240,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           showCorrelation: showCorrelation,
           showEmotionalProfile: showEmotionalProfile,
           showStrategySelector: showStrategySelector,
-          showChat: showChat
+          showChat: showChat,
+          showPositionSizing: showPositionSizing,
+          showTradeDuration: showTradeDuration
         };
         
         const { error } = await supabase
@@ -1173,7 +1286,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
                 showCorrelation,
                 showEmotionalProfile,
                 showStrategySelector,
-                showChat
+                showChat,
+                showPositionSizing,
+                showTradeDuration
               }
             : analysis
         ));
@@ -1230,7 +1345,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         showCorrelation: showCorrelation,
         showEmotionalProfile: showEmotionalProfile,
         showStrategySelector: showStrategySelector,
-        showChat: showChat
+        showChat: showChat,
+        showPositionSizing: showPositionSizing,
+        showTradeDuration: showTradeDuration
       };
       
       // Save to database
@@ -1280,7 +1397,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         showCorrelation,
         showEmotionalProfile,
         showStrategySelector,
-        showChat
+        showChat,
+        showPositionSizing,
+        showTradeDuration
       };
       
       setSavedAnalyses(prev => [...prev, newAnalysis]);
@@ -1343,6 +1462,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           setShowEmotionalProfile(savedData.showEmotionalProfile ?? analysis.showEmotionalProfile ?? false);
           setShowStrategySelector(savedData.showStrategySelector ?? analysis.showStrategySelector ?? true);
           setShowChat(savedData.showChat ?? analysis.showChat ?? true);
+          setShowPositionSizing(savedData.showPositionSizing ?? analysis.showPositionSizing ?? true);
+          setShowTradeDuration(savedData.showTradeDuration ?? analysis.showTradeDuration ?? true);
         }
       } else {
         // Restaurar dados do objeto analysis (para análises já carregadas)
@@ -1377,6 +1498,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         setShowEmotionalProfile(analysis.showEmotionalProfile ?? false);
         setShowStrategySelector(analysis.showStrategySelector ?? true);
         setShowChat(analysis.showChat ?? true);
+        setShowPositionSizing(analysis.showPositionSizing ?? true);
+        setShowTradeDuration(analysis.showTradeDuration ?? true);
       }
       
       // Create a File object from the saved CSV content if no files were restored
@@ -1523,53 +1646,9 @@ useEffect(() => {
 const getFilteredBacktestResult = (): BacktestResult | null => {
   if (!backtestResult) return null;
   
-  // 🎯 CORREÇÃO: Sempre retornar backtestResult original em modo consolidado
-  if (showConsolidated || files.length <= 1) {
-    console.log('✅ Modo consolidado: retornando backtestResult original com análises completas');
+  // ✅ CORREÇÃO: Sempre retornar backtestResult original para preservar análises completas
+  console.log('✅ Sempre retornando backtestResult original para preservar análises completas');
     return backtestResult;
-  }
-  
-  // 🎯 CORREÇÃO: Garantir que as análises sejam preservadas mesmo com filtros
-  // Se há filtros ativos, criar um backtestResult filtrado mas preservando as análises
-  if (selectedStrategy || selectedAsset || tradeSearch) {
-    console.log('🔍 Aplicando filtros mas preservando análises');
-    const filteredTrades = backtestResult.trades?.filter(trade => {
-      // Aplicar filtro de estratégia
-      if (selectedStrategy && trade.strategy !== selectedStrategy) {
-        return false;
-      }
-      
-      // Aplicar filtro de ativo
-      if (selectedAsset && trade.symbol !== selectedAsset) {
-        return false;
-      }
-      
-      // Aplicar filtro de busca
-      if (tradeSearch) {
-        const searchLower = tradeSearch.toLowerCase();
-        const matchesSearch = 
-          (trade.symbol && trade.symbol.toLowerCase().includes(searchLower)) ||
-          (trade.strategy && trade.strategy.toLowerCase().includes(searchLower)) ||
-          trade.entry_date.toLowerCase().includes(searchLower) ||
-          trade.exit_date.toLowerCase().includes(searchLower) ||
-          trade.pnl.toString().includes(searchLower);
-        
-        if (!matchesSearch) {
-          return false;
-        }
-      }
-      
-      return true;
-    }) || [];
-    
-    // Retornar backtestResult com trades filtrados mas preservando as análises
-    return {
-      ...backtestResult,
-      trades: filteredTrades
-    };
-  }
-  
-  return backtestResult;
 };
 
 const getActiveFilesInfo = () => {
@@ -1869,7 +1948,7 @@ useEffect(() => {
                   onCancelAnalysis={() => {}}
                   error={error2}
                   setError={setError2}
-                  analysisResult={analysisResult}
+                  analysisResult={frozenAnalysisResult || analysisResult}
                   onMetricsReceived={handleMetricsReceived}
                   backtestData={backtestResult}
                 />
@@ -2019,7 +2098,7 @@ useEffect(() => {
                       selectedAsset={selectedAsset}
                       fileResults={fileResults}
                       data={{
-                        ...drata,
+                        ...(frozenDrata || drata),
                         recalculatedMetrics: recalculatedMetrics
                       }}
                       showConsolidated={showConsolidated}
@@ -2090,288 +2169,24 @@ useEffect(() => {
                 {/* Metrics Dashboard - Available to all users */}
                 <div>
                   {(() => {
-                    // 🎯 CORREÇÃO: Usar sempre os dados corretos da API
-                    let metricsToUse = convertToMetricsDashboardFormat(backtestResult);
-                    let tradesToUse = { trades: Array.isArray(trades) ? trades : [] };
+                    // ✅ CORREÇÃO: Usar APENAS dados congelados para garantir que nunca mudem
+                    const metricsToUse = frozenMetrics || convertToMetricsDashboardFormat(backtestResult);
+                    const tradesToUse = frozenTrades || { trades: Array.isArray(trades) ? trades : [] };
                     
-                    console.log('🔍 MetricsDashboard - Verificando dados:', {
-                      selectedStrategy,
+                    console.log('🔍 MetricsDashboard - Usando dados CONGELADOS:', {
+                      hasFrozenMetrics: !!frozenMetrics,
+                      hasFrozenTrades: !!frozenTrades,
                       hasFileResults: !!fileResults,
                       fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
                       backtestResultKeys: backtestResult ? Object.keys(backtestResult) : []
                     });
                     
-                    // 🎯 CORREÇÃO: Sempre usar dados da API para garantir consistência
-                    console.log('✅ Usando dados corretos da API para MetricsDashboard');
-                    
-                    // Se há estratégia específica selecionada, usar dados dessa estratégia
-                    if (selectedStrategy && fileResults && Object.keys(fileResults).length > 0) {
-                      console.log('✅ Entrou na condição para buscar dados da estratégia');
-                      
-                      // Tentar encontrar o arquivo correspondente à estratégia
-                      const strategyFileName = selectedStrategy;
-                      const strategyFileNameWithCsv = `${selectedStrategy}.csv`;
-                      
-                      console.log('🔍 Procurando estratégia:', {
-                        strategyFileName,
-                        strategyFileNameWithCsv,
-                        availableFiles: Object.keys(fileResults),
-                        selectedStrategy
-                      });
-                      
-                      // Verificar se existe o arquivo exato
-                      if (fileResults[strategyFileName]) {
-                        console.log('✅ Encontrado arquivo exato:', strategyFileName);
-                        metricsToUse = convertToMetricsDashboardFormat(fileResults[strategyFileName]);
-                        const strategyTrades = fileResults[strategyFileName].trades;
-                        tradesToUse = { trades: Array.isArray(strategyTrades) ? strategyTrades : [] };
-                        
-                        console.log('📊 Métricas da estratégia:', {
-                          winRate: metricsToUse.winRate,
-                          profitFactor: metricsToUse.profitFactor,
-                          maxDrawdown: metricsToUse.maxDrawdown,
-                          totalTrades: metricsToUse.totalTrades
-                        });
-                      }
-                      // Verificar se existe com extensão .csv
-                      else if (fileResults[strategyFileNameWithCsv]) {
-                        console.log('✅ Encontrado arquivo com .csv:', strategyFileNameWithCsv);
-                        metricsToUse = convertToMetricsDashboardFormat(fileResults[strategyFileNameWithCsv]);
-                        const strategyTrades = fileResults[strategyFileNameWithCsv].trades;
-                        tradesToUse = { trades: Array.isArray(strategyTrades) ? strategyTrades : [] };
-                        
-                        console.log('📊 Métricas da estratégia:', {
-                          winRate: metricsToUse.winRate,
-                          profitFactor: metricsToUse.profitFactor,
-                          maxDrawdown: metricsToUse.maxDrawdown,
-                          totalTrades: metricsToUse.totalTrades
-                        });
-                      }
-                      // Procurar por arquivos que contenham o nome da estratégia
-                      else {
-                        const matchingFiles = Object.keys(fileResults).filter(fileName => 
-                          fileName.toLowerCase().includes(selectedStrategy.toLowerCase()) ||
-                          fileName.toLowerCase().replace('.csv', '').includes(selectedStrategy.toLowerCase())
-                        );
-                        
-                        console.log('🔍 Arquivos que correspondem:', matchingFiles);
-                        
-                        if (matchingFiles.length > 0) {
-                          console.log('✅ Encontrado arquivo similar:', matchingFiles[0]);
-                          metricsToUse = convertToMetricsDashboardFormat(fileResults[matchingFiles[0]]);
-                          const strategyTrades = fileResults[matchingFiles[0]].trades;
-                          tradesToUse = { trades: Array.isArray(strategyTrades) ? strategyTrades : [] };
-                          
-                          console.log('📊 Métricas da estratégia:', {
-                            winRate: metricsToUse.winRate,
-                            profitFactor: metricsToUse.profitFactor,
-                            maxDrawdown: metricsToUse.maxDrawdown,
-                            totalTrades: metricsToUse.totalTrades
-                          });
-                        } else {
-                          console.log('❌ Nenhum arquivo encontrado para estratégia:', selectedStrategy);
-                          console.log('🔍 Detalhes da busca:', {
-                            selectedStrategy,
-                            availableFiles: Object.keys(fileResults),
-                            searchTerms: [
-                              selectedStrategy.toLowerCase(),
-                              selectedStrategy.toLowerCase().replace('.csv', '')
-                            ]
-                          });
-                        }
-                      }
-                    }
-                    // 🎯 CORREÇÃO: Sempre usar dados da API para garantir consistência
-                    console.log('✅ Usando dados corretos da API para MetricsDashboard (modo consolidado)');
-                    
-                    if (fileResults && Object.keys(fileResults).length > 0 && !selectedStrategy) {
-                      console.log('✅ Usando dados corretos da API para MetricsDashboard (modo consolidado)');
-                      // ❌ REMOVIDO: Todo o processamento adicional foi removido para usar dados da API
-                      // console.log('📊 Calculando métricas automáticas de todos os CSVs carregados');
-                      
-                      const allMetrics = {
-                        profitFactor: 0,
-                        winRate: 0,
-                        payoff: 0,
-                        maxDrawdown: 0,
-                        maxDrawdownAmount: 0,
-                        netProfit: 0,
-                        grossProfit: 0,
-                        grossLoss: 0,
-                        totalTrades: 0,
-                        profitableTrades: 0,
-                        lossTrades: 0,
-                        averageWin: 0,
-                        averageLoss: 0,
-                        sharpeRatio: 0,
-                        averageTrade: 0,
-                        averageTradeDuration: "0",
-                        dayOfWeekAnalysis: {},
-                        monthlyAnalysis: {},
-                        bestDay: null,
-                        worstDay: null,
-                        bestMonth: null,
-                        worstMonth: null,
-                        maxConsecutiveLosses: 0,
-                        maxConsecutiveWins: 0,
-                        maiorGanho: 0,
-                        maiorPerda: 0,
-                        recoveryFactor: 0
-                      };
-                      
-                      const allTrades: any[] = [];
-                      
-                      // Calcular métricas de todos os CSVs
-                      Object.keys(fileResults).forEach(fileName => {
-                        const strategyData = fileResults[fileName];
-                        if (strategyData && strategyData["Performance Metrics"]) {
-                          const metrics = strategyData["Performance Metrics"];
-                          
-                          console.log(`📊 Processando ${fileName}:`, {
-                            totalTrades: metrics["Total Trades"] || 0,
-                            netProfit: metrics["Net Profit"] || 0,
-                            maxDrawdown: metrics["Max Drawdown ($)"] || 0
-                          });
-                          
-                          // Somar métricas
-                          allMetrics.totalTrades += metrics["Total Trades"] || 0;
-                          allMetrics.netProfit += metrics["Net Profit"] || 0;
-                          allMetrics.grossProfit += metrics["Gross Profit"] || 0;
-                          allMetrics.grossLoss += Math.abs(metrics["Gross Loss"] || 0);
-                          allMetrics.maiorGanho = Math.max(allMetrics.maiorGanho, metrics["Max Trade Gain"] || 0);
-                          allMetrics.maiorPerda = Math.min(allMetrics.maiorPerda, -(metrics["Max Trade Loss"] || 0));
-                          allMetrics.maxConsecutiveLosses = Math.max(allMetrics.maxConsecutiveLosses, metrics["Max Consecutive Losses"] || 0);
-                          allMetrics.maxConsecutiveWins = Math.max(allMetrics.maxConsecutiveWins, metrics["Max Consecutive Wins"] || 0);
-                          
-                          // ❌ REMOVIDO: Não mais usar maior drawdown individual
-                          // Drawdown consolidado será calculado após coleta de todos os trades
-                          
-                          // NÃO somar Sharpe Ratio e Recovery Factor - serão recalculados
-                          // allMetrics.sharpeRatio += metrics["Sharpe Ratio"] || 0;
-                          // allMetrics.recoveryFactor += metrics["Recovery Factor"] || 0;
-                          
-                          // Adicionar trades da estratégia
-                          if (strategyData.trades && Array.isArray(strategyData.trades)) {
-                            allTrades.push(...strategyData.trades);
-                          }
-                        }
-                      });
-                      
-                      // Calcular métricas derivadas
-                      if (allMetrics.totalTrades > 0) {
-                        allMetrics.averageTrade = allMetrics.netProfit / allMetrics.totalTrades;
-                      }
-                      
-                      if (allMetrics.grossLoss > 0) {
-                        allMetrics.profitFactor = allMetrics.grossProfit / allMetrics.grossLoss;
-                      }
-                      
-                      if (allMetrics.totalTrades > 0) {
-                        // Calcular win rate baseado nos trades lucrativos vs perdedores
-                        const profitableTrades = allTrades.filter(trade => trade.pnl > 0).length;
-                        const lossTrades = allTrades.filter(trade => trade.pnl < 0).length;
-                        allMetrics.profitableTrades = profitableTrades;
-                        allMetrics.lossTrades = lossTrades;
-                        allMetrics.winRate = (profitableTrades / allMetrics.totalTrades) * 100;
-                      }
-                      
-                      // Calcular average win/loss
-                      const profitableTradesData = allTrades.filter(trade => trade.pnl > 0);
-                      const lossTradesData = allTrades.filter(trade => trade.pnl < 0);
-                      
-                      if (profitableTradesData.length > 0) {
-                        allMetrics.averageWin = profitableTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / profitableTradesData.length;
-                      }
-                      
-                      if (lossTradesData.length > 0) {
-                        allMetrics.averageLoss = Math.abs(lossTradesData.reduce((sum, trade) => sum + trade.pnl, 0) / lossTradesData.length);
-                      }
-                      
-                      // 🎯 CORREÇÃO CRÍTICA: Calcular drawdown consolidado cronológico (seção allMetrics)
-                      console.log('🔧 CALCULANDO DRAWDOWN CONSOLIDADO CRONOLÓGICO (ALL METRICS)');
-                      console.log(`📊 Total de trades ALL: ${allTrades.length}`);
-                      
-                      if (allTrades.length > 0) {
-                        // Ordenar trades cronologicamente
-                        const sortedAllTrades = allTrades.sort((a, b) => {
-                          const dateA = new Date(a.exit_date || a.entry_date || a.date);
-                          const dateB = new Date(b.exit_date || b.entry_date || b.date);
-                          return dateA.getTime() - dateB.getTime();
-                        });
-                        
-                        // Aplicar metodologia Python: equity = pnl.cumsum(), peak = equity.cummax()
-                        let equity = 0.0;
-                        let peak = 0.0;
-                        let maxDrawdown = 0.0;
-                        
-                        sortedAllTrades.forEach((trade, index) => {
-                          equity += (trade.pnl || 0); // cumsum()
-                          if (equity > peak) {
-                            peak = equity; // cummax()
-                          }
-                          const drawdown = peak - equity; // saldo_maximo - saldo_atual (sempre positivo)
-                          if (drawdown > maxDrawdown) {
-                            maxDrawdown = drawdown;
-                          }
-                        });
-                        
-                        // Atualizar allMetrics com drawdown consolidado correto
-                        allMetrics.maxDrawdownAmount = maxDrawdown;
-                        allMetrics.maxDrawdown = peak > 0 ? (maxDrawdown / peak) * 100 : 0;
-                        
-                        console.log(`🎯 DRAWDOWN CONSOLIDADO ALL FINAL: R$ ${maxDrawdown.toFixed(2)} (${allMetrics.maxDrawdown.toFixed(2)}%)`);
-                      } else {
-                        console.log('⚠️ Nenhum trade encontrado para calcular drawdown consolidado (ALL)');
-                        allMetrics.maxDrawdownAmount = 0;
-                        allMetrics.maxDrawdown = 0;
-                      }
-                      
-                      // Calcular payoff (averageWin / averageLoss)
-                      if (allMetrics.averageLoss > 0) {
-                        allMetrics.payoff = allMetrics.averageWin / allMetrics.averageLoss;
-                      } else {
-                        allMetrics.payoff = allMetrics.averageWin > 0 ? 999 : 0;
-                      }
-                      
-                      // Usar valores recalculados se disponíveis, senão usar valores calculados pelo frontend
-                      if (recalculatedMetrics && recalculatedMetrics.metricas_principais) {
-                        console.log('📊 Usando valores recalculados pelo backend (todos os CSVs)');
-                        allMetrics.sharpeRatio = recalculatedMetrics.metricas_principais.sharpe_ratio || 0;
-                        allMetrics.recoveryFactor = recalculatedMetrics.metricas_principais.fator_recuperacao || 0;
-                        // Profit Factor é calculado pelo frontend com base nos dados consolidados
-                      } else {
-                        console.log('📊 Usando valores calculados pelo frontend para Sharpe Ratio e Recovery Factor (todos os CSVs)');
-                      }
-                      
-                      metricsToUse = allMetrics;
-                      tradesToUse = { trades: allTrades };
-                      
-                      console.log('📊 Métricas automáticas calculadas de todos os CSVs:', {
-                        totalTrades: allMetrics.totalTrades,
-                        netProfit: allMetrics.netProfit,
-                        winRate: allMetrics.winRate,
-                        profitFactor: allMetrics.profitFactor,
-                        maxDrawdown: allMetrics.maxDrawdown,
-                        payoff: allMetrics.payoff,
-                        averageWin: allMetrics.averageWin,
-                        averageLoss: allMetrics.averageLoss,
-                        filesProcessed: Object.keys(fileResults).length
-                      });
-                    } else {
-                      console.log('📊 Usando dados consolidados:', {
-                        winRate: metricsToUse.winRate,
-                        profitFactor: metricsToUse.profitFactor,
-                        maxDrawdown: metricsToUse.maxDrawdown,
-                        totalTrades: metricsToUse.totalTrades,
-                        payoff: metricsToUse.payoff,
-                        averageWin: metricsToUse.averageWin,
-                        averageLoss: metricsToUse.averageLoss
-                      });
-                    }
+                    // ✅ CORREÇÃO: Sempre usar dados congelados para garantir consistência
+                    console.log('✅ Usando dados CONGELADOS para MetricsDashboard - NUNCA MUDAM');
                     
                     return (
                       <MetricsDashboard 
-                        metrics={metricsToUse}  // Já contém o DD consolidado correto
+                        metrics={metricsToUse}
                         tradeObject={tradesToUse}
                         fileResults={fileResults}
                         showTitle={true}
@@ -2398,7 +2213,7 @@ useEffect(() => {
                   requiredPlan="Pro"
                 >
                   <EmotionalProfileSection 
-                    emotionalMetrics={emocional}
+                    emotionalMetrics={frozenEmocional || emocional}
                     showEmotionalProfile={showEmotionalProfile}
                     setShowEmotionalProfile={setShowEmotionalProfile}
                     
@@ -2416,10 +2231,25 @@ useEffect(() => {
                   <SpecialEventsSection
                     showSpecialEvents={showSpecialEvents}
                     setShowSpecialEvents={setShowSpecialEvents}
-                    tadesData={fileResults && Object.keys(fileResults).length > 0 ? fileResults : trades}
+                    tadesData={frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
                     
                   />
                 </PlanRestrictedSection>
+                
+                {/* Position Sizing Section - Available to all users */}
+                <PositionSizingSection
+                  showPositionSizing={showPositionSizing}
+                  setShowPositionSizing={setShowPositionSizing}
+                  backtestResult={{ trades: trades }}
+                />
+                {console.log('🔍 DEBUG - PositionSizing recebendo trades:', trades.length)}
+                
+                {/* Trade Duration Section - Available to all users */}
+                <TradeDurationSection
+                  showTradeDuration={showTradeDuration}
+                  setShowTradeDuration={setShowTradeDuration}
+                  backtestResult={{ trades: trades }}
+                />
                 
               </div>
             )}

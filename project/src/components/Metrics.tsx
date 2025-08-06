@@ -31,6 +31,36 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
     try {
       let data: DailyMetrics;
 
+      // ✅ CORREÇÃO: Função para calcular dias vencedores/perdedores
+      const calculateWinningLosingDays = (trades: unknown[]) => {
+        if (!trades || trades.length === 0) return '0/0';
+        
+        // Agrupar trades por dia (usando entry_date)
+        const dailyResults = new Map<string, number>();
+        
+        trades.forEach((trade) => {
+          const tradeData = trade as Record<string, unknown>;
+          const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0]; // YYYY-MM-DD
+          const currentPnL = dailyResults.get(date) || 0;
+          dailyResults.set(date, currentPnL + (tradeData.pnl as number));
+        });
+        
+        // Contar dias vencedores e perdedores
+        let winningDays = 0;
+        let losingDays = 0;
+        
+        dailyResults.forEach((dailyPnL) => {
+          if (dailyPnL > 0) {
+            winningDays++;
+          } else if (dailyPnL < 0) {
+            losingDays++;
+          }
+          // Se dailyPnL === 0, não conta como nem vencedor nem perdedor
+        });
+        
+        return `${winningDays}/${losingDays}`;
+      };
+
       // Se temos múltiplos CSVs (fileResults), processar todos os dados originais
       if (fileResults && Object.keys(fileResults).length > 0) {
         console.log('📊 Processando múltiplos CSVs para análise diária - consolidando todos os dados originais');
@@ -38,7 +68,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         // Consolidar trades de todos os CSVs
         const allTrades: unknown[] = [];
         Object.keys(fileResults).forEach(fileName => {
-          const strategyData = fileResults[fileName] as any;
+          const strategyData = fileResults[fileName] as Record<string, unknown>;
           if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
             // Adicionar todas as trades de cada CSV
             allTrades.push(...strategyData.trades);
@@ -50,6 +80,13 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         }
 
         console.log(`📊 Consolidando dados de ${Object.keys(fileResults).length} CSVs com ${allTrades.length} trades totais`);
+
+        // ✅ CORREÇÃO: Adicionar logs para verificar dados enviados
+        console.log('📊 Dados sendo enviados para API:', {
+          totalTrades: allTrades.length,
+          sampleTrade: allTrades[0],
+          lastTrade: allTrades[allTrades.length - 1]
+        });
 
         // Enviar todas as trades consolidadas para o backend para cálculo das métricas diárias
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
@@ -67,6 +104,24 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
 
         data = await response.json();
         
+        // ✅ CORREÇÃO: Calcular dias_vencedores_perdedores diretamente dos trades
+        const diasVencedoresPerdedores = calculateWinningLosingDays(allTrades);
+        console.log('📊 Dias vencedores/perdedores calculados:', diasVencedoresPerdedores);
+        
+        // Garantir que estatisticas_operacao existe
+        if (!data.estatisticas_operacao) {
+          data.estatisticas_operacao = {
+            media_operacoes_dia: 0,
+            taxa_acerto_diaria: 0,
+            dias_vencedores_perdedores: '0/0',
+            dias_perdedores_consecutivos: 0,
+            dias_vencedores_consecutivos: 0
+          };
+        }
+        
+        // ✅ CORREÇÃO: Substituir o valor calculado
+        data.estatisticas_operacao.dias_vencedores_perdedores = diasVencedoresPerdedores;
+        
         // Usar o drawdown consolidado correto
         const consolidatedDD = calculateDirectConsolidation(fileResults);
         if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
@@ -79,7 +134,8 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           resultadoLiquido: data.metricas_principais.resultado_liquido,
           maxDrawdown: data.metricas_principais.drawdown_maximo,
           arquivosProcessados: Object.keys(fileResults).length,
-          tradesConsolidadas: allTrades.length
+          tradesConsolidadas: allTrades.length,
+          diasVencedoresPerdedores: data.estatisticas_operacao.dias_vencedores_perdedores
         });
 
       } else if (tradesData) {
@@ -99,10 +155,54 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
 
         data = await response.json();
         
-        // Corrigir o drawdown para usar o valor fixo se disponível
-        if (tradesData.maxDrawdown !== undefined) {
-          data.metricas_principais.drawdown_maximo = tradesData.maxDrawdown;
-          data.metricas_principais.drawdown_maximo_pct = (tradesData.maxDrawdown / Math.abs(data.metricas_principais.resultado_liquido)) * 100;
+        // ✅ CORREÇÃO: Calcular dias_vencedores_perdedores diretamente dos trades
+        const diasVencedoresPerdedores = calculateWinningLosingDays(tradesData.trades || []);
+        console.log('📊 Dias vencedores/perdedores calculados:', diasVencedoresPerdedores);
+        
+        // ✅ CORREÇÃO: Adicionar logs de debug para verificar dados
+        console.log('📊 Dados recebidos da API:', data);
+        console.log('📊 Estrutura estatisticas_operacao:', data.estatisticas_operacao);
+        console.log('📊 Campo dias_vencedores_perdedores:', data.estatisticas_operacao?.dias_vencedores_perdedores);
+        console.log('📊 Tipo do campo:', typeof data.estatisticas_operacao?.dias_vencedores_perdedores);
+        
+        // ✅ CORREÇÃO: Verificar se estatisticas_operacao existe e tem dados
+        if (!data.estatisticas_operacao) {
+          console.warn('⚠️ estatisticas_operacao não encontrada na resposta da API');
+          data.estatisticas_operacao = {
+            media_operacoes_dia: 0,
+            taxa_acerto_diaria: 0,
+            dias_vencedores_perdedores: '0/0',
+            dias_perdedores_consecutivos: 0,
+            dias_vencedores_consecutivos: 0
+          };
+        }
+        
+        // ✅ CORREÇÃO: Substituir o valor calculado diretamente dos trades
+        data.estatisticas_operacao.dias_vencedores_perdedores = diasVencedoresPerdedores;
+        
+        // ✅ CORREÇÃO: Verificar se ganhos_perdas existe
+        if (!data.ganhos_perdas) {
+          console.warn('⚠️ ganhos_perdas não encontrada na resposta da API');
+          data.ganhos_perdas = {
+            ganho_medio_diario: 0,
+            perda_media_diaria: 0,
+            payoff_diario: 0,
+            ganho_maximo_diario: 0,
+            perda_maxima_diaria: 0
+          };
+        }
+        
+        // ✅ CORREÇÃO: Verificar se metricas_principais existe
+        if (!data.metricas_principais) {
+          console.warn('⚠️ metricas_principais não encontrada na resposta da API');
+          data.metricas_principais = {
+            sharpe_ratio: 0,
+            fator_recuperacao: 0,
+            drawdown_maximo: 0,
+            drawdown_maximo_pct: 0,
+            dias_operados: 0,
+            resultado_liquido: 0
+          };
         }
       } else {
         throw new Error('Nenhum dado disponível para processamento');
@@ -173,7 +273,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Sharpe Ratio</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {metrics.metricas_principais.sharpe_ratio.toFixed(2)}
+              {metrics.metricas_principais?.sharpe_ratio?.toFixed(2) || '0.00'}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -182,7 +282,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Fator de Recuperação</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {metrics.metricas_principais.fator_recuperacao.toFixed(2)}
+              {metrics.metricas_principais?.fator_recuperacao?.toFixed(2) || '0.00'}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -191,7 +291,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Drawdown Máximo</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.metricas_principais.drawdown_maximo)}
+              {formatCurrency(metrics.metricas_principais?.drawdown_maximo || 0)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -200,7 +300,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Dias Operados</span>
             </div>
             <span className="font-semibold text-lg text-white">
-              {metrics.metricas_principais.dias_operados}
+              {metrics.metricas_principais?.dias_operados || 0}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -209,9 +309,9 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Resultado Líquido</span>
             </div>
             <span className={`font-semibold text-lg ${
-              metrics.metricas_principais.resultado_liquido >= 0 ? 'text-green-400' : 'text-red-400'
+              (metrics.metricas_principais?.resultado_liquido || 0) >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
-              {formatCurrency(metrics.metricas_principais.resultado_liquido)}
+              {formatCurrency(metrics.metricas_principais?.resultado_liquido || 0)}
             </span>
           </div>
         </div>
@@ -232,7 +332,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Ganho Médio Diário</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {formatCurrency(metrics.ganhos_perdas.ganho_medio_diario)}
+              {formatCurrency(metrics.ganhos_perdas?.ganho_medio_diario || 0)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -241,7 +341,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Perda Média Diária</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.ganhos_perdas.perda_media_diaria)}
+              {formatCurrency(metrics.ganhos_perdas?.perda_media_diaria || 0)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -250,7 +350,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Payoff Diário</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {metrics.ganhos_perdas.payoff_diario.toFixed(2)}
+              {metrics.ganhos_perdas?.payoff_diario?.toFixed(2) || '0.00'}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -259,7 +359,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Ganho Máximo Diário</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {formatCurrency(metrics.ganhos_perdas.ganho_maximo_diario)}
+              {formatCurrency(metrics.ganhos_perdas?.ganho_maximo_diario || 0)}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -268,7 +368,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Perda Máxima Diária</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.ganhos_perdas.perda_maxima_diaria)}
+              {formatCurrency(metrics.ganhos_perdas?.perda_maxima_diaria || 0)}
             </span>
           </div>
         </div>
@@ -289,7 +389,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Média Operações/Dia</span>
             </div>
             <span className="font-semibold text-lg text-white">
-              {metrics.estatisticas_operacao.media_operacoes_dia.toFixed(1)}
+              {metrics.estatisticas_operacao?.media_operacoes_dia?.toFixed(1) || '0.0'}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -298,7 +398,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Taxa de Acerto Diária</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {metrics.estatisticas_operacao.taxa_acerto_diaria.toFixed(1)}%
+              {metrics.estatisticas_operacao?.taxa_acerto_diaria?.toFixed(1) || '0.0'}%
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -307,7 +407,11 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Dias Vencedores/Perdedores</span>
             </div>
             <span className="font-semibold text-lg text-white">
-              {metrics.estatisticas_operacao.dias_vencedores_perdedores}
+              {(() => {
+                const value = metrics.estatisticas_operacao?.dias_vencedores_perdedores || '0/0';
+                console.log('📊 Valor sendo exibido para dias_vencedores_perdedores:', value);
+                return value;
+              })()}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -316,7 +420,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Dias Perdedores Consecutivos</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {metrics.estatisticas_operacao.dias_perdedores_consecutivos}
+              {metrics.estatisticas_operacao?.dias_perdedores_consecutivos || 0}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -325,7 +429,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Dias Vencedores Consecutivos</span>
             </div>
             <span className="font-semibold text-green-400 text-lg">
-              {metrics.estatisticas_operacao.dias_vencedores_consecutivos}
+              {metrics.estatisticas_operacao?.dias_vencedores_consecutivos || 0}
             </span>
           </div>
         </div>

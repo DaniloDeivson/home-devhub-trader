@@ -1,0 +1,192 @@
+# Multiple CSV Data Consolidation
+
+## Overview
+When working with multiple CSV files, data must be properly consolidated to ensure accurate analysis across all strategies and assets.
+
+## Key Files
+- [BacktestAnalysisPage.tsx](mdc:project/src/pages/BacktestAnalysisPage.tsx) - Main page handling multiple CSV uploads
+- [MetricsDashboard.tsx](mdc:project/src/components/MetricsDashboard.tsx) - Dashboard with consolidation logic
+- [TradeDurationSection.tsx](mdc:project/src/components/TradeDurationSection.tsx) - Duration analysis component
+
+## Consolidation Patterns
+
+### MetricsDashboard Consolidation
+Always consolidate trades from all CSVs in MetricsDashboard:
+```typescript
+const trade = (() => {
+  // Se temos fileResults (múltiplos CSVs), consolidar todos os trades
+  if (fileResults && Object.keys(fileResults).length > 0) {
+    console.log('📊 MÚLTIPLOS CSVs: Consolidando trades para MetricsDashboard');
+    const allTrades: any[] = [];
+    
+    Object.keys(fileResults).forEach(fileName => {
+      const strategyData = fileResults[fileName] as any;
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        allTrades.push(...strategyData.trades);
+      }
+    });
+    
+    console.log(`📊 Consolidados ${allTrades.length} trades de ${Object.keys(fileResults).length} CSVs`);
+    return allTrades;
+  } else {
+    // Usar trades do tradeObject (arquivo único)
+    return tradeObject?.trades || [];
+  }
+})();
+```
+
+### Component Integration Pattern
+For any component that needs consolidated data:
+```typescript
+// ✅ CORREÇÃO: Consolidar trades de múltiplos CSVs
+const trade = (() => {
+  if (fileResults && Object.keys(fileResults).length > 0) {
+    const allTrades: any[] = [];
+    Object.keys(fileResults).forEach(fileName => {
+      const strategyData = fileResults[fileName] as any;
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        allTrades.push(...strategyData.trades);
+      }
+    });
+    return allTrades;
+  } else {
+    return tradeObject?.trades || [];
+  }
+})();
+```
+
+## Data Flow Architecture
+
+### Upload Process
+1. **Multiple Files Upload**: Files are stored in `files` state
+2. **API Processing**: Backend processes multiple files and returns consolidated + individual results
+3. **State Management**: 
+   - `fileResults`: Individual results per CSV
+   - `backtestResult`: Consolidated results
+   - `trades`: Consolidated trades array
+
+### Component Data Access
+Components should access data based on context:
+```typescript
+// For consolidated analysis
+backtestResult={{ trades: trades }}
+
+// For individual file analysis
+fileResults[fileName].trades
+```
+
+## Common Issues and Solutions
+
+### Empty Trades Array
+**Problem**: `trades.length === 0` in components
+**Solutions**:
+1. Check if `trades` state is populated after upload
+2. Verify API is returning trades correctly
+3. Ensure consolidation logic is working
+
+### Debug Logging
+Add comprehensive logging for troubleshooting:
+```typescript
+console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
+if (parsedTrades.length > 0) {
+  console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
+}
+```
+
+### State Management
+Ensure proper state updates:
+```typescript
+// In upload handler
+const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
+setTrades(parsedTrades);
+```
+
+## Component Integration Guidelines
+
+### PositionSizingSection
+```typescript
+<PositionSizingSection
+  showPositionSizing={showPositionSizing}
+  setShowPositionSizing={setShowPositionSizing}
+  backtestResult={{ trades: trades }}
+/>
+```
+
+### TradeDurationSection
+```typescript
+<TradeDurationSection
+  showTradeDuration={showTradeDuration}
+  setShowTradeDuration={setShowTradeDuration}
+  backtestResult={{ trades: trades }}
+/>
+```
+
+### SpecialEventsSection
+```typescript
+<SpecialEventsSection
+  showSpecialEvents={showSpecialEvents}
+  setShowSpecialEvents={setShowSpecialEvents}
+  tadesData={frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
+/>
+```
+
+## Performance Considerations
+
+### Frozen Data Pattern
+Use frozen data to prevent recalculation:
+```typescript
+// ✅ CORREÇÃO: CONGELAR DADOS ORIGINAIS para garantir consistência
+if (!frozenTrades) {
+  const tradesToFreeze = { trades: Array.isArray(trades) ? trades : (data.trades || []) };
+  setFrozenTrades(tradesToFreeze);
+  console.log('🔒 Trades congelados:', tradesToFreeze.trades.length);
+}
+```
+
+### State Updates
+Minimize unnecessary re-renders:
+```typescript
+// Use frozen data when available
+const tradesToUse = frozenTrades || { trades: Array.isArray(trades) ? trades : [] };
+```
+
+## Error Handling
+
+### Data Validation
+Always validate data before processing:
+```typescript
+if (!trades || trades.length === 0) {
+  console.warn('⚠️ Nenhum trade disponível para análise');
+  return defaultData;
+}
+```
+
+### API Error Handling
+Handle API failures gracefully:
+```typescript
+if (!response.ok) {
+  throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+}
+```
+
+## Testing Guidelines
+
+### Multiple CSV Scenarios
+Test with:
+1. **Single CSV**: Verify individual file processing
+2. **Multiple CSVs**: Verify consolidation
+3. **Mixed Data**: Different trade formats across files
+4. **Empty Files**: Handle edge cases
+
+### Data Verification
+Verify consolidated data integrity:
+```typescript
+console.log('📊 Verificação de dados consolidados:');
+console.log(`  Total de trades: ${allTrades.length}`);
+console.log(`  Trades com perda: ${losingTrades.length}`);
+console.log(`  Trades lucrativos: ${winningTrades.length}`);
+```
+description:
+globs:
+alwaysApply: false
+---

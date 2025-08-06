@@ -15,19 +15,109 @@ export function TradeDurationSection({
   // Guard clause to prevent rendering if backtestResult is null
   if (!backtestResult) return null;
   
-  // Sample data for the analysis - in a real implementation, this would come from backtestResult
-  const tradeDurationData = {
-    averageDuration: '2h 15m',
-    medianDuration: '1h 45m',
-    maxDuration: '6h 30m',
-    resultByDuration: [
-      { duration: '< 30min', result: -350.25, count: 15 },
-      { duration: '30min - 1h', result: 780.50, count: 22 },
-      { duration: '1h - 2h', result: 1250.75, count: 18 },
-      { duration: '2h - 4h', result: 850.25, count: 12 },
-      { duration: '> 4h', result: -180.50, count: 8 }
-    ]
+  // Function to calculate trade duration data from backtestResult
+  const calculateTradeDurationData = () => {
+    const trades = backtestResult?.trades || [];
+    
+    if (trades.length === 0) {
+      return {
+        averageDuration: '0h 0m',
+        medianDuration: '0h 0m',
+        maxDuration: '0h 0m',
+        resultByDuration: []
+      };
+    }
+
+    // Calculate duration for each trade
+    const tradesWithDuration = trades.map((trade: any) => {
+      const entryDate = new Date(trade.entry_date);
+      const exitDate = new Date(trade.exit_date);
+      const durationHours = (exitDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60);
+      
+      return {
+        ...trade,
+        durationHours: durationHours
+      };
+    });
+
+    // Calculate basic duration statistics
+    const durations = tradesWithDuration.map((t: any) => t.durationHours);
+    const avgDuration = durations.reduce((a: number, b: number) => a + b, 0) / durations.length;
+    const sortedDurations = [...durations].sort((a: number, b: number) => a - b);
+    const medianDuration = sortedDurations[Math.floor(sortedDurations.length / 2)];
+    const maxDuration = Math.max(...durations);
+
+    // Format duration helper function
+    const formatDuration = (hours: number) => {
+      const h = Math.floor(hours);
+      const m = Math.floor((hours - h) * 60);
+      return `${h}h ${m}m`;
+    };
+
+    // Group trades by duration ranges
+    const durationRanges = [
+      { label: '< 15min', min: 0, max: 0.25 },
+      { label: '15-30min', min: 0.25, max: 0.5 },
+      { label: '30min - 1h', min: 0.5, max: 1 },
+      { label: '1h - 2h', min: 1, max: 2 },
+      { label: '2h - 4h', min: 2, max: 4 },
+      { label: '4h - 9h', min: 4, max: 9 },
+      { label: '9h - 24h', min: 9, max: 24 },
+      { label: '24h - 72h', min: 24, max: 72},
+      { label: '72h - 168h', min: 72, max: 168 },
+      { label: '> 168h', min: 168, max: Infinity }
+    ];
+
+    const resultByDuration = durationRanges.map(range => {
+      const rangeTradesData = tradesWithDuration.filter((t: any) => 
+        t.durationHours >= range.min && t.durationHours < range.max
+      );
+      
+      if (rangeTradesData.length === 0) {
+        return {
+          duration: range.label,
+          result: 0,
+          count: 0,
+          profitFactor: 0,
+          winRate: 0,
+          payoff: 0
+        };
+      }
+
+      const totalResult = rangeTradesData.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+      const winningTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) > 0);
+      const losingTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) < 0);
+      
+      const winRate = (winningTrades.length / rangeTradesData.length) * 100;
+      
+      const grossProfit = winningTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+      const grossLoss = Math.abs(losingTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0));
+      
+      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
+      
+      const avgWin = winningTrades.length > 0 ? grossProfit / winningTrades.length : 0;
+      const avgLoss = losingTrades.length > 0 ? grossLoss / losingTrades.length : 0;
+      const payoff = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? 999 : 0);
+
+      return {
+        duration: range.label,
+        result: totalResult,
+        count: rangeTradesData.length,
+        profitFactor: profitFactor,
+        winRate: winRate,
+        payoff: payoff
+      };
+    }).filter(item => item.count > 0);
+
+    return {
+      averageDuration: formatDuration(avgDuration),
+      medianDuration: formatDuration(medianDuration),
+      maxDuration: formatDuration(maxDuration),
+      resultByDuration: resultByDuration
+    };
   };
+
+  const tradeDurationData = calculateTradeDurationData();
   
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">
@@ -73,6 +163,9 @@ export function TradeDurationSection({
                   <tr className="bg-gray-700">
                     <th className="px-3 py-2 text-left">Duração</th>
                     <th className="px-3 py-2 text-center">Trades</th>
+                    <th className="px-3 py-2 text-center">Fator de Lucro</th>
+                    <th className="px-3 py-2 text-center">Taxa de Acerto</th>
+                    <th className="px-3 py-2 text-center">Payoff</th>
                     <th className="px-3 py-2 text-right">Resultado</th>
                   </tr>
                 </thead>
@@ -81,6 +174,33 @@ export function TradeDurationSection({
                     <tr key={index} className="border-b border-gray-700">
                       <td className="px-3 py-2">{item.duration}</td>
                       <td className="px-3 py-2 text-center">{item.count}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={
+                          item.profitFactor >= 1.5 ? 'text-green-400' : 
+                          item.profitFactor >= 1.0 ? 'text-yellow-400' : 
+                          'text-red-400'
+                        }>
+                          {item.profitFactor.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={
+                          item.winRate >= 60 ? 'text-green-400' : 
+                          item.winRate >= 45 ? 'text-yellow-400' : 
+                          'text-red-400'
+                        }>
+                          {item.winRate.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={
+                          item.payoff >= 1.5 ? 'text-green-400' : 
+                          item.payoff >= 1.0 ? 'text-yellow-400' : 
+                          'text-red-400'
+                        }>
+                          {item.payoff.toFixed(2)}
+                        </span>
+                      </td>
                       <td className={`px-3 py-2 text-right ${item.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {new Intl.NumberFormat('pt-BR', {
                           style: 'currency',

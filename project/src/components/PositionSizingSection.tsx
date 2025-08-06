@@ -27,28 +27,69 @@ export function PositionSizingSection({
   const calculatePositionSizingData = () => {
     const trades = backtestResult?.trades || [];
     
-    if (!trades || trades.length === 0) {
-      return {
-        averagePosition: 0,
-        medianPosition: 0,
-        maxPosition: 0,
-        maxSetupPerDay: 0,
-        resultByPosition: [],
-        unit: 'contratos'
-      };
+    // ✅ DEBUG: Log simples para verificar se trades estão chegando
+    console.log('🔍 PositionSizing - Trades recebidos:', trades.length);
+    if (trades.length > 0) {
+      console.log('🔍 PositionSizing - Primeiro trade:', trades[0]);
     }
-
+    
     // Extract position sizes from trades, trying different possible field names
     const positionSizes = trades.map((trade: any) => {
+      // ✅ DEBUG: Verificar campos disponíveis no trade
+      if (trades.indexOf(trade) < 3) { // Log apenas os primeiros 3 trades
+        console.log('🔍 DEBUG Trade:', trades.indexOf(trade) + 1);
+        console.log('  📊 Campos disponíveis:', Object.keys(trade));
+        console.log('  📊 Valores dos campos de quantidade:');
+        console.log('    quantity_total:', trade.quantity_total);
+        console.log('    quantity_compra:', trade.quantity_compra);
+        console.log('    quantity_venda:', trade.quantity_venda);
+        console.log('    qty_buy:', trade.qty_buy);
+        console.log('    qty_sell:', trade.qty_sell);
+        console.log('    quantity:', trade.quantity);
+        console.log('    qty:', trade.qty);
+        console.log('    quantity_buy:', trade.quantity_buy);
+        console.log('    quantity_sell:', trade.quantity_sell);
+        console.log('    position_size:', trade.position_size);
+        console.log('    size:', trade.size);
+        console.log('    volume:', trade.volume);
+      }
+      
       const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
                           trade.qty_buy || trade.qty_sell || trade.quantity || 
                           trade.qty || trade.quantity_buy || trade.quantity_sell ||
                           trade.position_size || trade.size || trade.volume || 0;
+      
+      // ✅ DEBUG: Verificar position size extraído
+      if (trades.indexOf(trade) < 3) {
+        console.log('  📊 Position size extraído:', positionSize);
+        console.log('  📊 Position size absoluto:', Math.abs(positionSize));
+      }
+      
       return {
         ...trade,
         positionSize: Math.abs(positionSize)
       };
     }).filter((trade: any) => trade.positionSize > 0);
+
+    // ✅ DEBUG: Verificar se há trades com 1 contrato
+    console.log('🔍 DEBUG PositionSizing - Análise de trades:');
+    console.log('  📊 Total de trades:', trades.length);
+    console.log('  📊 Trades com positionSize > 0:', positionSizes.length);
+    
+    // Verificar distribuição de position sizes
+    const positionSizeCounts: { [key: number]: number } = {};
+    positionSizes.forEach((trade: any) => {
+      const size = trade.positionSize;
+      positionSizeCounts[size] = (positionSizeCounts[size] || 0) + 1;
+    });
+    console.log('  📊 Distribuição de position sizes:', positionSizeCounts);
+    
+    // Verificar especificamente trades com 1 contrato
+    const tradesWith1Contract = positionSizes.filter((trade: any) => trade.positionSize === 1);
+    console.log('  📊 Trades com 1 contrato:', tradesWith1Contract.length);
+    if (tradesWith1Contract.length > 0) {
+      console.log('  📊 Exemplo de trade com 1 contrato:', tradesWith1Contract[0]);
+    }
 
     if (positionSizes.length === 0) {
       return {
@@ -101,6 +142,13 @@ export function PositionSizingSection({
         trade.positionSize >= range.min && trade.positionSize <= range.max
       );
       
+      // ✅ DEBUG: Verificar trades no range específico
+      if (range.label === '1') {
+        console.log('🔍 DEBUG Range "1":');
+        console.log('  📊 Trades encontrados no range 1:', tradesInRange.length);
+        console.log('  📊 Position sizes dos trades:', tradesInRange.map(t => t.positionSize));
+      }
+      
       const totalResult = tradesInRange.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
       const count = tradesInRange.length;
       const percentage = positions.length > 0 ? (count / positions.length) * 100 : 0;
@@ -119,7 +167,7 @@ export function PositionSizingSection({
       const avgLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
       const payoff = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? 999 : 0);
       
-      return {
+      const result = {
         position: range.label,
         result: totalResult,
         count: count,
@@ -128,7 +176,19 @@ export function PositionSizingSection({
         profitFactor: Math.round(profitFactor * 100) / 100,
         payoff: Math.round(payoff * 100) / 100
       };
+      
+      // ✅ DEBUG: Verificar resultado do range 1
+      if (range.label === '1') {
+        console.log('  📊 Resultado do range 1:', result);
+      }
+      
+      return result;
     }).filter(item => item.count > 0);
+    
+    // ✅ DEBUG: Verificar resultado final
+    console.log('🔍 DEBUG PositionSizing - Resultado final:');
+    console.log('  📊 Total de ranges com trades:', resultByPosition.length);
+    console.log('  📊 Ranges disponíveis:', resultByPosition.map(r => r.position));
 
     // Calculate additional parameters
     const totalVolume = positions.reduce((sum: number, pos: number) => sum + pos, 0);

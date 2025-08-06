@@ -1,0 +1,138 @@
+# Position Sizing Logic and Implementation
+
+## Overview
+Position Sizing analysis calculates the distribution of trade sizes and their performance metrics. This component analyzes how different position sizes affect trading results.
+
+## Key Files
+- [PositionSizingSection.tsx](mdc:project/src/components/PositionSizingSection.tsx) - Main component for position sizing analysis
+- [BacktestAnalysisPage.tsx](mdc:project/src/pages/BacktestAnalysisPage.tsx) - Integration point for position sizing
+
+## Core Logic
+
+### Data Source
+Always use the `trades` state directly for position sizing calculations:
+```typescript
+backtestResult={{ trades: trades }}
+```
+
+### Position Size Extraction
+Extract position sizes from trades using multiple possible field names:
+```typescript
+const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
+                    trade.qty_buy || trade.qty_sell || trade.quantity || 
+                    trade.qty || trade.quantity_buy || trade.quantity_sell ||
+                    trade.position_size || trade.size || trade.volume || 0;
+```
+
+### Position Ranges
+Use detailed ranges for small positions:
+```typescript
+const positionRanges = [
+  { label: '1', min: 1, max: 1 },
+  { label: '2', min: 2, max: 2 },
+  { label: '3-5', min: 3, max: 5 },
+  { label: '6-10', min: 6, max: 10 },
+  { label: '11-20', min: 11, max: 20 },
+  { label: '21-50', min: 21, max: 50 },
+  { label: '51-100', min: 51, max: 100 },
+  { label: '> 100', min: 101, max: Infinity }
+];
+```
+
+### Metrics Calculation
+For each position range, calculate:
+- **Total Result**: Sum of PnL for all trades in range
+- **Count**: Number of trades in range
+- **Win Rate**: Percentage of profitable trades
+- **Profit Factor**: Gross profit / Gross loss
+- **Payoff**: Average win / Average loss
+
+### Asset Type Detection
+Detect if trading stocks or futures:
+```typescript
+const detectAssetType = (symbol: string): 'stock' | 'future' => {
+  if (!symbol) return 'future';
+  const stockPattern = /^[A-Z]{4}[0-9]$/;
+  return stockPattern.test(symbol.toUpperCase()) ? 'stock' : 'future';
+};
+```
+
+## Integration Guidelines
+
+### BacktestAnalysisPage Integration
+1. Import the component:
+```typescript
+import { PositionSizingSection } from '../components/PositionSizingSection';
+```
+
+2. Add state management:
+```typescript
+const [showPositionSizing, setShowPositionSizing] = useState(true);
+```
+
+3. Include in render with direct trades access:
+```typescript
+<PositionSizingSection
+  showPositionSizing={showPositionSizing}
+  setShowPositionSizing={setShowPositionSizing}
+  backtestResult={{ trades: trades }}
+/>
+```
+
+### Multiple CSV Handling
+For multiple CSVs, ensure trades are properly consolidated:
+```typescript
+// In MetricsDashboard or similar
+const trade = (() => {
+  if (fileResults && Object.keys(fileResults).length > 0) {
+    const allTrades: any[] = [];
+    Object.keys(fileResults).forEach(fileName => {
+      const strategyData = fileResults[fileName] as any;
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        allTrades.push(...strategyData.trades);
+      }
+    });
+    return allTrades;
+  } else {
+    return tradeObject?.trades || [];
+  }
+})();
+```
+
+## Common Issues and Solutions
+
+### Empty Position Sizes
+If position sizes are empty (0 trades), check:
+1. **Data Source**: Ensure `trades` state is populated
+2. **Field Names**: Verify position size fields exist in trade data
+3. **Multiple CSVs**: Confirm consolidation is working
+
+### Debug Logging
+Add debug logs to verify data flow:
+```typescript
+console.log('🔍 PositionSizing - Trades recebidos:', trades.length);
+if (trades.length > 0) {
+  console.log('🔍 PositionSizing - Primeiro trade:', trades[0]);
+}
+```
+
+### Filter Logic
+Only show ranges with actual trades:
+```typescript
+}).filter(item => item.count > 0);
+```
+
+## Performance Considerations
+- Calculate position sizing data once per render
+- Use `useMemo` for expensive calculations
+- Filter out ranges with zero trades to improve performance
+
+## UI Guidelines
+- Show position ranges in a table format
+- Color-code metrics (green for good, yellow for neutral, red for poor)
+- Include insights section with actionable recommendations
+- Support expandable/collapsible sections
+description:
+globs:
+alwaysApply: false
+---

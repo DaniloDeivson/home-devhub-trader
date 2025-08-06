@@ -87,31 +87,167 @@ export function StrategySelector({
     hasAvailableAssets
   });
 
+  // ✅ CORREÇÃO: Função para lidar com toggle de arquivo
   const handleFileToggle = (fileName: string) => {
     if (!setSelectedFiles) return;
     
     if (selectedFiles.includes(fileName)) {
-      setSelectedFiles(selectedFiles.filter(f => f !== fileName));
+      // Desmarcar arquivo
+      const newSelectedFiles = selectedFiles.filter(f => f !== fileName);
+      setSelectedFiles(newSelectedFiles);
+      
+      // ✅ CORREÇÃO: Se não há arquivos selecionados, voltar para modo consolidado
+      if (newSelectedFiles.length === 0) {
+        console.log('✅ Nenhum arquivo selecionado, voltando para modo consolidado');
+        if (setShowConsolidated) {
+          setShowConsolidated(true);
+        }
+        // Limpar filtro de estratégia no modo consolidado
+        if (setSelectedStrategy) {
+          setSelectedStrategy(null);
+        }
+      }
     } else {
-      setSelectedFiles([...selectedFiles, fileName]);
+      // Marcar arquivo
+      const newSelectedFiles = [...selectedFiles, fileName];
+      setSelectedFiles(newSelectedFiles);
+      
+      // ✅ CORREÇÃO: Se todas as estratégias estão selecionadas, trocar para modo consolidado
+      if (newSelectedFiles.length === files.length) {
+        console.log('✅ Todas as estratégias selecionadas, trocando para modo consolidado');
+        if (setShowConsolidated) {
+          setShowConsolidated(true);
+        }
+        // Limpar filtro de estratégia no modo consolidado
+        if (setSelectedStrategy) {
+          setSelectedStrategy(null);
+        }
+      }
     }
   };
 
+  // ✅ CORREÇÃO: Função para selecionar todos os arquivos
   const selectAllFiles = () => {
     if (!setSelectedFiles) return;
     setSelectedFiles(files.map(f => f.name));
+    
+    // ✅ CORREÇÃO: Trocar para modo consolidado quando selecionar todos
+    if (setShowConsolidated) {
+      setShowConsolidated(true);
+    }
+    // Limpar filtro de estratégia
+    if (setSelectedStrategy) {
+      setSelectedStrategy(null);
+    }
   };
 
   const clearAllFiles = () => {
     if (!setSelectedFiles) return;
     setSelectedFiles([]);
+    
+    // ✅ CORREÇÃO: Voltar para modo consolidado quando limpar todos
+    if (setShowConsolidated) {
+      setShowConsolidated(true);
+    }
+    // Limpar filtro de estratégia
+    if (setSelectedStrategy) {
+      setSelectedStrategy(null);
+    }
   };
 
   const handleResetFilters = () => {
     setSelectedStrategy(null);
     setSelectedAsset(null);
+    
+    // ✅ CORREÇÃO: Resetar também os arquivos selecionados
+    if (setSelectedFiles) {
+      setSelectedFiles(files.map(f => f.name));
+    }
+    
+    // ✅ CORREÇÃO: Voltar para modo consolidado
+    if (setShowConsolidated) {
+      setShowConsolidated(true);
+    }
+    
     if (onResetFilters) {
       onResetFilters();
+    }
+  };
+
+  // ✅ CORREÇÃO: Função para lidar com mudança de estratégia
+  const handleStrategyChange = (value: string | null) => {
+    setSelectedStrategy(value);
+    
+    if (setSelectedFiles && value) {
+      // Estratégia selecionada: ir para modo individual com apenas essa estratégia
+      setSelectedFiles([`${value}.csv`]);
+      if (setShowConsolidated) {
+        setShowConsolidated(false);
+      }
+    } else if (setSelectedFiles && !value) {
+      // Nenhuma estratégia: voltar para modo consolidado com todos os arquivos
+      setSelectedFiles(files.map(f => f.name));
+      if (setShowConsolidated) {
+        setShowConsolidated(true);
+      }
+    }
+  };
+
+  // ✅ CORREÇÃO: Função para lidar com mudança de modo
+  const handleModeChange = () => {
+    if (!setShowConsolidated) return;
+    
+    const newMode = !showConsolidated;
+    setShowConsolidated(newMode);
+    
+    if (newMode) {
+      // Modo consolidado: selecionar todos os arquivos
+      if (setSelectedFiles) {
+        setSelectedFiles(files.map(f => f.name));
+      }
+      // Limpar filtro de estratégia no modo consolidado
+      if (setSelectedStrategy) {
+        setSelectedStrategy(null);
+      }
+    } else {
+      // Modo individual: manter arquivos selecionados ou selecionar todos se vazio
+      if (setSelectedFiles && selectedFiles.length === 0) {
+        setSelectedFiles(files.map(f => f.name));
+      }
+    }
+  };
+
+  // ✅ CORREÇÃO: Determinar se o filtro de estratégia deve estar desabilitado
+  const shouldDisableStrategyFilter = !showConsolidated && selectedFiles.length > 1;
+  
+  // ✅ CORREÇÃO: Determinar o valor a ser exibido no filtro de estratégia
+  const getStrategyFilterValue = () => {
+    if (showConsolidated) {
+      // Modo consolidado: mostrar estratégia selecionada ou vazio
+      return selectedStrategy || '';
+    } else {
+      // Modo individual
+      if (selectedFiles.length === 0) {
+        return '';
+      } else if (selectedFiles.length === 1) {
+        // Uma estratégia: mostrar o nome da estratégia (sem .csv)
+        const strategyName = selectedFiles[0].replace('.csv', '');
+        return strategyName;
+      } else {
+        // Múltiplas estratégias: mostrar "Múltiplas estratégias"
+        return 'multiple';
+      }
+    }
+  };
+
+  // ✅ CORREÇÃO: Determinar as opções disponíveis no filtro de estratégia
+  const getStrategyFilterOptions = () => {
+    if (showConsolidated) {
+      // Modo consolidado: mostrar todas as estratégias disponíveis
+      return availableStrategies;
+    } else {
+      // Modo individual: mostrar apenas as estratégias selecionadas
+      return selectedFiles.map(fileName => fileName.replace('.csv', ''));
     }
   };
 
@@ -125,25 +261,35 @@ export function StrategySelector({
               Estratégia
             </label>
             <select
-              value={selectedStrategy || ''}
+              value={getStrategyFilterValue()}
               onChange={(e) => {
-                const value = e.target.value || null;
-                setSelectedStrategy(value);
-                if (setSelectedFiles && value) {
-                  setSelectedFiles([`${value}.csv`]);
-                  if (setShowConsolidated) setShowConsolidated(false); // Força modo individual
-                } else if (setSelectedFiles && !value) {
-                  setSelectedFiles(files.map(f => f.name));
-                  if (setShowConsolidated) setShowConsolidated(true); // Volta para consolidado
+                const value = e.target.value;
+                if (value === 'multiple') {
+                  // Não fazer nada se "Múltiplas estratégias" estiver selecionado
+                  return;
                 }
+                handleStrategyChange(value || null);
               }}
-              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={shouldDisableStrategyFilter}
+              className={`px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                shouldDisableStrategyFilter ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               <option value="">Todas as estratégias</option>
-              {availableStrategies.map(strategy => (
+              {!showConsolidated && selectedFiles.length > 1 && (
+                <option value="multiple" disabled>
+                  Múltiplas estratégias ({selectedFiles.length})
+                </option>
+              )}
+              {getStrategyFilterOptions().map(strategy => (
                 <option key={strategy} value={strategy}>{strategy}</option>
               ))}
             </select>
+            {shouldDisableStrategyFilter && (
+              <div className="text-xs text-yellow-400 mt-1">
+                Use a seleção individual abaixo para múltiplas estratégias
+              </div>
+            )}
           </div>
           
           {/* Filtro de Ativo - só aparece quando há ativos disponíveis */}
@@ -172,7 +318,7 @@ export function StrategySelector({
                 Modo
               </label>
               <button
-                onClick={() => setShowConsolidated && setShowConsolidated(!showConsolidated)}
+                onClick={handleModeChange}
                 className={`px-3 py-2 rounded-md text-sm transition-colors ${
                   showConsolidated
                     ? 'bg-blue-600 text-white'
@@ -217,7 +363,16 @@ export function StrategySelector({
                   }
                 </span>
               )}
-              {selectedStrategy && <span>🎯 {selectedStrategy}</span>}
+              {/* ✅ CORREÇÃO: Mostrar estratégias selecionadas corretamente */}
+              {!showConsolidated && selectedFiles.length === 1 && (
+                <span>🎯 {selectedFiles[0].replace('.csv', '')}</span>
+              )}
+              {!showConsolidated && selectedFiles.length > 1 && (
+                <span>🎯 Múltiplas estratégias ({selectedFiles.length})</span>
+              )}
+              {showConsolidated && selectedStrategy && (
+                <span>🎯 {selectedStrategy}</span>
+              )}
               {selectedAsset && <span>💰 {selectedAsset}</span>}
             </div>
             

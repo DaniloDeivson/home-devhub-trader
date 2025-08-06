@@ -228,16 +228,68 @@ def carregar_csv_trades(file_path_or_file):
     except Exception as e:
         raise ValueError(f"Erro ao processar CSV: {e}")
 
-# Também atualize a função carregar_csv_safe para usar a mesma lógica
+# Função carregar_csv_safe melhorada com encoding robusto
 def carregar_csv_safe(file_path_or_file):
     """Função auxiliar para carregar CSV com encoding seguro baseada na função original"""
     try:
-        if hasattr(file_path_or_file, 'read'):
-            # É um arquivo upload - usar mesmos parâmetros da função original
-            df = pd.read_csv(file_path_or_file, skiprows=5, sep=';', encoding='latin1', decimal=',')
-        else:
-            # É um caminho de arquivo
-            df = pd.read_csv(file_path_or_file, skiprows=5, sep=';', encoding='latin1', decimal=',')
+        print(f"🔍 DEBUG: Iniciando carregar_csv_safe")
+        print(f"🔍 DEBUG: Tipo do arquivo: {type(file_path_or_file)}")
+        print(f"🔍 DEBUG: Tem método read: {hasattr(file_path_or_file, 'read')}")
+        
+        # Tentar diferentes encodings e formatos
+        encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+        formats_to_try = [
+            {'skiprows': 0, 'sep': ',', 'encoding': None},
+            {'skiprows': 5, 'sep': ';', 'encoding': None, 'decimal': ','},
+            {'skiprows': 0, 'sep': ',', 'encoding': None},
+            {'skiprows': 5, 'sep': ';', 'encoding': None, 'decimal': ','}
+        ]
+        
+        df = None
+        last_error = None
+        
+        for encoding in encodings_to_try:
+            for format_config in formats_to_try:
+                try:
+                    print(f"🔍 DEBUG: Tentando encoding: {encoding}, formato: {format_config}")
+                    
+                    if hasattr(file_path_or_file, 'read'):
+                        file_path_or_file.seek(0)  # Reset file pointer
+                        format_config['encoding'] = encoding
+                        df = pd.read_csv(file_path_or_file, **format_config)
+                    else:
+                        format_config['encoding'] = encoding
+                        df = pd.read_csv(file_path_or_file, **format_config)
+                    
+                    print(f"🔍 DEBUG: CSV lido com sucesso, shape: {df.shape}")
+                    print(f"🔍 DEBUG: Colunas: {df.columns.tolist()}")
+                    
+                    # Verificar se tem colunas esperadas
+                    expected_columns = ['entry_date', 'exit_date', 'pnl', 'Abertura', 'Fechamento', 'Res. Operação', 'Res. Intervalo']
+                    found_columns = [col for col in expected_columns if col in df.columns]
+                    
+                    if found_columns:
+                        print(f"🔍 DEBUG: Colunas válidas encontradas: {found_columns}")
+                        break
+                    else:
+                        print(f"🔍 DEBUG: Nenhuma coluna esperada encontrada, tentando próximo formato")
+                        continue
+                        
+                except Exception as e:
+                    print(f"🔍 DEBUG: Erro com encoding {encoding}, formato {format_config}: {e}")
+                    last_error = e
+                    continue
+            
+            if df is not None and len(df.columns) > 0:
+                break
+        
+        if df is None or len(df.columns) == 0:
+            raise ValueError(f"Não foi possível ler o CSV com nenhum encoding/formato. Último erro: {last_error}")
+        
+        print(f"🔍 DEBUG: CSV carregado com sucesso, shape: {df.shape}")
+        print(f"🔍 DEBUG: Colunas finais: {df.columns.tolist()}")
+        
+        # Não criar colunas duplicadas aqui - vamos renomear diretamente
         
         # Processar datas conforme função original - com verificação de colunas
         if 'Abertura' in df.columns:
@@ -286,20 +338,43 @@ def carregar_csv_safe(file_path_or_file):
         if 'direction' in df.columns:
             df['direction'] = df['direction'].map({'C': 'long', 'V': 'short'}).fillna('long')
         
-        # Usar os resultados já processados (agora com valores limpos)
-        if 'operation_result' in df.columns:
-            df['pnl'] = df['operation_result']
-        if 'operation_result_pct' in df.columns:
-            df['pnl_pct'] = df['operation_result_pct']
+        # Não reatribuir pnl para evitar duplicatas - já foi renomeado acima
         
         # Calcular duração em horas se não existir
         if 'entry_date' in df.columns and 'exit_date' in df.columns:
-            if df['entry_date'].notna().any() and df['exit_date'].notna().any():
-                df['duration_hours'] = (df['exit_date'] - df['entry_date']).dt.total_seconds() / 3600
+            # Garantir que as datas são datetime
+            try:
+                if hasattr(df['entry_date'], 'dtype') and df['entry_date'].dtype == 'object':
+                    df['entry_date'] = pd.to_datetime(df['entry_date'], errors='coerce')
+                if hasattr(df['exit_date'], 'dtype') and df['exit_date'].dtype == 'object':
+                    df['exit_date'] = pd.to_datetime(df['exit_date'], errors='coerce')
+                
+                # Calcular duração apenas se as datas são válidas
+                valid_dates = df['entry_date'].notna() & df['exit_date'].notna()
+                if valid_dates.any():
+                    try:
+                        # Calcular duração corretamente usando Series
+                        duration_series = (df.loc[valid_dates, 'exit_date'] - df.loc[valid_dates, 'entry_date'])
+                        df.loc[valid_dates, 'duration_hours'] = duration_series.dt.total_seconds() / 3600
+                    except Exception as e:
+                        print(f"🔍 DEBUG: Erro ao calcular duração: {e}")
+                        # Se houver erro, não calcular duração
+                        pass
+            except Exception as e:
+                print(f"🔍 DEBUG: Erro ao processar datas: {e}")
+                # Se houver erro, tentar converter de forma mais simples
+                try:
+                    df['entry_date'] = pd.to_datetime(df['entry_date'], errors='coerce')
+                    df['exit_date'] = pd.to_datetime(df['exit_date'], errors='coerce')
+                except:
+                    pass
         
+        print(f"🔍 DEBUG: DataFrame final, shape: {df.shape}")
+        print(f"🔍 DEBUG: Colunas finais: {df.columns.tolist()}")
         return df
                 
     except Exception as e:
+        print(f"🔍 DEBUG: Erro em carregar_csv_safe: {e}")
         raise ValueError(f"Erro ao processar CSV: {e}")
 
 def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = None) -> List[Dict]:
@@ -725,6 +800,14 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
     saldo_final = drawdown_data["saldo_final"]
     capital_inicial = drawdown_data["capital_inicial"]
     
+    # CALCULAR DD MÉDIO - CORREÇÃO ADICIONADA
+    # Calcular drawdown médio baseado nos trades individuais
+    equity = df_valid['pnl'].cumsum()
+    peak = equity.cummax()
+    drawdown_series = equity - peak
+    drawdown_values = drawdown_series[drawdown_series < 0].abs()  # Apenas valores negativos (drawdowns)
+    avg_drawdown = drawdown_values.mean() if len(drawdown_values) > 0 else 0
+    
     # CAPITAL INICIAL CORRIGIDO
     # Se não fornecido, calcular baseado no drawdown máximo
     if capital_inicial is None:
@@ -743,26 +826,13 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
         # Usar o maior entre os dois métodos para ser conservador
         capital_inicial = max(capital_estimado, capital_por_drawdown)
     
-    # SHARPE RATIO CORRIGIDO - Fórmula específica
-    # Calcular período em meses
-    periodo_dias = (df_valid['entry_date'].max() - df_valid['entry_date'].min()).days
-    periodo_meses = max(1, periodo_dias / 30)  # Mínimo 1 mês
-    
-    # Taxa de juros do período
-    taxa_juros_periodo = taxa_juros_mensal * periodo_meses
-    
-    # Rentabilidade do período em percentual
-    rentabilidade_periodo_pct = (total_pnl / capital_inicial) * 100
-    
-    # Fórmula: (Rentabilidade período - taxa de juros período) / (drawdown / 3x drawdown)
-    # Numerador: Rentabilidade - juros
-    numerador = rentabilidade_periodo_pct - (taxa_juros_periodo * 100)
-    
-    # Denominador: Risco (drawdown / 3x drawdown) = sempre 33.33%
-    denominador = (max_drawdown / (max_drawdown * 3)) * 100  # Sempre 33.33%
-    
-    # Sharpe Ratio final
-    sharpe_ratio_customizado = numerador / denominador if denominador != 0 else 0
+    # SHARPE RATIO CORRIGIDO - Usar mesma fórmula do FunCalculos.py
+    # Calcular retornos dos trades individuais (como no FunCalculos.py)
+    returns = df_valid['pnl'].values
+    mean_return = np.mean(returns) if len(returns) > 0 else 0
+    std_return = np.std(returns, ddof=1) if len(returns) > 1 else 0
+    cdi = 0.12  # Taxa anual (12% ao ano) - mesma do FunCalculos.py
+    sharpe_ratio = ((mean_return - cdi) / std_return) if std_return != 0 else 0
     
     # Fator de Recuperação
     recovery_factor = total_pnl / max_drawdown if max_drawdown != 0 else 0
@@ -798,13 +868,16 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
     print(f"  Ganho máximo diário: {daily_max_win}")
     print(f"  Perda máxima diária: {daily_max_loss}")
     print(f"  Operações por dia: {avg_trades_per_day}")
+    print(f"  DD Médio: {avg_drawdown:.2f}")
+    print(f"  Sharpe Ratio (corrigido): {sharpe_ratio:.2f}")
     
     return {
         "metricas_principais": {
-            "sharpe_ratio": round(sharpe_ratio_customizado, 2),  # CORRIGIDO
+            "sharpe_ratio": round(sharpe_ratio, 2),  # PADRONIZADO - mesma fórmula do FunCalculos.py
             "fator_recuperacao": round(recovery_factor, 2),
             "drawdown_maximo": round(-max_drawdown, 2),  # Negativo para compatibilidade
             "drawdown_maximo_pct": round(max_drawdown_pct, 2),
+            "drawdown_medio": round(avg_drawdown, 2),  # NOVO: DD Médio calculado
             "dias_operados": int(days_traded),
             "resultado_liquido": round(total_pnl, 2),
             # PADRONIZAÇÃO: Usar drawdown calculado com trades individuais (mesmo valor do original)
@@ -814,12 +887,7 @@ def calcular_metricas_principais(df: pd.DataFrame, taxa_juros_mensal: float = 0.
             "max_drawdown_padronizado": round(max_drawdown, 2),  # Valor positivo para API
             "max_drawdown_pct_padronizado": round(max_drawdown_pct, 2),  # Percentual para API
             # Campos adicionais para debug/transparência
-            "periodo_meses": round(periodo_meses, 1),
-            "taxa_juros_periodo": round(taxa_juros_periodo * 100, 2),
-            "rentabilidade_periodo_pct": round(rentabilidade_periodo_pct, 2),
-            "capital_estimado": round(capital_inicial, 2),
-            "numerador_sharpe": round(numerador, 2),
-            "denominador_sharpe": round(denominador, 2)
+            "capital_estimado": round(capital_inicial, 2)
         },
         "ganhos_perdas": {
             "ganho_medio_diario": round(daily_avg_win, 2),
@@ -1703,6 +1771,10 @@ def api_tabela():
     Endpoint para processar arquivo único de backtest
     Suporta tanto arquivo único quanto múltiplos arquivos
     """
+    print("🔍 DEBUG: api_tabela chamada!")
+    print(f"🔍 DEBUG: request.files: {list(request.files.keys())}")
+    print(f"🔍 DEBUG: request.form: {list(request.form.keys())}")
+    
     try:
         # Lista para armazenar todos os DataFrames
         dataframes = []
@@ -1711,10 +1783,17 @@ def api_tabela():
         # Verificar se tem arquivo único
         if 'file' in request.files:
             arquivo = request.files['file']
+            print(f"🔍 DEBUG: Arquivo recebido: {arquivo.filename}")
+            print(f"🔍 DEBUG: Tipo do arquivo: {type(arquivo)}")
             if arquivo.filename != '':
-                df = carregar_csv_safe(arquivo)
-                dataframes.append(df)
-                arquivos_processados.append(arquivo.filename)
+                try:
+                    df = carregar_csv_safe(arquivo)
+                    dataframes.append(df)
+                    arquivos_processados.append(arquivo.filename)
+                    print(f"🔍 DEBUG: Arquivo processado com sucesso")
+                except Exception as e:
+                    print(f"🔍 DEBUG: Erro ao processar arquivo: {e}")
+                    raise e
         
         # Verificar se tem múltiplos arquivos
         if 'files' in request.files:
@@ -1738,6 +1817,10 @@ def api_tabela():
         if not dataframes:
             return jsonify({"error": "Envie um arquivo ou caminho via POST"}), 400
         
+        print(f"🔍 DEBUG: dataframes encontrados: {len(dataframes)}")
+        for i, df in enumerate(dataframes):
+            print(f"🔍 DEBUG: DataFrame {i}: shape={df.shape}, columns={df.columns.tolist()}")
+        
         # Concatenar todos os DataFrames em um só
         df_consolidado = pd.concat(dataframes, ignore_index=True)
         
@@ -1746,7 +1829,17 @@ def api_tabela():
         cdi = float(request.form.get('cdi', 0.12))
         
         # Usar processar_backtest_completo
+        print(f"🔍 DEBUG: DataFrame shape: {df_consolidado.shape}")
+        print(f"🔍 DEBUG: DataFrame columns: {df_consolidado.columns.tolist()}")
+        print(f"🔍 DEBUG: Primeiras linhas: {df_consolidado.head()}")
+        
         resultado = processar_backtest_completo(df_consolidado, capital_inicial=capital_inicial, cdi=cdi)
+        
+        print(f"🔍 DEBUG: Resultado keys: {resultado.keys()}")
+        if 'Performance Metrics' in resultado:
+            print(f"🔍 DEBUG: Performance Metrics: {resultado['Performance Metrics']}")
+        else:
+            print("🔍 DEBUG: Performance Metrics não encontrado")
         
         # Verificar se equity_curve_data existe, se não, gerar
         if 'equity_curve_data' not in resultado:
@@ -2059,7 +2152,7 @@ def api_trades_summary():
 
 @app.route('/api/trades/daily-metrics', methods=['POST'])
 def api_daily_metrics():
-    """Endpoint para obter métricas diárias"""
+    """Endpoint para obter métricas diárias usando FunCalculos.py"""
     try:
         # Carregar arquivo
         if 'file' in request.files:
@@ -2067,13 +2160,62 @@ def api_daily_metrics():
         elif 'path' in request.form:
             path = request.form['path']
             if not os.path.exists(path):
-                return jsonify({"error": "Arquivo não encontrado"}), 404
+                return jsonify({"error": "Arquivo não encontrado"}), 400
             df = carregar_csv_trades(path)
         else:
             return jsonify({"error": "Envie um arquivo ou caminho via POST"}), 400
 
-        # Calcular métricas
-        metricas = calcular_metricas_principais(df)
+        # Parâmetros opcionais
+        capital_inicial = float(request.form.get('capital_inicial', 100000))
+        cdi = float(request.form.get('cdi', 0.12))
+        
+        # Usar FunCalculos.py para garantir consistência
+        from FunCalculos import processar_backtest_completo
+        
+        # Processar backtest completo usando FunCalculos.py
+        resultado = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+        
+        # Extrair apenas as métricas principais do resultado
+        performance_metrics = resultado.get("Performance Metrics", {})
+        
+        # Converter para formato esperado pelo frontend
+        metricas_principais = {
+            "sharpe_ratio": performance_metrics.get("Sharpe Ratio", 0),
+            "fator_recuperacao": performance_metrics.get("Recovery Factor", 0),
+            "drawdown_maximo": -performance_metrics.get("Max Drawdown ($)", 0),  # Negativo para compatibilidade
+            "drawdown_maximo_pct": performance_metrics.get("Max Drawdown (%)", 0),
+            "drawdown_medio": performance_metrics.get("Average Drawdown ($)", 0),  # NOVO: DD Médio
+            "dias_operados": performance_metrics.get("Active Days", 0),
+            "resultado_liquido": performance_metrics.get("Net Profit", 0),
+            "fator_lucro": performance_metrics.get("Profit Factor", 0),
+            "win_rate": performance_metrics.get("Win Rate (%)", 0),
+            "roi": (performance_metrics.get("Net Profit", 0) / capital_inicial * 100) if capital_inicial > 0 else 0,
+            # Campos adicionais para compatibilidade
+            "drawdown_maximo_padronizado": -performance_metrics.get("Max Drawdown ($)", 0),
+            "drawdown_maximo_pct_padronizado": performance_metrics.get("Max Drawdown (%)", 0),
+            "max_drawdown_padronizado": performance_metrics.get("Max Drawdown ($)", 0),
+            "max_drawdown_pct_padronizado": performance_metrics.get("Max Drawdown (%)", 0),
+            "capital_estimado": capital_inicial
+        }
+        
+        # Estrutura de resposta compatível
+        metricas = {
+            "metricas_principais": metricas_principais,
+            "ganhos_perdas": {
+                "ganho_medio_diario": performance_metrics.get("Average Win", 0),
+                "perda_media_diaria": performance_metrics.get("Average Loss", 0),
+                "payoff_diario": performance_metrics.get("Payoff", 0),
+                "ganho_maximo_diario": performance_metrics.get("Max Trade Gain", 0),
+                "perda_maxima_diaria": abs(performance_metrics.get("Max Trade Loss", 0))
+            },
+            "estatisticas_operacao": {
+                "media_operacoes_dia": performance_metrics.get("Avg Trades/Active Day", 0),
+                "taxa_acerto_diaria": performance_metrics.get("Win Rate (%)", 0),
+                "dias_vencedores_perdedores": "N/A",  # Não disponível no FunCalculos.py
+                "dias_perdedores_consecutivos": performance_metrics.get("Max Consecutive Losses", 0),
+                "dias_vencedores_consecutivos": performance_metrics.get("Max Consecutive Wins", 0)
+            }
+        }
         
         if not metricas:
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
@@ -2108,8 +2250,72 @@ def api_metrics_from_data():
         # Garantir que pnl seja numérico
         df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
         
-        # Calcular métricas
-        metricas = calcular_metricas_principais(df)
+        # Parâmetros opcionais
+        capital_inicial = float(data.get('capital_inicial', 100000))
+        cdi = float(data.get('cdi', 0.12))
+        
+        print(f"🔍 DEBUG: Processando {len(df)} trades")
+        print(f"🔍 DEBUG: Capital inicial: {capital_inicial}")
+        print(f"🔍 DEBUG: CDI: {cdi}")
+        
+        # Usar FunCalculos.py para garantir consistência
+        from FunCalculos import processar_backtest_completo
+        
+        # Processar backtest completo usando FunCalculos.py
+        resultado = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+        
+        # Extrair apenas as métricas principais do resultado
+        performance_metrics = resultado.get("Performance Metrics", {})
+        
+        print(f"🔍 DEBUG: Performance Metrics recebidas:")
+        for key, value in performance_metrics.items():
+            print(f"  {key}: {value}")
+        
+        # Converter para formato esperado pelo frontend
+        metricas_principais = {
+            "sharpe_ratio": performance_metrics.get("Sharpe Ratio", 0),
+            "fator_recuperacao": performance_metrics.get("Recovery Factor", 0),
+            "drawdown_maximo": -performance_metrics.get("Max Drawdown ($)", 0),  # Negativo para compatibilidade
+            "drawdown_maximo_pct": performance_metrics.get("Max Drawdown (%)", 0),
+            "drawdown_medio": performance_metrics.get("Average Drawdown ($)", 0),  # NOVO: DD Médio
+            "dias_operados": performance_metrics.get("Active Days", 0),
+            "resultado_liquido": performance_metrics.get("Net Profit", 0),
+            "fator_lucro": performance_metrics.get("Profit Factor", 0),
+            "win_rate": performance_metrics.get("Win Rate (%)", 0),
+            "roi": (performance_metrics.get("Net Profit", 0) / capital_inicial * 100) if capital_inicial > 0 else 0,
+            # Campos adicionais para compatibilidade
+            "drawdown_maximo_padronizado": -performance_metrics.get("Max Drawdown ($)", 0),
+            "drawdown_maximo_pct_padronizado": performance_metrics.get("Max Drawdown (%)", 0),
+            "max_drawdown_padronizado": performance_metrics.get("Max Drawdown ($)", 0),
+            "max_drawdown_pct_padronizado": performance_metrics.get("Max Drawdown (%)", 0),
+            "capital_estimado": capital_inicial
+        }
+        
+        print(f"🔍 DEBUG: Métricas principais mapeadas:")
+        for key, value in metricas_principais.items():
+            print(f"  {key}: {value}")
+        
+        # Estrutura de resposta compatível
+        metricas = {
+            "metricas_principais": metricas_principais,
+            "ganhos_perdas": {
+                "ganho_medio_diario": performance_metrics.get("Average Win", 0),
+                "perda_media_diaria": performance_metrics.get("Average Loss", 0),
+                "payoff_diario": performance_metrics.get("Payoff", 0),
+                "ganho_maximo_diario": performance_metrics.get("Max Trade Gain", 0),
+                "perda_maxima_diaria": abs(performance_metrics.get("Max Trade Loss", 0))
+            },
+            "estatisticas_operacao": {
+                "media_operacoes_dia": performance_metrics.get("Avg Trades/Active Day", 0),
+                "taxa_acerto_diaria": performance_metrics.get("Win Rate (%)", 0),
+                "dias_vencedores_perdedores": "N/A",  # Não disponível no FunCalculos.py
+                "dias_perdedores_consecutivos": performance_metrics.get("Max Consecutive Losses", 0),
+                "dias_vencedores_consecutivos": performance_metrics.get("Max Consecutive Wins", 0)
+            }
+        }
+        
+        print(f"🔍 DEBUG: Resposta final preparada")
+        print(f"🔍 DEBUG: DD Médio na resposta: {metricas['metricas_principais']['drawdown_medio']}")
         
         if not metricas:
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
@@ -2117,6 +2323,7 @@ def api_metrics_from_data():
         return jsonify(make_json_serializable(metricas))
 
     except Exception as e:
+        print(f"❌ Erro na API: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/position-sizing', methods=['POST'])

@@ -1,0 +1,70 @@
+[
+  {
+    "date": "2024-11-07",
+    "fullDate": "07/11/2024",
+    "saldo": 0.0,
+    "valor": 100000,
+    "resultado": 0.0,
+    "drawdown": 0,
+    "drawdownPercent": 0,
+    "peak": 100000,
+    "trades": 0,
+    "isStart": true
+  },
+  {
+    "date": "2024-11-07",
+    "fullDate": "07/11/2024",
+    "saldo": -80.0,
+    "valor": 99920.0,
+    "resultado": -80.0,
+    "drawdown": 0.0,
+    "drawdownPercent": 0.0,
+    "peak": 99920.0,
+    "trades": 1,
+    "resultado_periodo": -80.0,
+    "periodo": "dia",
+    "isStart": false
+  },
+  {
+    "date": "2024-11-18",
+    "fullDate": "18/11/2024",
+    "saldo": -160.0,
+    "valor": 99840.0,
+    "resultado": -160.0,
+    "drawdown": 80.0,
+    "drawdownPercent": 100.0,
+    "peak": 99920.0,
+    "trades": 1,
+    "resultado_periodo": -80.0,
+    "periodo": "dia",
+    "isStart": false
+  },
+  {
+    "date": "2024-11-21",
+    "fullDate": "21/11/2024",
+    "saldo": -240.0,
+    "valor": 99760.0,
+    "resultado": -240.0,
+    "drawdown": 160.0,
+    "drawdownPercent": 200.0,
+    "peak": 99920.0,
+    "trades": 1,
+    "resultado_periodo": -80.0,
+    "periodo": "dia",
+    "isStart": false
+  },
+  {
+    "date": "2024-11-28",
+    "fullDate": "28/11/2024",
+    "saldo": 48.0,
+    "valor": 100048.0,
+    "resultado": 48.0,
+    "drawdown": 0.0,
+    "drawdownPercent": 0.0,
+    "peak": 100048.0,
+    "trades": 1,
+    "resultado_periodo": 288.0,
+    "periodo": "dia",
+    "isStart": false
+  }
+]

@@ -117,7 +117,36 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, any>>({});
   const [showTradeDuration, setShowTradeDuration] = useState(false);
   const [showSimplePositionSizing, setShowSimplePositionSizing] = useState(false);
-  const trade = tradeObject?.trades;
+  
+  // ✅ CORREÇÃO: Consolidar trades de múltiplos CSVs
+  const trade = (() => {
+    // Se temos fileResults (múltiplos CSVs), consolidar todos os trades
+    if (fileResults && Object.keys(fileResults).length > 0) {
+      console.log('📊 MÚLTIPLOS CSVs: Consolidando trades para MetricsDashboard');
+      const allTrades: any[] = [];
+      
+      Object.keys(fileResults).forEach(fileName => {
+        const strategyData = fileResults[fileName] as any;
+        if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+          allTrades.push(...strategyData.trades);
+        }
+      });
+      
+      console.log(`📊 Consolidados ${allTrades.length} trades de ${Object.keys(fileResults).length} CSVs`);
+      
+      // ✅ DEBUG: Verificar se há trades com perda
+      const losingTrades = allTrades.filter(t => (t.pnl || 0) < 0);
+      const winningTrades = allTrades.filter(t => (t.pnl || 0) > 0);
+      console.log(`📊 Trades com perda: ${losingTrades.length}`);
+      console.log(`📊 Trades lucrativos: ${winningTrades.length}`);
+      console.log(`📊 Total de trades: ${allTrades.length}`);
+      
+      return allTrades;
+    } else {
+      // Usar trades do tradeObject (arquivo único)
+      return tradeObject?.trades || [];
+    }
+  })();
 
   // Function to detect asset type based on symbol
   const detectAssetType = (symbol: string): string => {
@@ -698,14 +727,35 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
         
         if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
           maxDrawdownAmount = consolidatedDD.maxDrawdownAbsoluto;
-          maxDrawdown = consolidatedDD.maxDrawdownPercent;
-          console.log('✅ Usando drawdown consolidado:', { maxDrawdownAmount, maxDrawdown });
+          
+          // ✅ CORREÇÃO CRÍTICA: Calcular drawdown percent baseado no capital inicial
+          const capitalInicial = 100000; // Valor padrão (mesmo do EquityCurveSection)
+          maxDrawdown = capitalInicial > 0 ? (consolidatedDD.maxDrawdownAbsoluto / capitalInicial) * 100 : 0;
+          
+          console.log('✅ Usando drawdown consolidado:', { 
+            maxDrawdownAmount, 
+            maxDrawdown,
+            capitalInicial,
+            formula: `(${consolidatedDD.maxDrawdownAbsoluto} / ${capitalInicial}) * 100 = ${maxDrawdown.toFixed(2)}%`
+          });
         }
       } catch (error) {
         console.error('❌ Erro ao calcular drawdown consolidado:', error);
       }
     } else {
       console.log('✅ CSV ÚNICO: Usando drawdown da API');
+      
+      // ✅ CORREÇÃO CRÍTICA: Para CSV único também calcular baseado no capital inicial
+      const capitalInicial = 100000; // Valor padrão (mesmo do EquityCurveSection)
+      if (maxDrawdownAmount > 0) {
+        maxDrawdown = capitalInicial > 0 ? (maxDrawdownAmount / capitalInicial) * 100 : 0;
+        console.log('✅ CSV ÚNICO - Drawdown percent calculado:', {
+          maxDrawdownAmount,
+          maxDrawdown,
+          capitalInicial,
+          formula: `(${maxDrawdownAmount} / ${capitalInicial}) * 100 = ${maxDrawdown.toFixed(2)}%`
+        });
+      }
     }
 
     const metricsWithDefaults = {
@@ -830,26 +880,35 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
   const filteredTradeDurationData = tradeDurationData.resultByDuration.filter(
     (trade: any) => trade.count !== 0
   )
-  const tradesLucrativos = tradeObject?.trades.filter(
+  const tradesLucrativos = trade.filter(
     (trade: any) => (
       trade.pnl > 0
       
     )
   )
 
-  const tradesLoss = tradeObject?.trades.filter(
+  const tradesLoss = trade.filter(
     (trade: any) => (
       trade.pnl < 0
     )
   )
 
-  const tradesNull = tradeObject?.trades.filter(
+  const tradesNull = trade.filter(
     (trade: any) => (
       trade.pnl === 0
     )
   )
- const maiorGanho = Math.max(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
-const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (trade.pnl || 0) ));
+ const maiorGanho = Math.max(...trade.map((trade: any) => (trade.pnl || 0) ));
+const maiorPerda = Math.min(...trade.map((trade: any) => (trade.pnl || 0) ));
+
+// ✅ DEBUG: Verificar estatísticas calculadas
+console.log('📊 DEBUG - Estatísticas de Trades:');
+console.log(`  📊 Total de trades: ${trade.length}`);
+console.log(`  📊 Trades lucrativos: ${tradesLucrativos.length}`);
+console.log(`  📊 Trades com perda: ${tradesLoss.length}`);
+console.log(`  📊 Trades zerados: ${tradesNull.length}`);
+console.log(`  📊 Maior ganho: ${maiorGanho}`);
+console.log(`  📊 Maior perda: ${maiorPerda}`);
 
   // Função para abrir modal de detalhes
   const handleShowDetails = (metricType: string, assetType?: string) => {
@@ -1011,7 +1070,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Total de Trades</p>
               <p className="text-3xl font-bold">
-                {(tradeObject?.trades && tradeObject.trades.length > 0) ? tradeObject.trades.length : (metrics?.totalTrades ?? 0)}
+                {trade.length > 0 ? trade.length : (metrics?.totalTrades ?? 0)}
               </p>
             </div>
 
@@ -1095,7 +1154,7 @@ const maiorPerda = Math.min(...(tradeObject?.trades || []).map((trade: any) => (
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Total de Trades</td>
                     <td className="py-2 text-right">
-                     {(tradeObject?.trades && tradeObject.trades.length > 0) ? tradeObject.trades.length : (metrics?.totalTrades ?? 0)}
+                     {trade.length > 0 ? trade.length : (metrics?.totalTrades ?? 0)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
