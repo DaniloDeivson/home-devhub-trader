@@ -113,6 +113,66 @@ def health():
         "service": "devhub-backend"
     })
 
+@app.route('/api/test-metrics', methods=['POST'])
+def test_metrics():
+    """Endpoint de teste para verificar se a API de métricas está funcionando"""
+    try:
+        print(f"🔍 DEBUG: Testando endpoint de métricas")
+        
+        # Dados de teste simples
+        test_data = {
+            'trades': [
+                {
+                    'entry_date': '2024-01-01T10:00:00',
+                    'exit_date': '2024-01-01T10:30:00',
+                    'pnl': 100
+                },
+                {
+                    'entry_date': '2024-01-01T11:00:00',
+                    'exit_date': '2024-01-01T11:15:00',
+                    'pnl': -50
+                }
+            ],
+            'capital_inicial': 100000,
+            'cdi': 0.12
+        }
+        
+        print(f"🔍 DEBUG: Dados de teste preparados")
+        
+        # Simular o processamento
+        df = pd.DataFrame(test_data['trades'])
+        df['entry_date'] = pd.to_datetime(df['entry_date'])
+        df['exit_date'] = pd.to_datetime(df['exit_date'])
+        df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
+        
+        print(f"🔍 DEBUG: DataFrame criado: {len(df)} trades")
+        
+        # Testar import do FunCalculos
+        try:
+            from FunCalculos import processar_backtest_completo
+            resultado = processar_backtest_completo(df, capital_inicial=100000, cdi=0.12)
+            print(f"🔍 DEBUG: FunCalculos funcionando")
+            
+            return jsonify({
+                "status": "success",
+                "message": "API de métricas funcionando corretamente",
+                "test_trades": len(df),
+                "performance_metrics": resultado.get("Performance Metrics", {})
+            })
+        except Exception as e:
+            print(f"❌ DEBUG: Erro no FunCalculos: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Erro no FunCalculos: {str(e)}"
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ DEBUG: Erro no teste: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Erro no teste: {str(e)}"
+        }), 500
+
 # ============ FUNÇÃO AUXILIAR PARA ENCODING ============
 
 def clean_numeric_value(value):
@@ -2229,26 +2289,68 @@ def api_daily_metrics():
 def api_metrics_from_data():
     """Endpoint para calcular métricas a partir de dados JSON já processados"""
     try:
-        data = request.get_json()
+        print(f"🔍 DEBUG: Iniciando /api/trades/metrics-from-data")
+        print(f"🔍 DEBUG: Content-Type: {request.content_type}")
+        print(f"🔍 DEBUG: Content-Length: {request.content_length}")
         
-        if not data or 'trades' not in data:
+        # Verificar se há dados no request
+        if not request.data:
+            print(f"❌ DEBUG: Request sem dados")
+            return jsonify({"error": "Request sem dados"}), 400
+        
+        # Tentar obter JSON
+        try:
+            data = request.get_json()
+            print(f"🔍 DEBUG: JSON parseado com sucesso")
+        except Exception as json_error:
+            print(f"❌ DEBUG: Erro ao fazer parse do JSON: {json_error}")
+            print(f"🔍 DEBUG: Dados brutos: {request.data[:500]}...")
+            return jsonify({"error": f"Erro ao fazer parse do JSON: {str(json_error)}"}), 400
+        
+        if not data:
+            print(f"❌ DEBUG: Data é None após parse")
+            return jsonify({"error": "Dados JSON inválidos"}), 400
+        
+        print(f"🔍 DEBUG: Chaves no data: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
+        
+        if not isinstance(data, dict) or 'trades' not in data:
+            print(f"❌ DEBUG: 'trades' não encontrado no data")
             return jsonify({"error": "Dados de trades não fornecidos"}), 400
         
         # Converter trades JSON para DataFrame
         trades_data = data['trades']
         
         if not trades_data:
+            print(f"❌ DEBUG: Lista de trades vazia")
             return jsonify({"error": "Lista de trades vazia"}), 400
         
+        print(f"🔍 DEBUG: Número de trades recebidos: {len(trades_data)}")
+        
         # Criar DataFrame
-        df = pd.DataFrame(trades_data)
+        try:
+            df = pd.DataFrame(trades_data)
+            print(f"🔍 DEBUG: DataFrame criado com {len(df)} linhas e {len(df.columns)} colunas")
+            print(f"🔍 DEBUG: Colunas: {list(df.columns)}")
+        except Exception as df_error:
+            print(f"❌ DEBUG: Erro ao criar DataFrame: {df_error}")
+            return jsonify({"error": f"Erro ao criar DataFrame: {str(df_error)}"}), 400
         
         # Converter datas
-        df['entry_date'] = pd.to_datetime(df['entry_date'])
-        df['exit_date'] = pd.to_datetime(df['exit_date'])
+        try:
+            df['entry_date'] = pd.to_datetime(df['entry_date'])
+            df['exit_date'] = pd.to_datetime(df['exit_date'])
+            print(f"🔍 DEBUG: Datas convertidas com sucesso")
+        except Exception as date_error:
+            print(f"❌ DEBUG: Erro ao converter datas: {date_error}")
+            return jsonify({"error": f"Erro ao converter datas: {str(date_error)}"}), 400
         
         # Garantir que pnl seja numérico
-        df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
+        try:
+            df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
+            print(f"🔍 DEBUG: PnL convertido para numérico")
+        except Exception as pnl_error:
+            print(f"❌ DEBUG: Erro ao converter PnL: {pnl_error}")
+            return jsonify({"error": f"Erro ao converter PnL: {str(pnl_error)}"}), 400
         
         # Parâmetros opcionais
         capital_inicial = float(data.get('capital_inicial', 100000))
@@ -2259,10 +2361,20 @@ def api_metrics_from_data():
         print(f"🔍 DEBUG: CDI: {cdi}")
         
         # Usar FunCalculos.py para garantir consistência
-        from FunCalculos import processar_backtest_completo
+        try:
+            from FunCalculos import processar_backtest_completo
+            print(f"🔍 DEBUG: FunCalculos importado com sucesso")
+        except Exception as import_error:
+            print(f"❌ DEBUG: Erro ao importar FunCalculos: {import_error}")
+            return jsonify({"error": f"Erro ao importar FunCalculos: {str(import_error)}"}), 500
         
         # Processar backtest completo usando FunCalculos.py
-        resultado = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+        try:
+            resultado = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+            print(f"🔍 DEBUG: Backtest processado com sucesso")
+        except Exception as backtest_error:
+            print(f"❌ DEBUG: Erro ao processar backtest: {backtest_error}")
+            return jsonify({"error": f"Erro ao processar backtest: {str(backtest_error)}"}), 500
         
         # Extrair apenas as métricas principais do resultado
         performance_metrics = resultado.get("Performance Metrics", {})
@@ -2318,12 +2430,23 @@ def api_metrics_from_data():
         print(f"🔍 DEBUG: DD Médio na resposta: {metricas['metricas_principais']['drawdown_medio']}")
         
         if not metricas:
+            print(f"❌ DEBUG: Métricas vazias")
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
         
-        return jsonify(make_json_serializable(metricas))
+        # Tentar serializar a resposta
+        try:
+            response_data = make_json_serializable(metricas)
+            print(f"🔍 DEBUG: Resposta serializada com sucesso")
+            return jsonify(response_data)
+        except Exception as serialize_error:
+            print(f"❌ DEBUG: Erro ao serializar resposta: {serialize_error}")
+            return jsonify({"error": f"Erro ao serializar resposta: {str(serialize_error)}"}), 500
 
     except Exception as e:
         print(f"❌ Erro na API: {e}")
+        import traceback
+        print(f"❌ Traceback completo:")
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/position-sizing', methods=['POST'])

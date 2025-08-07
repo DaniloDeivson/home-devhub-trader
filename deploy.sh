@@ -28,27 +28,56 @@ sudo pkill -f "gunicorn" || true
 echo "🐍 Configurando Backend..."
 cd /home/python-freela
 
+# ✅ CORREÇÃO: Verificar se ambiente virtual existe, se não, criar
+if [ ! -d "venv" ]; then
+    echo "📦 Criando ambiente virtual..."
+    python3 -m venv venv
+fi
+
 # Ativar ambiente virtual
+echo "🔧 Ativando ambiente virtual..."
 source venv/bin/activate
 
-# Instalar dependências
+# ✅ CORREÇÃO: Instalar dependências específicas
 echo "📦 Instalando dependências do backend..."
-pip install -r requirements.txt
+pip install flask flask-cors pandas numpy gunicorn python-dotenv
 
-# Instalar gunicorn se não estiver
-pip install gunicorn
+# ✅ CORREÇÃO: Verificar se main.py existe
+if [ ! -f "main.py" ]; then
+    echo "❌ ERRO: main.py não encontrado em /home/python-freela"
+    exit 1
+fi
+
+# ✅ CORREÇÃO: Testar se o backend funciona
+echo "🧪 Testando backend..."
+python3 -c "from main import app; print('✅ Backend importado com sucesso')" || {
+    echo "❌ ERRO: Falha ao importar backend"
+    exit 1
+}
 
 # 6. Configurar Frontend
 echo "⚛️ Configurando Frontend..."
 cd /home/project
 
+# ✅ CORREÇÃO: Verificar se package.json existe
+if [ ! -f "package.json" ]; then
+    echo "❌ ERRO: package.json não encontrado em /home/project"
+    exit 1
+fi
+
 # Instalar dependências
 echo "📦 Instalando dependências do frontend..."
 npm install
 
-# Build para produção
+# ✅ CORREÇÃO: Build para produção
 echo "🔨 Fazendo build do frontend..."
 npm run build
+
+# ✅ CORREÇÃO: Verificar se build foi criado
+if [ ! -d "dist" ]; then
+    echo "❌ ERRO: Build não foi criado (pasta dist não existe)"
+    exit 1
+fi
 
 # 7. Configurar serviço systemd para o backend
 echo "⚙️ Configurando serviço systemd para o backend..."
@@ -62,9 +91,11 @@ Type=exec
 User=root
 WorkingDirectory=/home/python-freela
 Environment=PATH=/home/python-freela/venv/bin
-ExecStart=/home/python-freela/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:5002 main:app --timeout 120
+ExecStart=/home/python-freela/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:5002 main:app --timeout 120 --preload
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -74,10 +105,34 @@ sudo systemctl daemon-reload
 sudo systemctl enable devhub-backend.service
 sudo systemctl start devhub-backend.service
 
+# ✅ CORREÇÃO: Aguardar backend iniciar
+echo "⏳ Aguardando backend iniciar..."
+sleep 5
+
+# ✅ CORREÇÃO: Verificar se backend está rodando
+if ! curl -s http://localhost:5002/ > /dev/null; then
+    echo "❌ ERRO: Backend não está respondendo na porta 5002"
+    echo "📋 Logs do backend:"
+    sudo journalctl -u devhub-backend.service --no-pager -l | tail -20
+    exit 1
+fi
+
 # 8. Iniciar Frontend com PM2
 echo "🚀 Iniciando Frontend com PM2..."
 cd /home/project
 pm2 start npm --name "devhub-frontend" -- run preview
+
+# ✅ CORREÇÃO: Aguardar frontend iniciar
+echo "⏳ Aguardando frontend iniciar..."
+sleep 5
+
+# ✅ CORREÇÃO: Verificar se frontend está rodando
+if ! curl -s http://localhost:4173 > /dev/null; then
+    echo "❌ ERRO: Frontend não está respondendo na porta 4173"
+    echo "📋 Logs do frontend:"
+    pm2 logs devhub-frontend --lines 10
+    exit 1
+fi
 
 # 9. Configurar Nginx com SSL
 echo "🌐 Configurando Nginx com SSL..."
@@ -136,9 +191,6 @@ server {
     return 301 https://$server_name$request_uri;
 }
 
-# Nota: O redirecionamento da porta 5002 é feito pelo próprio backend
-# O Nginx não precisa escutar na porta 5002, apenas redirecionar via domínio
-
 server {
     listen 443 ssl http2;
     server_name api.devhubtrader.com.br;
@@ -173,9 +225,6 @@ server {
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         client_max_body_size 100M;
-        
-        # CORS Headers - Removidos para evitar duplicação com Flask-CORS
-        # O Flask-CORS já está configurado no backend
     }
 }
 EOF

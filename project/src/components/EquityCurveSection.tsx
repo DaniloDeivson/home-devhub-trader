@@ -993,7 +993,7 @@ export function EquityCurveSection({
       const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
       
       // ✅ CORREÇÃO: Calcular ROI baseado no Net Profit e capital inicial
-      const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
+      let roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
       
       // ✅ CORREÇÃO: Usar dailyMetricsFromApi para campos adicionais se disponível
       let avgDrawdown = 0; // Será calculado se dailyMetricsFromApi estiver disponível
@@ -1088,7 +1088,7 @@ export function EquityCurveSection({
       const winRate = metricas.win_rate || (totalTrades > 0 ? (tradesLucrativos / totalTrades) * 100 : 0);
       
       // ✅ ROI: Se estiver zerado, calcular baseado no resultado
-      const roi = metricas.roi || (capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0);
+      let roi = metricas.roi || (capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0);
       
       // ✅ DEBUG: Verificar cálculo do drawdown percent
       console.log('🔍 DEBUG Drawdown Percent:');
