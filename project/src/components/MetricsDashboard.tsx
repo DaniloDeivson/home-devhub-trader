@@ -4,8 +4,7 @@ import {
   ChevronUp,
   ChevronDown,
   TrendingUp,
-  Award,
-  DollarSign
+  Award
 } from "lucide-react";
 import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
@@ -33,7 +32,7 @@ interface MetricsDashboardProps {
     file?: File;
   };
   showTitle?: boolean;
-  fileResults?: { [key: string]: unknown } | null; // Adicionado para múltiplos CSVs
+  fileResults?: { [key: string]: { trades?: unknown[]; "Performance Metrics"?: unknown } } | null; // Adicionado para múltiplos CSVs
   metrics: {
     profitFactor?: number;
     payoff?: number;
@@ -74,6 +73,7 @@ interface MetricsDashboardProps {
     capitalEmRisco?: number;
     posicaoRecomendada?: number;
     exposicaoMaxima?: number;
+
   };
 }
 
@@ -81,10 +81,12 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, unknown>>({});
   
+
+  
   // ✅ CORREÇÃO: Consolidar trades de múltiplos CSVs
   const trade = (() => {
     // Se temos fileResults (múltiplos CSVs), consolidar todos os trades
-    if (fileResults && Object.keys(fileResults).length > 0) {
+    if (fileResults && Object.keys(fileResults).length > 1) {
       console.log('📊 MÚLTIPLOS CSVs: Consolidando trades para MetricsDashboard');
       const allTrades: unknown[] = [];
       
@@ -94,19 +96,10 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
           allTrades.push(...strategyData.trades);
         }
       });
-      
-      console.log(`📊 Consolidados ${allTrades.length} trades de ${Object.keys(fileResults).length} CSVs`);
-      
-      // ✅ DEBUG: Verificar se há trades com perda
-      const losingTrades = allTrades.filter(t => ((t as { pnl?: number }).pnl || 0) < 0);
-      const winningTrades = allTrades.filter(t => ((t as { pnl?: number }).pnl || 0) > 0);
-      console.log(`📊 Trades com perda: ${losingTrades.length}`);
-      console.log(`📊 Trades lucrativos: ${winningTrades.length}`);
-      console.log(`📊 Total de trades: ${allTrades.length}`);
-      
+
       return allTrades;
     } else {
-      // Usar trades do tradeObject (arquivo único)
+      // ✅ CORREÇÃO: Para CSV único, sempre usar tradeObject.trades
       return tradeObject?.trades || [];
     }
   })();
@@ -127,8 +120,7 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       console.log('🔧 MÚLTIPLOS CSVs: Calculando drawdown consolidado com calculateDirectConsolidation()');
       
       try {
-        const consolidatedDD = calculateDirectConsolidation(fileResults);
-        console.log('✅ Drawdown consolidado calculado:', consolidatedDD);
+        const consolidatedDD = calculateDirectConsolidation(fileResults as Record<string, { trades: Array<{ exit_date?: string; entry_date: string; pnl: number; symbol?: string; [key: string]: unknown }>; "Performance Metrics": { "Net Profit": number; [key: string]: unknown } }>);
         
         if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
           maxDrawdownAmount = consolidatedDD.maxDrawdownAbsoluto;
@@ -136,12 +128,10 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
           // ✅ CORREÇÃO CRÍTICA: Calcular drawdown percent baseado no capital inicial
           const capitalInicial = 100000; // Valor padrão (mesmo do EquityCurveSection)
           maxDrawdown = capitalInicial > 0 ? (consolidatedDD.maxDrawdownAbsoluto / capitalInicial) * 100 : 0;
-          
-          console.log('✅ Usando drawdown consolidado:', { 
-            maxDrawdownAmount, 
-            maxDrawdown,
-            capitalInicial,
-            formula: `(${consolidatedDD.maxDrawdownAbsoluto} / ${capitalInicial}) * 100 = ${maxDrawdown.toFixed(2)}%`
+          console.log('✅ Usando drawdown consolidado:', {
+            maxDrawdownAbsoluto: consolidatedDD.maxDrawdownAbsoluto,
+            maxDrawdownPercent: maxDrawdown,
+            capitalInicial: 100000
           });
         }
       } catch (error) {
@@ -163,32 +153,42 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       }
     }
 
+    // ✅ CORREÇÃO: Usar cálculos diretos dos trades em vez de métricas da API
     const metricsWithDefaults = {
-      profitFactor: Number(safeMetrics.profitFactor) || 0,
-      sharpeRatio: Number(safeMetrics.sharpeRatio) || 0,
+      // Métricas calculadas diretamente dos trades
+      payoff: payoff, // Ganho médio / Perda média
+      payoffDiario: payoffDiario, // Payoff do total (não agrupado por data)
+      perdaMaximaDiaria: perdaMaximaDiaria, // Perda máxima agrupada por dia
+      perdaMaximaOperacao: perdaMaximaPorOperacao, // Perda em 1 trade
+      ganhoMedio: ganhoMedio,
+      perdaMedia: perdaMedia,
+      maiorGanho: maiorGanho,
+      maiorPerda: maiorPerda,
+      
+      // ✅ CORREÇÃO: Calcular métricas localmente em vez de usar API
+      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0,
+      sharpeRatio: Number(safeMetrics.sharpeRatio) || 0, // Manter da API por enquanto (não calculamos localmente)
       recoveryFactor: Number(safeMetrics.recoveryFactor) || 0,
       averageTradeDuration: safeMetrics.averageTradeDuration || "N/A",
       maxConsecutiveWins: Number(safeMetrics.maxConsecutiveWins) || 0,
       maxConsecutiveLosses: Number(safeMetrics.maxConsecutiveLosses) || 0,
-      payoff: Number(safeMetrics.payoff) || 0,
-      totalTrades: Number(safeMetrics.totalTrades) || 0,
-      profitableTrades: Number(safeMetrics.profitableTrades) || 0,
-      lossTrades: Number(safeMetrics.lossTrades) || 0,
-      averageWin: Number(safeMetrics.averageWin) || 0,
-      averageLoss: Number(safeMetrics.averageLoss) || 0,
-      netProfit: Number(safeMetrics.netProfit) || 0,
+      totalTrades: trade.length, // Usar trades reais
+      profitableTrades: tradesLucrativos.length, // Usar trades reais
+      lossTrades: tradesLoss.length, // Usar trades reais
+      averageWin: ganhoMedio, // Usar cálculo direto
+      averageLoss: perdaMedia, // Usar cálculo direto
+      netProfit: netProfit, // Usar cálculo direto
       maxDrawdown: maxDrawdown,
       maxDrawdownAmount: maxDrawdownAmount,
-      averageTrade: Number(safeMetrics.averageTrade) || 0,
-      winRate: Number(safeMetrics.winRate) || 0,
-      grossProfit: Number(safeMetrics.grossProfit) || 0,
-      grossLoss: Number(safeMetrics.grossLoss) || 0,
-      // Métricas complementares
+      averageTrade: ganhoMedio - perdaMedia, // Trade médio calculado
+      winRate: winRate, // Taxa de acerto calculada
+      grossProfit: grossProfit, // Usar cálculo direto
+      grossLoss: grossLoss, // Usar cálculo direto
+      
+      // Métricas complementares da API
       stopIdealPorDia: Number(safeMetrics.stopIdealPorDia) || 120,
       resultadoDiasFuria: Number(safeMetrics.resultadoDiasFuria) || -1250.5,
       numeroDiasFuria: Number(safeMetrics.numeroDiasFuria) || 3,
-      maiorGanho: Number(safeMetrics.maiorGanho) || 0,
-      maiorPerda: Number(safeMetrics.maiorPerda) || 0,
       operacoesMaximasPorDia: Number(safeMetrics.operacoesMaximasPorDia) || 12,
       setupsMaximosPorDia: Number(safeMetrics.setupsMaximosPorDia) || 8,
       mediaOperacoesDia: Number(safeMetrics.mediaOperacoesDia) || 0,
@@ -200,12 +200,6 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       // Safe handling of analysis objects
       dayOfWeekAnalysis: safeMetrics.dayOfWeekAnalysis || {},
       monthlyAnalysis: safeMetrics.monthlyAnalysis || {},
-
-      // Safe handling of best/worst day/month
-      bestDay: safeMetrics.bestDay || null,
-      worstDay: safeMetrics.worstDay || null,
-      bestMonth: safeMetrics.bestMonth || null,
-      worstMonth: safeMetrics.worstMonth || null,
     };
 
     setAnimatedMetrics(metricsWithDefaults);
@@ -283,51 +277,194 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
   };
 
+
+
+  // ✅ CORREÇÃO: Calcular métricas diretamente dos trades
   const tradesLucrativos = trade.filter(
     (trade: unknown) => (
       ((trade as { pnl?: number }).pnl || 0) > 0
-      
     )
-  )
+  );
 
   const tradesLoss = trade.filter(
     (trade: unknown) => (
       ((trade as { pnl?: number }).pnl || 0) < 0
     )
-  )
+  );
 
-  const tradesNull = trade.filter(
-    (trade: unknown) => (
-      ((trade as { pnl?: number }).pnl || 0) === 0
-    )
-  )
-  const maiorGanho = Math.max(...trade.map((trade: unknown) => ((trade as { pnl?: number }).pnl || 0)));
-  const maiorPerda = Math.min(...trade.map((trade: unknown) => ((trade as { pnl?: number }).pnl || 0)));
 
-// ✅ DEBUG: Verificar estatísticas calculadas
-console.log('📊 DEBUG - Estatísticas de Trades:');
-console.log(`  📊 Total de trades: ${trade.length}`);
-console.log(`  📊 Trades lucrativos: ${tradesLucrativos.length}`);
-console.log(`  📊 Trades com perda: ${tradesLoss.length}`);
-console.log(`  📊 Trades zerados: ${tradesNull.length}`);
-console.log(`  📊 Maior ganho: ${maiorGanho}`);
-console.log(`  📊 Maior perda: ${maiorPerda}`);
-
-// ✅ DEBUG: Verificar dados do animatedMetrics para arquivo único
-if (!fileResults || Object.keys(fileResults).length <= 1) {
-  console.log('📊 DEBUG - Dados do animatedMetrics (arquivo único):');
-  console.log(`  📊 Total de trades: ${animatedMetrics.totalTrades as number || 0}`);
-  console.log(`  📊 Trades lucrativos: ${animatedMetrics.profitableTrades as number || 0}`);
-  console.log(`  📊 Trades com perda: ${animatedMetrics.lossTrades as number || 0}`);
-  console.log(`  📊 Trades zerados: ${(animatedMetrics.totalTrades as number || 0) - (animatedMetrics.profitableTrades as number || 0) - (animatedMetrics.lossTrades as number || 0)}`);
   
-  console.log('📊 DEBUG - Métricas Avançadas (arquivo único):');
-  console.log(`  📊 Maior Ganho (API): ${animatedMetrics.maiorGanho as number || 0}`);
-  console.log(`  📊 Maior Perda (API): ${animatedMetrics.maiorPerda as number || 0}`);
-  console.log(`  📊 Ganho Bruto (API): ${animatedMetrics.grossProfit as number || 0}`);
-  console.log(`  📊 Perda Bruta (API): ${animatedMetrics.grossLoss as number || 0}`);
-  console.log(`  📊 Trade Médio (calculado): ${((animatedMetrics.averageWin as number || 0) - Math.abs(animatedMetrics.averageLoss as number || 0))}`);
-}
+  // ✅ CORREÇÃO: Calcular métricas de performance do TOTAL (sem agrupar por data)
+  const ganhoMedio = tradesLucrativos.length > 0 
+    ? tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0) / tradesLucrativos.length 
+    : 0;
+    
+  const perdaMedia = tradesLoss.length > 0 
+    ? tradesLoss.reduce((sum: number, t: unknown) => sum + Math.abs((t as { pnl?: number }).pnl || 0), 0) / tradesLoss.length 
+    : 0;
+    
+  const payoff = perdaMedia > 0 ? ganhoMedio / perdaMedia : 0;
+  
+  // ✅ CORREÇÃO: Payoff diário também do TOTAL (não agrupar por data)
+  const payoffDiario = payoff; // Usar o mesmo payoff do total
+  
+
+  
+  // ✅ CORREÇÃO: Calcular perda máxima diária
+  const calcularPerdaMaximaDiaria = () => {
+    if (trade.length === 0) return 0;
+    
+    const dailyResults = new Map<string, number>();
+    
+    trade.forEach((t) => {
+      const tradeData = t as Record<string, unknown>;
+      const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
+      const pnl = tradeData.pnl as number || 0;
+      
+      const current = dailyResults.get(date) || 0;
+      dailyResults.set(date, current + pnl);
+    });
+    
+    // Encontrar o dia com maior perda
+    let perdaMaximaDiaria = 0;
+    dailyResults.forEach((dailyPnL) => {
+      if (dailyPnL < 0 && Math.abs(dailyPnL) > perdaMaximaDiaria) {
+        perdaMaximaDiaria = Math.abs(dailyPnL);
+      }
+    });
+    
+    return perdaMaximaDiaria;
+  };
+  
+  const perdaMaximaDiaria = calcularPerdaMaximaDiaria();
+  
+  // ✅ CORREÇÃO: Calcular perda máxima por operação (1 trade)
+  const perdaMaximaPorOperacao = tradesLoss.length > 0 
+    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+  
+  // ✅ CORREÇÃO: Calcular maior ganho/perda geral
+  const maiorGanho = tradesLucrativos.length > 0 
+    ? Math.max(...tradesLucrativos.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+    
+  const maiorPerda = tradesLoss.length > 0 
+    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+  
+  // ✅ CORREÇÃO: Calcular métricas adicionais
+  const totalTrades = trade.length;
+  const winRate = totalTrades > 0 ? (tradesLucrativos.length / totalTrades) * 100 : 0;
+  const netProfit = trade.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+  
+  // ✅ CORREÇÃO: Calcular gross profit/loss localmente
+  const grossProfit = tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+  const grossLoss = Math.abs(tradesLoss.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0));
+  
+
+  console.log('🔍 COMPARAÇÃO - Locais vs API:', {
+    local: {
+      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0,
+      payoff,
+      winRate,
+      netProfit
+    },
+    api: {
+      profitFactor: metrics?.profitFactor,
+      payoff: metrics?.payoff,
+      winRate: metrics?.winRate,
+      netProfit: metrics?.netProfit
+    }
+  });
+  
+  // ✅ NOVO: Calcular Estatísticas de Trades localmente
+  const calcularEstatisticasTrades = () => {
+    if (trade.length === 0) return {
+      totalTrades: 0,
+      tradesLucrativos: 0,
+      tradesComPerda: 0,
+      tradesZerados: 0,
+      ganhoMedio: 0,
+      perdaMedia: 0,
+      maxPerdasConsecutivas: 0,
+      maxGanhosConsecutivos: 0
+    };
+    
+    // Calcular trades zerados (PnL = 0)
+    const tradesZerados = trade.filter((t: unknown) => ((t as { pnl?: number }).pnl || 0) === 0).length;
+    
+    // Calcular sequências consecutivas
+    let maxPerdasConsecutivas = 0;
+    let maxGanhosConsecutivos = 0;
+    let perdasConsecutivasAtual = 0;
+    let ganhosConsecutivosAtual = 0;
+    
+    trade.forEach((t: unknown) => {
+      const pnl = (t as { pnl?: number }).pnl || 0;
+      
+      if (pnl > 0) {
+        ganhosConsecutivosAtual++;
+        perdasConsecutivasAtual = 0;
+        maxGanhosConsecutivos = Math.max(maxGanhosConsecutivos, ganhosConsecutivosAtual);
+      } else if (pnl < 0) {
+        perdasConsecutivasAtual++;
+        ganhosConsecutivosAtual = 0;
+        maxPerdasConsecutivas = Math.max(maxPerdasConsecutivas, perdasConsecutivasAtual);
+      } else {
+        // Trade zerado (PnL = 0)
+        ganhosConsecutivosAtual = 0;
+        perdasConsecutivasAtual = 0;
+      }
+    });
+    
+    return {
+      totalTrades: trade.length,
+      tradesLucrativos: tradesLucrativos.length,
+      tradesComPerda: tradesLoss.length,
+      tradesZerados,
+      ganhoMedio,
+      perdaMedia,
+      maxPerdasConsecutivas,
+      maxGanhosConsecutivos
+    };
+  };
+
+  // ✅ NOVO: Calcular Métricas Avançadas localmente
+  const calcularMetricasAvancadas = () => {
+    if (trade.length === 0) return {
+      tradeMedio: 0,
+      maiorGanho: 0,
+      maiorPerda: 0,
+      ganhoBruto: 0,
+      perdaBruta: 0,
+      tradesLucrativosPercent: 0,
+      tradesComPerdaPercent: 0
+    };
+    
+    // Trade médio (lucro líquido / total de trades)
+    const tradeMedio = totalTrades > 0 ? netProfit / totalTrades : 0;
+    
+    // Percentuais
+    const tradesLucrativosPercent = totalTrades > 0 ? (tradesLucrativos.length / totalTrades) * 100 : 0;
+    const tradesComPerdaPercent = totalTrades > 0 ? (tradesLoss.length / totalTrades) * 100 : 0;
+    
+    return {
+      tradeMedio,
+      maiorGanho,
+      maiorPerda,
+      ganhoBruto: grossProfit,
+      perdaBruta: grossLoss,
+      tradesLucrativosPercent,
+      tradesComPerdaPercent
+    };
+  };
+  
+  // ✅ NOVO: Calcular valores das estatísticas
+  const estatisticasTrades = calcularEstatisticasTrades();
+  const metricasAvancadas = calcularMetricasAvancadas();
+  
+
+
 
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
@@ -362,10 +499,10 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
               <p
                 className={`text-3xl font-bold ${getMetricColor(
                   "netProfit",
-                  animatedMetrics.netProfit as number || 0
+                  netProfit
                 )}`}
               >
-                {formatMetric(animatedMetrics.netProfit as number || 0, false, true)}
+                {formatMetric(netProfit, false, true)}
               </p>
             </div>
 
@@ -384,7 +521,7 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Total de Trades</p>
               <p className="text-3xl font-bold">
-                {trade.length > 0 ? trade.length : (metrics?.totalTrades ?? 0)}
+                {totalTrades}
               </p>
             </div>
 
@@ -394,10 +531,10 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "profitFactor",
-                  animatedMetrics.profitFactor as number || 0
+                  grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.profitFactor as number || 0)}
+                {formatMetric(grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0)}
               </p>
             </div>
 
@@ -407,10 +544,13 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "payoff",
-                  animatedMetrics.payoff as number || 0
+                  payoff
                 )}`}
               >
-                {formatMetric(animatedMetrics.payoff as number || 0)}
+                {formatMetric(payoff)}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Ganho Médio / Perda Média (Total)
               </p>
             </div>
 
@@ -446,10 +586,10 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "winRate",
-                  animatedMetrics.winRate as number || 0
+                  winRate
                 )}`}
               >
-                {formatMetric(animatedMetrics.winRate as number || 0, true)}
+                {formatMetric(winRate, true)}
               </p>
             </div>
           </div>
@@ -466,54 +606,38 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Total de Trades</td>
                     <td className="py-2 text-right">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar trade.length */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? trade.length 
-                        : (animatedMetrics.totalTrades as number || 0)
-                      }
+                      {estatisticasTrades.totalTrades}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                     <td className="py-2 text-right text-green-500">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesLucrativos */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? tradesLucrativos.length 
-                        : (animatedMetrics.profitableTrades as number || 0)
-                      }
+                      {estatisticasTrades.tradesLucrativos}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesLoss */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? tradesLoss.length 
-                        : (animatedMetrics.lossTrades as number || 0)
-                      }
+                      {estatisticasTrades.tradesComPerda}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Zerados</td>
                     <td className="py-2 text-right text-white">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesNull */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? tradesNull.length 
-                        : (animatedMetrics.totalTrades as number - (animatedMetrics.profitableTrades as number || 0) - (animatedMetrics.lossTrades as number || 0) || 0)
-                      }
+                      {estatisticasTrades.tradesZerados}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Médio</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(animatedMetrics.averageWin as number || 0, false, true)}
+                      {formatMetric(estatisticasTrades.ganhoMedio, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Média</td>
                     <td className="py-2 text-right text-red-500">
                       {formatMetric(
-                        Math.abs(animatedMetrics.averageLoss as number || 0),
+                        Math.abs(estatisticasTrades.perdaMedia),
                         false,
                         true
                       )}
@@ -524,7 +648,7 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
                       Máx. Perdas Consecutivas
                     </td>
                     <td className="py-2 text-right">
-                      {animatedMetrics.maxConsecutiveLosses as number || "0"}
+                      {estatisticasTrades.maxPerdasConsecutivas}
                     </td>
                   </tr>
                   <tr>
@@ -532,7 +656,7 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
                       Máx. Ganhos Consecutivos
                     </td>
                     <td className="py-2 text-right text-green-500">
-                      {animatedMetrics.maxConsecutiveWins as number || "0"}
+                      {estatisticasTrades.maxGanhosConsecutivos}
                     </td>
                   </tr>
                 </tbody>
@@ -549,51 +673,43 @@ if (!fileResults || Object.keys(fileResults).length <= 1) {
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trade Médio</td>
                     <td className="py-2 text-right">
-                    {formatMetric(((animatedMetrics.averageWin as number || 0) - Math.abs(animatedMetrics.averageLoss as number || 0)), false, true)}
+                      {formatMetric(metricasAvancadas.tradeMedio, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Ganho</td>
                     <td className="py-2 text-right text-green-500">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar maiorGanho calculado */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? formatMetric(maiorGanho, false, true)
-                        : formatMetric(animatedMetrics.maiorGanho as number || 0, false, true)
-                      }
+                      {formatMetric(metricasAvancadas.maiorGanho, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar maiorPerda calculado */}
-                      {fileResults && Object.keys(fileResults).length > 1 
-                        ? formatMetric(maiorPerda, false, true)
-                        : formatMetric(animatedMetrics.maiorPerda as number || 0, false, true)
-                      }
+                      {formatMetric(metricasAvancadas.maiorPerda, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Bruto</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(animatedMetrics.grossProfit as number || 0, false, true)}
+                      {formatMetric(metricasAvancadas.ganhoBruto, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Bruta</td>
                     <td className="py-2 text-right text-red-500">
-                      {formatMetric(animatedMetrics.grossLoss as number || 0, false, true)}
+                      {formatMetric(metricasAvancadas.perdaBruta, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                     <td className="py-2 text-right">
-                      {formatMetric(animatedMetrics.winRate as number || 0, true)}
+                      {formatMetric(metricasAvancadas.tradesLucrativosPercent, true)}
                     </td>
                   </tr>
                   <tr>
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                     <td className="py-2 text-right">
-                      {formatMetric(100 - (animatedMetrics.winRate as number || 0), true)}
+                      {formatMetric(metricasAvancadas.tradesComPerdaPercent, true)}
                     </td>
                   </tr>
                 </tbody>

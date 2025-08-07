@@ -112,10 +112,10 @@ export function EquityCurveSection({
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
   const [timeRange, setTimeRange] = useState<'trade' | 'daily'>('daily');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
-    const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [totalInvestment, setTotalInvestment] = useState<string>('100000');
-  const [dailyMetricsFromApi, setDailyMetricsFromApi] = useState<any>(null);
+
   const [capitalInicial, setCapitalInicial] = useState(100000);
 
   // ✅ CORREÇÃO: Função centralizada para aplicar filtros
@@ -217,31 +217,7 @@ export function EquityCurveSection({
     return allTrades;
   };
 
-  useEffect(() => {
-    // ✅ CORREÇÃO: Usar função centralizada para obter trades filtrados
-    const filteredTrades = getFilteredTrades();
-    
-    if (filteredTrades.length > 0) {
-      console.log('📊 Carregando métricas da API para', filteredTrades.length, 'trades filtrados');
-        fetch('/api/trades/metrics-from-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: filteredTrades }),
-        })
-          .then(res => res.json())
-          .then(data => {
-            console.log('✅ Métricas carregadas da API:', data);
-            setDailyMetricsFromApi(data);
-          })
-          .catch((error) => {
-            console.error('❌ Erro ao carregar métricas da API:', error);
-            setDailyMetricsFromApi(null);
-          });
-    } else {
-      console.log('⚠️ Nenhum trade válido após filtros aplicados');
-      setDailyMetricsFromApi(null);
-      }
-  }, [fileResults, showConsolidated, selectedAsset, selectedFiles]);
+
 
   // Função para gerar cores únicas para cada estratégia
   const getStrategyColor = (strategyName: string, index: number) => {
@@ -712,14 +688,12 @@ export function EquityCurveSection({
     console.log('🔄 stats useMemo executado');
     console.log('🔧 DEBUG STATS - Parâmetros:');
     console.log('  📊 data existe:', !!data);
-    console.log('  📊 dailyMetricsFromApi existe:', !!dailyMetricsFromApi);
     console.log('  📁 fileResults keys:', fileResults ? Object.keys(fileResults) : 'null');
-    console.log('  �� fileResults length:', fileResults ? Object.keys(fileResults).length : 0);
+    console.log('  📊 fileResults length:', fileResults ? Object.keys(fileResults).length : 0);
     console.log('  📊 showConsolidated:', showConsolidated);
     console.log('  📊 selectedStrategy:', selectedStrategy);
     console.log('  📊 selectedAsset:', selectedAsset);
     console.log('  📁 selectedFiles:', selectedFiles);
-    console.log('  📊 dailyMetricsFromApi valor:', dailyMetricsFromApi);
     
     // ✅ CORREÇÃO: Usar função centralizada para obter fileResults filtrados
     const filteredFileResults = getFilteredFileResults();
@@ -733,62 +707,194 @@ export function EquityCurveSection({
       console.log('🔧 MODO INDIVIDUAL: Calculando stats para estratégias selecionadas');
       console.log('📊 selectedFiles:', selectedFiles);
       console.log('📊 filteredFileResults keys:', Object.keys(filteredFileResults));
+      console.log('📊 showConsolidated:', showConsolidated);
+      console.log('📊 hasValidFileResults:', hasValidFileResults);
       
       if (Object.keys(filteredFileResults).length === 1) {
-        // Estratégia única: usar dados diretos da estratégia
+        // Estratégia única: calcular métricas localmente baseado nos trades
         const strategyName = Object.keys(filteredFileResults)[0];
         const strategyData = filteredFileResults[strategyName];
         
-        if (strategyData && strategyData["Performance Metrics"]) {
-          const metrics = strategyData["Performance Metrics"];
+        console.log(`🎯 MODO INDIVIDUAL - Estratégia única: ${strategyName}`);
+        console.log('📊 Dados da estratégia:', strategyData);
+        console.log('📊 Estrutura dos dados:', {
+          keys: strategyData ? Object.keys(strategyData) : [],
+          hasPerformanceMetrics: !!(strategyData && strategyData["Performance Metrics"]),
+          performanceMetricsKeys: strategyData && strategyData["Performance Metrics"] ? Object.keys(strategyData["Performance Metrics"]) : []
+        });
+        
+        console.log(`🔍 DEBUG: Verificando trades para ${strategyName}:`, {
+          hasStrategyData: !!strategyData,
+          hasTrades: !!(strategyData && strategyData.trades),
+          isArray: !!(strategyData && strategyData.trades && Array.isArray(strategyData.trades)),
+          tradesLength: strategyData && strategyData.trades ? strategyData.trades.length : 0
+        });
+        
+        if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
           const capitalInicial = 100000; // Valor padrão
+          const allTrades = strategyData.trades;
           
-          console.log(`🎯 MODO INDIVIDUAL - Estratégia única: ${strategyName}`);
-          console.log('📊 Métricas da estratégia:', metrics);
+          // ✅ CORREÇÃO: Calcular todas as métricas localmente
+          const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+          const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
           
-          const resultadoLiquido = metrics["Net Profit"] || 0;
-          const drawdownMaximo = Math.abs(metrics["Max Drawdown ($)"] || 0);
-          const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
+          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+          const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+          const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
           
-          // ✅ CORREÇÃO: Calcular DD Médio para estratégia individual
+          // ✅ CORREÇÃO: Calcular resultado líquido e ROI localmente
+          const resultadoLiquido = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
+          
+          // ✅ CORREÇÃO: Usar DD médio da API em vez de calcular localmente
+          let runningTotal = 0;
+          let peak = 0;
+          let maxDrawdown = 0;
+          
+          allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+          
+          allTrades.forEach(trade => {
+            const pnl = Number(trade.pnl) || 0;
+            runningTotal += pnl;
+            
+            if (runningTotal > peak) {
+              peak = runningTotal;
+            }
+            
+            const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+            if (drawdown > maxDrawdown) {
+              maxDrawdown = drawdown;
+            }
+          });
+          
+          const drawdownMaximoPct = capitalInicial > 0 ? (maxDrawdown / capitalInicial) * 100 : 0;
+          
+          // ✅ USAR DD MÉDIO DA API
+          console.log(`🔍 DEBUG DD Médio - Dados completos para ${strategyName}:`, {
+            hasStrategyData: !!strategyData,
+            hasPerformanceMetrics: !!(strategyData && strategyData["Performance Metrics"]),
+            performanceMetrics: strategyData && strategyData["Performance Metrics"],
+            averageDrawdown: strategyData && strategyData["Performance Metrics"] ? strategyData["Performance Metrics"]["Average Drawdown"] : "N/A"
+          });
+          
+          // ✅ NOVA LÓGICA: Calcular DD médio localmente com método mais robusto
           let drawdownMedio = 0;
-          if (strategyData.trades && strategyData.trades.length > 0) {
-            // Calcular drawdown médio baseado nos trades
-            const drawdowns: number[] = [];
-            let runningTotal = 0;
-            let peak = 0;
+          
+          if (performanceMetrics) {
+            // Tentar obter da API primeiro
+            const possibleKeys = [
+              "Average Drawdown",
+              "Average Drawdown ($)",
+              "Average Drawdown (%)",
+              "Avg Drawdown",
+              "Avg Drawdown ($)",
+              "Avg Drawdown (%)",
+              "drawdown_medio",
+              "drawdown_medio_pct"
+            ];
             
-            strategyData.trades.forEach((trade: any) => {
-              runningTotal += Number(trade.pnl) || 0;
-              if (runningTotal > peak) {
-                peak = runningTotal;
+            for (const key of possibleKeys) {
+              if (performanceMetrics[key] !== undefined && performanceMetrics[key] > 0) {
+                drawdownMedio = performanceMetrics[key];
+                console.log(`✅ DD Médio da API: "${key}" = ${drawdownMedio}`);
+                break;
               }
-              const drawdown = Math.abs(Math.min(0, runningTotal - peak));
-              if (drawdown > 0) {
-                drawdowns.push(drawdown);
-              }
-            });
+            }
             
-            drawdownMedio = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
-            console.log(`📊 DD Médio calculado para ${strategyName}: R$ ${drawdownMedio.toLocaleString()}`);
+            // Se não encontrou na API ou é zero, calcular localmente
+            if (drawdownMedio === 0) {
+              console.log(`🔄 Calculando DD médio localmente...`);
+              
+              // NOVA LÓGICA: Calcular DD médio baseado em todos os períodos de drawdown
+              let runningTotal = 0;
+              let peak = 0;
+              const allDrawdowns: number[] = [];
+              
+              allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+              
+              allTrades.forEach(trade => {
+                const pnl = Number(trade.pnl) || 0;
+                runningTotal += pnl;
+                
+                if (runningTotal > peak) {
+                  peak = runningTotal;
+                }
+                
+                // Calcular drawdown atual
+                const currentDrawdown = peak - runningTotal;
+                
+                // Se estamos em drawdown (saldo abaixo do pico)
+                if (currentDrawdown > 0) {
+                  allDrawdowns.push(currentDrawdown);
+                }
+              });
+              
+              // Calcular média de todos os drawdowns
+              if (allDrawdowns.length > 0) {
+                drawdownMedio = allDrawdowns.reduce((sum, dd) => sum + dd, 0) / allDrawdowns.length;
+                console.log(`✅ DD Médio calculado localmente: ${drawdownMedio.toFixed(2)}`);
+                console.log(`📊 Total de períodos em drawdown: ${allDrawdowns.length}`);
+                console.log(`📊 Drawdowns encontrados:`, allDrawdowns.slice(0, 5)); // Primeiros 5 para debug
+              } else {
+                console.log(`❌ Nenhum período de drawdown encontrado`);
+              }
+            }
           }
+          
+          console.log(`✅ DD Médio da API para ${strategyName}:`, {
+            drawdownMedio,
+            fromAPI: strategyData && strategyData["Performance Metrics"] ? true : false,
+            isZero: drawdownMedio === 0
+          });
+          
+          console.log(`✅ Métricas calculadas localmente para ${strategyName}:`, {
+            resultadoLiquido,
+            maxDrawdown,
+            drawdownMaximoPct,
+            drawdownMedio,
+            fatorLucro,
+            winRate,
+            roi,
+            totalTrades: allTrades.length,
+            winningTrades: tradesLucrativos.length,
+            losingTrades: tradesPrejuizo.length
+          });
           
           return {
             resultado: resultadoLiquido,
-            maxDrawdown: drawdownMaximo,
+            maxDrawdown: maxDrawdown,
             maxDrawdownPercent: drawdownMaximoPct,
-            avgDrawdown: drawdownMedio, // ✅ CORREÇÃO: DD Médio calculado
-            fatorLucro: metrics["Profit Factor"] || 0,
-            winRate: metrics["Win Rate (%)"] || 0,
-            roi: metrics["ROI (%)"] || 0,
-            totalTrades: metrics["Total Trades"] || 0,
-            winningTrades: metrics["Winning Trades"] || 0,
-            losingTrades: metrics["Losing Trades"] || 0
+            avgDrawdown: drawdownMedio,
+            fatorLucro: fatorLucro,
+            winRate: winRate,
+            roi: roi,
+            totalTrades: allTrades.length,
+            winningTrades: tradesLucrativos.length,
+            losingTrades: tradesPrejuizo.length
+          };
+        } else {
+          // ✅ REMOVIDO: Sem fallback - sempre haverá trades
+          console.log(`❌ MODO INDIVIDUAL - Estratégia única: ${strategyName} - Sem trades disponíveis`);
+          console.log('📊 Dados da estratégia:', strategyData);
+          
+          // Retornar valores vazios quando não há trades
+          return {
+            resultado: 0,
+            maxDrawdown: 0,
+            maxDrawdownPercent: 0,
+            avgDrawdown: 0,
+            fatorLucro: 0,
+            winRate: 0,
+            roi: 0,
+            totalTrades: 0,
+            winningTrades: 0,
+            losingTrades: 0
           };
         }
       } else {
-        // Múltiplas estratégias: usar calculateDirectConsolidation + dailyMetricsFromApi
-        console.log('🔧 MODO INDIVIDUAL - Múltiplas estratégias: Calculando métricas consolidadas');
+        // Múltiplas estratégias: calcular métricas localmente
+        console.log('🔧 MODO INDIVIDUAL - Múltiplas estratégias: Calculando métricas localmente');
         
         try {
           const consolidatedDD = calculateDirectConsolidation(filteredFileResults);
@@ -800,44 +906,71 @@ export function EquityCurveSection({
             const drawdownMaximoPct = capitalInicial > 0 ? (consolidatedDD.maxDrawdownAbsoluto / capitalInicial) * 100 : 0;
             console.log('📊 DD Máximo % calculado:', drawdownMaximoPct.toFixed(2) + '%');
             
-            // ✅ CORREÇÃO: Usar dailyMetricsFromApi para campos que calculateDirectConsolidation não retorna
-            let avgDrawdown = 0;
-            let fatorLucro = 0;
-            let winRate = 0;
-            let roi = 0;
-            let winningTrades = 0;
-            let losingTrades = 0;
+            // ✅ CALCULO LOCAL: Calcular métricas localmente
+            const allTrades: any[] = [];
+            Object.values(filteredFileResults).forEach((strategyData: any) => {
+              if (strategyData.trades && Array.isArray(strategyData.trades)) {
+                allTrades.push(...strategyData.trades);
+              }
+            });
             
-            if (dailyMetricsFromApi && dailyMetricsFromApi.metricas_principais) {
-              const metricas = dailyMetricsFromApi.metricas_principais;
-              avgDrawdown = metricas.drawdown_medio || 0;
-              fatorLucro = metricas.fator_lucro || 0;
-              winRate = metricas.win_rate || 0;
-              roi = metricas.roi || 0;
-              winningTrades = metricas.trades_lucrativos || 0;
-              losingTrades = metricas.trades_prejuizo || 0;
+            // Calcular métricas localmente
+            const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+            const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+            
+            const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+            const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+            const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+            const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
+            
+            // ✅ CORREÇÃO: Calcular ROI baseado nos trades consolidados das estratégias selecionadas
+            const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+            const roi = capitalInicial > 0 ? (resultadoLiquidoConsolidado / capitalInicial) * 100 : 0;
+            
+            // Calcular drawdown médio
+            let runningTotal = 0;
+            let peak = 0;
+            const drawdowns: number[] = [];
+            
+            allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+            
+            allTrades.forEach(trade => {
+              const pnl = Number(trade.pnl) || 0;
+              runningTotal += pnl;
               
-              console.log('✅ Usando dailyMetricsFromApi para métricas consolidadas:', {
-                avgDrawdown,
-                fatorLucro,
-                winRate,
-                roi,
-                winningTrades,
-                losingTrades
-              });
-            }
+              if (runningTotal > peak) {
+                peak = runningTotal;
+              }
+              
+              const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+              if (drawdown > 0) {
+                drawdowns.push(drawdown);
+              }
+            });
+            
+            const avgDrawdown = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
+            
+            console.log('✅ Métricas calculadas localmente:', {
+              avgDrawdown,
+              fatorLucro,
+              winRate,
+              roi,
+              resultadoLiquidoConsolidado,
+              winningTrades: tradesLucrativos.length,
+              losingTrades: tradesPrejuizo.length
+            });
             
             const result = {
-              resultado: consolidatedDD.resultadoFinal || 0,
-              maxDrawdown: consolidatedDD.maxDrawdownAbsoluto, // ✅ DD Máximo correto do calculateDirectConsolidation
-              maxDrawdownPercent: drawdownMaximoPct, // ✅ DD Máximo % baseado no capital inicial
-              avgDrawdown: avgDrawdown, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-              fatorLucro: fatorLucro, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-              winRate: winRate, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-              roi: roi, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-              totalTrades: consolidatedDD.totalTrades || 0,
-              winningTrades: winningTrades, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-              losingTrades: losingTrades // ✅ CORREÇÃO: Usar dailyMetricsFromApi
+              resultado: resultadoLiquidoConsolidado,
+              maxDrawdown: consolidatedDD.maxDrawdownAbsoluto,
+              maxDrawdownPercent: drawdownMaximoPct,
+              avgDrawdown: avgDrawdown,
+              fatorLucro: fatorLucro,
+              winRate: winRate,
+              roi: roi,
+              totalTrades: allTrades.length,
+              winningTrades: tradesLucrativos.length,
+              losingTrades: tradesPrejuizo.length
             };
             
             console.log('✅ Resultado para modo individual consolidado:', result);
@@ -865,44 +998,71 @@ export function EquityCurveSection({
           console.log('📊 DD Máximo % calculado:', drawdownMaximoPct.toFixed(2) + '%');
           console.log('  📊 Fórmula: (', consolidatedDD.maxDrawdownAbsoluto, '/', capitalInicial, ') * 100 =', drawdownMaximoPct.toFixed(2) + '%');
           
-          // ✅ CORREÇÃO: Usar dailyMetricsFromApi para campos que calculateDirectConsolidation não retorna
-          let avgDrawdown = 0;
-          let fatorLucro = 0;
-          let winRate = 0;
-          let roi = 0;
-          let winningTrades = 0;
-          let losingTrades = 0;
+          // ✅ CALCULO LOCAL: Calcular métricas localmente
+          const allTrades: any[] = [];
+          Object.values(filteredFileResults).forEach((strategyData: any) => {
+            if (strategyData.trades && Array.isArray(strategyData.trades)) {
+              allTrades.push(...strategyData.trades);
+            }
+          });
           
-          if (dailyMetricsFromApi && dailyMetricsFromApi.metricas_principais) {
-            const metricas = dailyMetricsFromApi.metricas_principais;
-            avgDrawdown = metricas.drawdown_medio || 0;
-            fatorLucro = metricas.fator_lucro || 0;
-            winRate = metricas.win_rate || 0;
-            roi = metricas.roi || 0;
-            winningTrades = metricas.trades_lucrativos || 0;
-            losingTrades = metricas.trades_prejuizo || 0;
+          // Calcular métricas localmente
+          const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+          const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+          
+          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+          const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+          const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
+          
+          // ✅ CORREÇÃO: Calcular ROI baseado nos trades consolidados
+          const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const roi = capitalInicial > 0 ? (resultadoLiquidoConsolidado / capitalInicial) * 100 : 0;
+          
+          // Calcular drawdown médio
+          let runningTotal = 0;
+          let peak = 0;
+          const drawdowns: number[] = [];
+          
+          allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+          
+          allTrades.forEach(trade => {
+            const pnl = Number(trade.pnl) || 0;
+            runningTotal += pnl;
             
-            console.log('✅ Usando dailyMetricsFromApi para campos adicionais:', {
-              avgDrawdown,
-              fatorLucro,
-              winRate,
-              roi,
-              winningTrades,
-              losingTrades
-            });
-          }
+            if (runningTotal > peak) {
+              peak = runningTotal;
+            }
+            
+            const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+            if (drawdown > 0) {
+              drawdowns.push(drawdown);
+            }
+          });
+          
+          const avgDrawdown = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
+          
+          console.log('✅ Métricas calculadas localmente:', {
+            avgDrawdown,
+            fatorLucro,
+            winRate,
+            roi,
+            resultadoLiquidoConsolidado,
+            winningTrades: tradesLucrativos.length,
+            losingTrades: tradesPrejuizo.length
+          });
           
             const result = {
-            resultado: consolidatedDD.resultadoFinal || 0,
-            maxDrawdown: consolidatedDD.maxDrawdownAbsoluto, // ✅ DD Máximo correto do calculateDirectConsolidation
-            maxDrawdownPercent: drawdownMaximoPct, // ✅ DD Máximo % baseado no capital inicial
-            avgDrawdown: avgDrawdown, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-            fatorLucro: fatorLucro, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-            winRate: winRate, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-            roi: roi, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-            totalTrades: consolidatedDD.totalTrades || 0,
-            winningTrades: winningTrades, // ✅ CORREÇÃO: Usar dailyMetricsFromApi
-            losingTrades: losingTrades // ✅ CORREÇÃO: Usar dailyMetricsFromApi
+            resultado: resultadoLiquidoConsolidado,
+            maxDrawdown: consolidatedDD.maxDrawdownAbsoluto,
+            maxDrawdownPercent: drawdownMaximoPct,
+            avgDrawdown: avgDrawdown,
+            fatorLucro: fatorLucro,
+            winRate: winRate,
+            roi: roi,
+            totalTrades: allTrades.length,
+            winningTrades: tradesLucrativos.length,
+            losingTrades: tradesPrejuizo.length
           };
           
           console.log('✅ Resultado final para modo consolidado:', result);
@@ -923,245 +1083,336 @@ export function EquityCurveSection({
     // ✅ CORREÇÃO: MODO CONSOLIDADO - CSV único
     if (showConsolidated && hasValidFileResults && Object.keys(filteredFileResults).length === 1) {
       console.log('🔧 MODO CONSOLIDADO - CSV ÚNICO: Usando dados do CSV único');
+      console.log('📊 showConsolidated:', showConsolidated);
+      console.log('📊 hasValidFileResults:', hasValidFileResults);
+      console.log('📊 filteredFileResults length:', Object.keys(filteredFileResults).length);
       
       const strategyName = Object.keys(filteredFileResults)[0];
       const strategyData = filteredFileResults[strategyName];
       
-      if (strategyData && strategyData["Performance Metrics"]) {
-        const metrics = strategyData["Performance Metrics"];
+      console.log(`🎯 MODO CONSOLIDADO - CSV ÚNICO: ${strategyName}`);
+      console.log('📊 Dados da estratégia:', strategyData);
+      
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        // ✅ CORREÇÃO: Calcular todas as métricas localmente baseado nos trades
         const capitalInicial = 100000; // Valor padrão
+        const allTrades = strategyData.trades;
         
-        console.log(`🎯 MODO CONSOLIDADO - CSV ÚNICO: ${strategyName}`);
-        console.log('📊 Métricas da estratégia:', metrics);
+        // ✅ CORREÇÃO: Calcular todas as métricas localmente
+        const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+        const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
         
-        const resultadoLiquido = metrics["Net Profit"] || 0;
-        const drawdownMaximo = Math.abs(metrics["Max Drawdown ($)"] || 0);
-        const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
+        const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+        const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+        const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+        const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
         
-        // ✅ CORREÇÃO: Usar dailyMetricsFromApi para campos adicionais se disponível
-        let avgDrawdown = metrics["Average Drawdown"] || 0;
-        let fatorLucro = metrics["Profit Factor"] || 0;
-        let winRate = metrics["Win Rate (%)"] || 0;
-        let roi = metrics["ROI (%)"] || 0;
-        let winningTrades = metrics["Winning Trades"] || 0;
-        let losingTrades = metrics["Losing Trades"] || 0;
+        // ✅ CORREÇÃO: Calcular resultado líquido e ROI localmente
+        const resultadoLiquido = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+        const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
         
-        if (dailyMetricsFromApi && dailyMetricsFromApi.metricas_principais) {
-          const metricas = dailyMetricsFromApi.metricas_principais;
-          avgDrawdown = metricas.drawdown_medio || avgDrawdown;
-          fatorLucro = metricas.fator_lucro || fatorLucro;
-          winRate = metricas.win_rate || winRate;
-          roi = metricas.roi || roi;
-          winningTrades = metricas.trades_lucrativos || winningTrades;
-          losingTrades = metricas.trades_prejuizo || losingTrades;
+        // Calcular drawdown máximo e médio
+        let runningTotal = 0;
+        let peak = 0;
+        let maxDrawdown = 0;
+        const drawdowns: number[] = [];
+        
+        allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+        
+        allTrades.forEach(trade => {
+          const pnl = Number(trade.pnl) || 0;
+          runningTotal += pnl;
           
-          console.log('✅ Usando dailyMetricsFromApi para campos adicionais (CSV único):', {
-            avgDrawdown,
-            fatorLucro,
-            winRate,
-            roi,
-            winningTrades,
-            losingTrades
-          });
-        }
+          if (runningTotal > peak) {
+            peak = runningTotal;
+          }
+          
+          const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+          if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+          }
+          if (drawdown > 0) {
+            drawdowns.push(drawdown);
+          }
+        });
+        
+        const drawdownMaximoPct = capitalInicial > 0 ? (maxDrawdown / capitalInicial) * 100 : 0;
+        const avgDrawdown = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
+        
+        console.log(`✅ Métricas calculadas localmente para ${strategyName}:`, {
+          resultadoLiquido,
+          maxDrawdown,
+          drawdownMaximoPct,
+          avgDrawdown,
+          fatorLucro,
+          winRate,
+          roi,
+          totalTrades: allTrades.length,
+          winningTrades: tradesLucrativos.length,
+          losingTrades: tradesPrejuizo.length
+        });
         
         return {
           resultado: resultadoLiquido,
-          maxDrawdown: drawdownMaximo,
+          maxDrawdown: maxDrawdown,
           maxDrawdownPercent: drawdownMaximoPct,
           avgDrawdown: avgDrawdown,
           fatorLucro: fatorLucro,
           winRate: winRate,
           roi: roi,
-          totalTrades: metrics["Total Trades"] || 0,
-          winningTrades: winningTrades,
-          losingTrades: losingTrades
+          totalTrades: allTrades.length,
+          winningTrades: tradesLucrativos.length,
+          losingTrades: tradesPrejuizo.length
         };
+      } else {
+        // Fallback para dados da API se não há trades disponíveis
+        if (strategyData && strategyData["Performance Metrics"]) {
+          const metrics = strategyData["Performance Metrics"];
+          const capitalInicial = 100000;
+          
+          const resultadoLiquido = metrics["Net Profit"] || 0;
+          const drawdownMaximo = Math.abs(metrics["Max Drawdown ($)"] || 0);
+          const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
+          const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
+          
+          console.log(`⚠️ Fallback para dados da API para ${strategyName}`);
+          
+          return {
+            resultado: resultadoLiquido,
+            maxDrawdown: drawdownMaximo,
+            maxDrawdownPercent: drawdownMaximoPct,
+            avgDrawdown: data && data["Performance Metrics"] ? data["Performance Metrics"]["Average Drawdown ($)"] || 0 : 0,
+            fatorLucro: metrics["Profit Factor"] || 0,
+            winRate: metrics["Win Rate (%)"] || 0,
+            roi: roi,
+            totalTrades: metrics["Total Trades"] || 0,
+            winningTrades: metrics["Winning Trades"] || 0,
+            losingTrades: metrics["Losing Trades"] || 0
+          };
+        }
       }
     }
     
-    // ✅ CORREÇÃO: Caso específico para CSV único - usar Performance Metrics do data
+    // ✅ CALCULO LOCAL: Para CSV único, calcular métricas localmente
     if (data && data["Performance Metrics"]) {
-      console.log('✅ CSV ÚNICO: Usando Performance Metrics do data');
-      const metrics = data["Performance Metrics"];
-      const capitalInicial = 100000; // Valor padrão
+      console.log('✅ CSV ÚNICO: Calculando métricas localmente');
       
-      console.log('📊 Performance Metrics do data:', metrics);
+      // Obter trades para cálculo local
+      const allTrades: any[] = [];
+      if (data.trades && Array.isArray(data.trades)) {
+        allTrades.push(...data.trades);
+      } else if (fileResults) {
+        // Tentar obter trades dos fileResults
+        Object.values(fileResults).forEach((strategyData: any) => {
+          if (strategyData.trades && Array.isArray(strategyData.trades)) {
+            allTrades.push(...strategyData.trades);
+          }
+        });
+      }
       
-      const resultadoLiquido = metrics["Net Profit"] || 0;
-      const drawdownMaximo = Math.abs(metrics["Max Drawdown ($)"] || 0);
-      const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
+      console.log(`📊 Trades obtidos para cálculo local: ${allTrades.length}`);
       
-      // ✅ CORREÇÃO: Calcular ROI baseado no Net Profit e capital inicial
-      let roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
-      
-      // ✅ CORREÇÃO: Usar dailyMetricsFromApi para campos adicionais se disponível
-      let avgDrawdown = 0; // Será calculado se dailyMetricsFromApi estiver disponível
-      let fatorLucro = metrics["Profit Factor"] || 0;
-      let winRate = metrics["Win Rate (%)"] || 0;
-      let winningTrades = metrics["Winning Trades"] || 0;
-      let losingTrades = metrics["Losing Trades"] || 0;
-      
-      if (dailyMetricsFromApi && dailyMetricsFromApi.metricas_principais) {
-        const metricas = dailyMetricsFromApi.metricas_principais;
-        avgDrawdown = metricas.drawdown_medio || 0;
-        fatorLucro = metricas.fator_lucro || fatorLucro;
-        winRate = metricas.win_rate || winRate;
-        roi = metricas.roi || roi; // Usar ROI da API se disponível
-        winningTrades = metricas.trades_lucrativos || winningTrades;
-        losingTrades = metricas.trades_prejuizo || losingTrades;
+      if (allTrades.length > 0) {
+        // CALCULAR MÉTRICAS LOCALMENTE
+        const capitalInicial = 100000;
         
-        console.log('✅ Usando dailyMetricsFromApi para campos adicionais (CSV único - data):', {
+        // 1. Calcular resultado líquido
+        const resultadoLiquido = allTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+        
+        // 2. Calcular drawdown máximo
+        let runningTotal = 0;
+        let peak = 0;
+        let maxDrawdown = 0;
+        
+        allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+        
+        allTrades.forEach(trade => {
+          const pnl = Number(trade.pnl) || 0;
+          runningTotal += pnl;
+          
+          if (runningTotal > peak) {
+            peak = runningTotal;
+          }
+          
+          const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+          if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+          }
+        });
+        
+        const drawdownMaximoPct = capitalInicial > 0 ? (maxDrawdown / capitalInicial) * 100 : 0;
+        
+        // 3. Calcular drawdown médio
+        let runningTotal2 = 0;
+        let peak2 = 0;
+        const drawdowns: number[] = [];
+        
+        allTrades.forEach(trade => {
+          const pnl = Number(trade.pnl) || 0;
+          runningTotal2 += pnl;
+          
+          if (runningTotal2 > peak2) {
+            peak2 = runningTotal2;
+          }
+          
+          const drawdown = Math.abs(Math.min(0, runningTotal2 - peak2));
+          if (drawdown > 0) {
+            drawdowns.push(drawdown);
+          }
+        });
+        
+        const avgDrawdown = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
+        
+        // 4. Calcular fator de lucro
+        const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+        const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+        
+        const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+        const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+        const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+        
+        // 5. Calcular win rate
+        const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
+        
+        // 6. Calcular ROI
+        const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
+        
+        console.log('✅ Métricas calculadas localmente:', {
+          resultado: resultadoLiquido,
+          maxDrawdown,
+          maxDrawdownPercent: drawdownMaximoPct,
+          avgDrawdown,
+          fatorLucro,
+          winRate,
+          roi
+        });
+        
+        return {
+          resultado: resultadoLiquido,
+          maxDrawdown,
+          maxDrawdownPercent: drawdownMaximoPct,
           avgDrawdown,
           fatorLucro,
           winRate,
           roi,
-          winningTrades,
-          losingTrades
-        });
-      } else {
-        // ✅ CORREÇÃO: Se não há dailyMetricsFromApi, calcular DD Médio manualmente
-        if (data["Equity Curve Data"] && data["Equity Curve Data"].daily) {
-          const dailyData = data["Equity Curve Data"].daily;
-          const drawdowns = dailyData
-            .map((item: any) => Number(item.drawdown) || 0)
-            .filter(dd => dd > 0);
-          
-          if (drawdowns.length > 0) {
-            avgDrawdown = drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length;
-            console.log('✅ DD Médio calculado manualmente:', avgDrawdown);
-          }
-        }
+          totalTrades: allTrades.length,
+          winningTrades: tradesLucrativos.length,
+          losingTrades: tradesPrejuizo.length
+        };
       }
+    }
+    
+    // ✅ CALCULO LOCAL: Fallback com cálculo local quando não há dados suficientes
+    console.log('🔧 FALLBACK: Calculando métricas localmente como último recurso');
+    
+    // Tentar obter trades de qualquer fonte disponível
+    const allTrades: any[] = [];
+    
+    if (fileResults) {
+      Object.values(fileResults).forEach((strategyData: any) => {
+        if (strategyData.trades && Array.isArray(strategyData.trades)) {
+          allTrades.push(...strategyData.trades);
+        }
+      });
+    }
+    
+    if (data && data.trades && Array.isArray(data.trades)) {
+      allTrades.push(...data.trades);
+    }
+    
+    console.log(`📊 Trades obtidos para fallback local: ${allTrades.length}`);
+    
+    if (allTrades.length > 0) {
+      // CALCULAR MÉTRICAS LOCALMENTE
+      const capitalInicial = 100000;
       
-      console.log('✅ Resultado para CSV único usando Performance Metrics do data:', {
+      // 1. Calcular resultado líquido
+      const resultadoLiquido = allTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+      
+      // 2. Calcular drawdown máximo
+      let runningTotal = 0;
+      let peak = 0;
+      let maxDrawdown = 0;
+      
+      allTrades.sort((a, b) => new Date(a.entry_date || a.date).getTime() - new Date(b.entry_date || b.date).getTime());
+      
+      allTrades.forEach(trade => {
+        const pnl = Number(trade.pnl) || 0;
+        runningTotal += pnl;
+        
+        if (runningTotal > peak) {
+          peak = runningTotal;
+        }
+        
+        const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+        if (drawdown > maxDrawdown) {
+          maxDrawdown = drawdown;
+        }
+      });
+      
+      const drawdownMaximoPct = capitalInicial > 0 ? (maxDrawdown / capitalInicial) * 100 : 0;
+      
+      // 3. Calcular drawdown médio
+      let runningTotal2 = 0;
+      let peak2 = 0;
+      const drawdowns: number[] = [];
+      
+      allTrades.forEach(trade => {
+        const pnl = Number(trade.pnl) || 0;
+        runningTotal2 += pnl;
+        
+        if (runningTotal2 > peak2) {
+          peak2 = runningTotal2;
+        }
+        
+        const drawdown = Math.abs(Math.min(0, runningTotal2 - peak2));
+        if (drawdown > 0) {
+          drawdowns.push(drawdown);
+        }
+      });
+      
+      const avgDrawdown = drawdowns.length > 0 ? drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length : 0;
+      
+      // 4. Calcular fator de lucro
+      const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
+      const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+      
+      const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+      const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+      const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
+      
+      // 5. Calcular win rate
+      const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
+      
+      // 6. Calcular ROI
+      const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
+      
+      console.log('✅ Métricas calculadas localmente (fallback):', {
         resultado: resultadoLiquido,
-        maxDrawdown: drawdownMaximo,
+        maxDrawdown,
         maxDrawdownPercent: drawdownMaximoPct,
         avgDrawdown,
         fatorLucro,
         winRate,
         roi
       });
-    
-    return {
+      
+      return {
         resultado: resultadoLiquido,
-        maxDrawdown: drawdownMaximo,
+        maxDrawdown,
         maxDrawdownPercent: drawdownMaximoPct,
-        avgDrawdown: avgDrawdown,
-        fatorLucro: fatorLucro,
-        winRate: winRate,
-        roi: roi,
-        totalTrades: metrics["Total Trades"] || 0,
-        winningTrades: winningTrades,
-        losingTrades: losingTrades
+        avgDrawdown,
+        fatorLucro,
+        winRate,
+        roi,
+        totalTrades: allTrades.length,
+        winningTrades: tradesLucrativos.length,
+        losingTrades: tradesPrejuizo.length
       };
     }
     
-    // 🎯 FALLBACK: Para CSV único ou quando calculateDirectConsolidation falha
-    if (dailyMetricsFromApi) {
-      console.log('🔧 FALLBACK: Usando dailyMetricsFromApi');
-      console.log('📊 dailyMetricsFromApi completo:', dailyMetricsFromApi);
-      
-      // ✅ CORREÇÃO: Garantir que campos zerados sejam calculados corretamente
-      const metricas = dailyMetricsFromApi.metricas_principais || {};
-      
-      // 🎯 Cálculos alternativos para campos que podem estar zerados
-      const resultadoLiquido = metricas.resultado_liquido || 0;
-      const drawdownMaximo = Math.abs(metricas.drawdown_maximo || 0);
-      
-      // ✅ CORREÇÃO CRÍTICA: Calcular drawdown percent baseado no capital inicial
-      const capitalInicial = metricas.capital_inicial || 100000; // Valor padrão
-      const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
-      
-      // ✅ DD Médio: Se estiver zerado, tentar calcular ou usar valor padrão
-      const drawdownMedio = metricas.drawdown_medio || 0;
-      
-      // ✅ Fator de Lucro: Se estiver zerado, calcular baseado em lucro/prejuízo
-      const lucroBruto = metricas.lucro_bruto || 0;
-      const prejuizoBruto = Math.abs(metricas.prejuizo_bruto || 0);
-      const fatorLucro = metricas.fator_lucro || (prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0);
-      
-      // ✅ Win Rate: Se estiver zerado, calcular baseado em trades
-      const totalTrades = metricas.total_trades || 0;
-      const tradesLucrativos = metricas.trades_lucrativos || 0;
-      const winRate = metricas.win_rate || (totalTrades > 0 ? (tradesLucrativos / totalTrades) * 100 : 0);
-      
-      // ✅ ROI: Se estiver zerado, calcular baseado no resultado
-      let roi = metricas.roi || (capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0);
-      
-      // ✅ DEBUG: Verificar cálculo do drawdown percent
-      console.log('🔍 DEBUG Drawdown Percent:');
-      console.log('  📊 Capital Inicial:', capitalInicial);
-      console.log('  📊 Drawdown Máximo:', drawdownMaximo);
-      console.log('  📊 Drawdown Percent Calculado:', drawdownMaximoPct.toFixed(2) + '%');
-      console.log('  📊 Fórmula: (', drawdownMaximo, '/', capitalInicial, ') * 100 =', drawdownMaximoPct.toFixed(2) + '%');
-      
-      const result = {
-        resultado: resultadoLiquido,
-        maxDrawdown: drawdownMaximo,
-        maxDrawdownPercent: drawdownMaximoPct, // ✅ CORREÇÃO: Usar cálculo baseado no capital inicial
-        avgDrawdown: drawdownMedio,
-        fatorLucro: fatorLucro,
-        winRate: winRate,
-        roi: roi,
-        totalTrades: totalTrades,
-        profitableTrades: tradesLucrativos,
-        losingTrades: metricas.trades_prejudiciais || 0,
-        avgWin: metricas.lucro_medio || 0,
-        avgLoss: metricas.prejuizo_medio || 0,
-        profitFactor: fatorLucro, // Usar o mesmo valor calculado
-        sharpeRatio: metricas.sharpe_ratio || 0,
-        maxConsecutiveWins: metricas.max_consecutive_wins || 0,
-        maxConsecutiveLosses: metricas.max_consecutive_losses || 0,
-        avgTrade: metricas.lucro_medio_trade || 0,
-        expectancy: metricas.expectancy || 0,
-        calmarRatio: metricas.calmar_ratio || 0,
-        sortinoRatio: metricas.sortino_ratio || 0,
-        recoveryFactor: metricas.recovery_factor || 0,
-        riskRewardRatio: metricas.risk_reward_ratio || 0,
-        maxDrawdownDuration: metricas.max_drawdown_duration || 0,
-        avgDrawdownDuration: metricas.avg_drawdown_duration || 0,
-        totalReturn: metricas.total_return || 0,
-        annualizedReturn: metricas.annualized_return || 0,
-        volatility: metricas.volatility || 0,
-        downsideDeviation: metricas.downside_deviation || 0,
-        informationRatio: metricas.information_ratio || 0,
-        treynorRatio: metricas.treynor_ratio || 0,
-        jensenAlpha: metricas.jensen_alpha || 0,
-        kellyCriterion: metricas.kelly_criterion || 0,
-        ulcerIndex: metricas.ulcer_index || 0,
-        gainToPainRatio: metricas.gain_to_pain_ratio || 0,
-        payoffRatio: metricas.payoff_ratio || 0,
-        averageWin: metricas.lucro_medio || 0,
-        averageLoss: metricas.prejuizo_medio || 0,
-        largestWin: metricas.maior_lucro || 0,
-        largestLoss: metricas.maior_prejuizo || 0,
-        consecutiveWins: metricas.max_consecutive_wins || 0,
-        consecutiveLosses: metricas.max_consecutive_losses || 0,
-        currentStreak: metricas.current_streak || 0,
-        maxEquity: metricas.max_equity || 0,
-        minEquity: metricas.min_equity || 0,
-        finalEquity: metricas.final_equity || 0,
-        initialCapital: capitalInicial,
-        totalPnL: metricas.total_pnl || 0,
-        grossProfit: lucroBruto,
-        grossLoss: prejuizoBruto,
-        netProfit: resultadoLiquido
-      };
-      
-      console.log('✅ Resultado fallback corrigido:', result);
-      console.log('🔍 CAMPOS CORRIGIDOS:');
-      console.log('  📊 DD Médio:', drawdownMedio);
-      console.log('  📊 Fator de Lucro:', fatorLucro);
-      console.log('  📊 Win Rate:', winRate);
-      console.log('  📊 ROI:', roi);
-      
-      return result;
-    }
-    
-    // 🎯 FALLBACK FINAL: Valores padrão
-    console.log('🔧 FALLBACK FINAL: Usando valores padrão');
+    // 🎯 FALLBACK FINAL: Retornar vazio quando não há dados suficientes
+    console.log('🔧 FALLBACK FINAL: Nenhum dado disponível para cálculo');
     return {
       resultado: 0,
       maxDrawdown: 0,
@@ -1169,52 +1420,12 @@ export function EquityCurveSection({
       avgDrawdown: 0,
       fatorLucro: 0,
       winRate: 0,
-      totalTrades: 0,
-      profitableTrades: 0,
-      losingTrades: 0,
-      avgWin: 0,
-      avgLoss: 0,
-      profitFactor: 0,
-      sharpeRatio: 0,
-      maxConsecutiveWins: 0,
-      maxConsecutiveLosses: 0,
       roi: 0,
-      avgTrade: 0,
-      expectancy: 0,
-      calmarRatio: 0,
-      sortinoRatio: 0,
-      recoveryFactor: 0,
-      riskRewardRatio: 0,
-      maxDrawdownDuration: 0,
-      avgDrawdownDuration: 0,
-      totalReturn: 0,
-      annualizedReturn: 0,
-      volatility: 0,
-      downsideDeviation: 0,
-      informationRatio: 0,
-      treynorRatio: 0,
-      jensenAlpha: 0,
-      kellyCriterion: 0,
-      ulcerIndex: 0,
-      gainToPainRatio: 0,
-      payoffRatio: 0,
-      averageWin: 0,
-      averageLoss: 0,
-      largestWin: 0,
-      largestLoss: 0,
-      consecutiveWins: 0,
-      consecutiveLosses: 0,
-      currentStreak: 0,
-      maxEquity: 0,
-      minEquity: 0,
-      finalEquity: 0,
-      initialCapital: 0,
-      totalPnL: 0,
-      grossProfit: 0,
-      grossLoss: 0,
-      netProfit: 0
+      totalTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0
     };
-  }, [data, dailyMetricsFromApi, fileResults, showConsolidated]);
+  }, [data, fileResults, showConsolidated]);
 
   // Componente de Tooltip customizado
   const CustomTooltip = ({ active, payload, label }: unknown) => {

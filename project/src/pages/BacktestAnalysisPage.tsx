@@ -989,7 +989,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       
       // Congelar trades originais
       if (!frozenTrades) {
-        const tradesToFreeze = { trades: Array.isArray(trades) ? trades : (data.trades || []) };
+        // ✅ CORREÇÃO: Usar trades em vez de data.trades
+        const tradesToFreeze = { trades: Array.isArray(trades) ? trades : [] };
         setFrozenTrades(tradesToFreeze);
         console.log('🔒 Trades congelados:', tradesToFreeze.trades.length);
       }
@@ -2201,16 +2202,7 @@ useEffect(() => {
                     const metricsToUse = frozenMetrics || convertToMetricsDashboardFormat(backtestResult);
                     const tradesToUse = frozenTrades || { trades: Array.isArray(trades) ? trades : [] };
                     
-                    console.log('🔍 MetricsDashboard - Usando dados CONGELADOS:', {
-                      hasFrozenMetrics: !!frozenMetrics,
-                      hasFrozenTrades: !!frozenTrades,
-                      hasFileResults: !!fileResults,
-                      fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
-                      backtestResultKeys: backtestResult ? Object.keys(backtestResult) : []
-                    });
-                    
-                    // ✅ CORREÇÃO: Sempre usar dados congelados para garantir consistência
-                    console.log('✅ Usando dados CONGELADOS para MetricsDashboard - NUNCA MUDAM');
+
                     
                     return (
                       <MetricsDashboard 

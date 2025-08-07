@@ -16,13 +16,15 @@ export function DailyResultsSection({
   fileResults
 }: DailyResultsSectionProps) {
   // Função para extrair Performance Metrics de um resultado
-  const extractPerformanceMetrics = (result: BacktestResult) => {
+  const extractDailyMetrics= (result: BacktestResult) => {
     return result["Performance Metrics"] || {
       "Average Win": 0,
       "Average Loss": 0,
       "Win Rate (%)": 0,
       "Net Profit": 0,
-      "Total Trades": 0
+      "Total Trades": 0,
+      "Gross Profit": 0,
+      "Gross Loss": 0,
     };
   };
 

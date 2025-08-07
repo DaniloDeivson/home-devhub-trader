@@ -1,0 +1,205 @@
+# Padrões de Cálculo Local - Trading & Backtest
+
+## 🎯 Visão Geral
+
+Este projeto implementa cálculos locais para métricas de trading, evitando dependência de APIs externas e garantindo precisão nos resultados. Os cálculos são baseados em dados consolidados de trades.
+
+## 📊 Componentes Principais
+
+### MetricsDashboard.tsx
+**Localização**: [project/src/components/MetricsDashboard.tsx](mdc:project/src/components/MetricsDashboard.tsx)
+
+**Responsabilidade**: Métricas gerais de performance baseadas no total consolidado de trades.
+
+#### Funções de Cálculo Local:
+- `calcularEstatisticasTrades()`: Estatísticas básicas de trades
+- `calcularMetricasAvancadas()`: Métricas avançadas de performance
+- `calcularPerdaMaximaDiaria()`: Perda máxima por dia
+
+#### Métricas Calculadas:
+- **Estatísticas de Trades**: Total, Lucrativos, Perdedores, Zerados, Ganho/Perda Médio, Sequências Consecutivas
+- **Métricas Avançadas**: Trade Médio, Maior Ganho/Perda, Ganho/Perda Bruto, Percentuais
+
+### Metrics.tsx (DailyMetricsCards)
+**Localização**: [project/src/components/Metrics.tsx](mdc:project/src/components/Metrics.tsx)
+
+**Responsabilidade**: Métricas baseadas em agregações temporais (diárias/mensais).
+
+#### Funções de Cálculo Local:
+- `calcularSharpeRatio()`: Sharpe Ratio baseado em retornos diários
+- `calcularFatorRecuperacao()`: Recovery Factor baseado em dados mensais
+- `calcularGanhosPerdasDiarios()`: Métricas de ganhos/perdas por dia
+- `calcularEstatisticasOperacao()`: Estatísticas operacionais diárias
+
+## 🔧 Padrões de Implementação
+
+### 1. Consolidação de Dados
+```typescript
+// Para múltiplos CSVs
+const trade = (() => {
+  if (fileResults && Object.keys(fileResults).length > 0) {
+    const allTrades: unknown[] = [];
+    Object.keys(fileResults).forEach(fileName => {
+      const strategyData = fileResults[fileName] as { trades?: unknown[] };
+      if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
+        allTrades.push(...strategyData.trades);
+      }
+    });
+    return allTrades;
+  } else {
+    return tradeObject?.trades || [];
+  }
+})();
+```
+
+### 2. Filtros de Trades
+```typescript
+const tradesLucrativos = trade.filter(
+  (trade: unknown) => ((trade as { pnl?: number }).pnl || 0) > 0
+);
+
+const tradesLoss = trade.filter(
+  (trade: unknown) => ((trade as { pnl?: number }).pnl || 0) < 0
+);
+```
+
+### 3. Cálculo de Sequências Consecutivas
+```typescript
+let maxPerdasConsecutivas = 0;
+let maxGanhosConsecutivos = 0;
+let perdasConsecutivasAtual = 0;
+let ganhosConsecutivosAtual = 0;
+
+trade.forEach((t: unknown) => {
+  const pnl = (t as { pnl?: number }).pnl || 0;
+  
+  if (pnl > 0) {
+    ganhosConsecutivosAtual++;
+    perdasConsecutivasAtual = 0;
+    maxGanhosConsecutivos = Math.max(maxGanhosConsecutivos, ganhosConsecutivosAtual);
+  } else if (pnl < 0) {
+    perdasConsecutivasAtual++;
+    ganhosConsecutivosAtual = 0;
+    maxPerdasConsecutivas = Math.max(maxPerdasConsecutivas, perdasConsecutivasAtual);
+  }
+});
+```
+
+### 4. Agregação por Data
+```typescript
+const dailyResults = new Map<string, number>();
+
+trade.forEach((t) => {
+  const tradeData = t as Record<string, unknown>;
+  const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
+  const pnl = tradeData.pnl as number || 0;
+  
+  const current = dailyResults.get(date) || 0;
+  dailyResults.set(date, current + pnl);
+});
+```
+
+## 📈 Métricas Específicas
+
+### Sharpe Ratio Local
+```typescript
+const calcularSharpeRatio = () => {
+  // Calcular retornos diários
+  const dailyReturns = Array.from(dailyResults.values());
+  const meanReturn = dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length;
+  const variance = dailyReturns.reduce((sum, ret) => sum + Math.pow(ret - meanReturn, 2), 0) / dailyReturns.length;
+  const stdDev = Math.sqrt(variance);
+  
+  return stdDev > 0 ? meanReturn / stdDev : 0;
+};
+```
+
+### Recovery Factor Local
+```typescript
+const calcularFatorRecuperacao = () => {
+  // Calcular drawdown máximo e lucro líquido
+  const netProfit = monthlyResults.reduce((sum, ret) => sum + ret, 0);
+  const maxDrawdown = Math.min(...monthlyResults);
+  
+  return maxDrawdown !== 0 ? netProfit / Math.abs(maxDrawdown) : 0;
+};
+```
+
+## 🎨 Padrões de Exibição
+
+### Formatação de Métricas
+```typescript
+const formatMetric = (
+  value: number | undefined,
+  isPercentage = false,
+  isCurrency = false
+): string => {
+  if (value === undefined || value === null || isNaN(Number(value)))
+    return "N/A";
+
+  const numValue = Number(value);
+
+  if (isCurrency) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(numValue);
+  }
+
+  return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
+};
+```
+
+### Aplicação de Valores Calculados
+```typescript
+// Em vez de usar valores da API
+{animatedMetrics.profitFactor as number || 0}
+
+// Usar valores calculados localmente
+{estatisticasTrades.profitFactor}
+```
+
+## 🔍 Debug e Logging
+
+### Logs de Verificação
+```typescript
+console.log('📊 Métricas calculadas do TOTAL de todos os CSVs:', {
+  totalTrades,
+  tradesLucrativos: tradesLucrativos.length,
+  tradesLoss: tradesLoss.length,
+  payoff,
+  ganhoMedio,
+  perdaMedia,
+  winRate,
+  netProfit,
+  temMultiplosCSVs: fileResults && Object.keys(fileResults).length > 1,
+  estatisticasTrades,
+  metricasAvancadas
+});
+```
+
+## ⚡ Benefícios da Implementação Local
+
+1. **Precisão**: Cálculos baseados em dados reais consolidados
+2. **Performance**: Sem dependência de APIs externas
+3. **Consistência**: Mesma lógica para CSV único e múltiplos
+4. **Transparência**: Código visível e auditável
+5. **Flexibilidade**: Fácil modificação e extensão
+
+## 🚨 Considerações Importantes
+
+- **TypeScript**: Sempre usar type assertions para `unknown` types
+- **Validação**: Verificar arrays vazios antes de calcular
+- **Consolidação**: Garantir que dados de múltiplos CSVs sejam corretamente mesclados
+- **Performance**: Evitar recálculos desnecessários em re-renders
+- **Debug**: Manter logs para verificação de valores calculados
+
+## 📋 Checklist de Implementação
+
+- [ ] Implementar consolidação de dados para múltiplos CSVs
+- [ ] Criar funções de cálculo local específicas
+- [ ] Aplicar valores calculados na interface
+- [ ] Adicionar logs de debug
+- [ ] Validar tipos TypeScript
+- [ ] Testar com dados reais
+- [ ] Remover dependências de APIs externas
