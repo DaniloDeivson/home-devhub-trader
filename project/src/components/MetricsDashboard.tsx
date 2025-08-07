@@ -104,6 +104,84 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
     }
   })();
 
+  // ✅ CORREÇÃO: Calcular métricas diretamente dos trades ANTES do useEffect
+  const tradesLucrativos = trade.filter(
+    (trade: unknown) => (
+      ((trade as { pnl?: number }).pnl || 0) > 0
+    )
+  );
+
+  const tradesLoss = trade.filter(
+    (trade: unknown) => (
+      ((trade as { pnl?: number }).pnl || 0) < 0
+    )
+  );
+
+  // ✅ CORREÇÃO: Calcular métricas de performance do TOTAL (sem agrupar por data)
+  const ganhoMedio = tradesLucrativos.length > 0 
+    ? tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0) / tradesLucrativos.length 
+    : 0;
+    
+  const perdaMedia = tradesLoss.length > 0 
+    ? tradesLoss.reduce((sum: number, t: unknown) => sum + Math.abs((t as { pnl?: number }).pnl || 0), 0) / tradesLoss.length 
+    : 0;
+    
+  const payoff = perdaMedia > 0 ? ganhoMedio / perdaMedia : 0;
+  
+  // ✅ CORREÇÃO: Payoff diário também do TOTAL (não agrupar por data)
+  const payoffDiario = payoff; // Usar o mesmo payoff do total
+  
+  // ✅ CORREÇÃO: Calcular perda máxima diária
+  const calcularPerdaMaximaDiaria = () => {
+    if (trade.length === 0) return 0;
+    
+    const dailyResults = new Map<string, number>();
+    
+    trade.forEach((t) => {
+      const tradeData = t as Record<string, unknown>;
+      const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
+      const pnl = tradeData.pnl as number || 0;
+      
+      const current = dailyResults.get(date) || 0;
+      dailyResults.set(date, current + pnl);
+    });
+    
+    // Encontrar o dia com maior perda
+    let perdaMaximaDiaria = 0;
+    dailyResults.forEach((dailyPnL) => {
+      if (dailyPnL < 0 && Math.abs(dailyPnL) > perdaMaximaDiaria) {
+        perdaMaximaDiaria = Math.abs(dailyPnL);
+      }
+    });
+    
+    return perdaMaximaDiaria;
+  };
+  
+  const perdaMaximaDiaria = calcularPerdaMaximaDiaria();
+  
+  // ✅ CORREÇÃO: Calcular perda máxima por operação (1 trade)
+  const perdaMaximaPorOperacao = tradesLoss.length > 0 
+    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+  
+  // ✅ CORREÇÃO: Calcular maior ganho/perda geral
+  const maiorGanho = tradesLucrativos.length > 0 
+    ? Math.max(...tradesLucrativos.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+    
+  const maiorPerda = tradesLoss.length > 0 
+    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
+    : 0;
+  
+  // ✅ CORREÇÃO: Calcular métricas adicionais
+  const totalTrades = trade.length;
+  const winRate = totalTrades > 0 ? (tradesLucrativos.length / totalTrades) * 100 : 0;
+  const netProfit = trade.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+  
+  // ✅ CORREÇÃO: Calcular gross profit/loss localmente
+  const grossProfit = tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+  const grossLoss = Math.abs(tradesLoss.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0));
+
   // Animate metrics when they change
   useEffect(() => {
     // Set default values for metrics that might be missing with proper null checks
@@ -150,6 +228,41 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
           capitalInicial,
           formula: `(${maxDrawdownAmount} / ${capitalInicial}) * 100 = ${maxDrawdown.toFixed(2)}%`
         });
+      } else {
+        // ✅ NOVO: Se drawdown da API estiver zerado, calcular localmente
+        console.log('⚠️ CSV ÚNICO - Drawdown da API zerado, calculando localmente');
+        
+        // Calcular drawdown localmente baseado nos trades
+        if (trade.length > 0) {
+          let runningBalance = 0;
+          let peak = 0;
+          let maxDrawdownLocal = 0;
+          
+          trade.forEach((t: unknown) => {
+            const pnl = (t as { pnl?: number }).pnl || 0;
+            runningBalance += pnl;
+            
+            if (runningBalance > peak) {
+              peak = runningBalance;
+            }
+            
+            const drawdown = peak - runningBalance;
+            if (drawdown > maxDrawdownLocal) {
+              maxDrawdownLocal = drawdown;
+            }
+          });
+          
+          maxDrawdownAmount = maxDrawdownLocal;
+          maxDrawdown = capitalInicial > 0 ? (maxDrawdownLocal / capitalInicial) * 100 : 0;
+          
+          console.log('✅ CSV ÚNICO - Drawdown calculado localmente:', {
+            maxDrawdownLocal,
+            maxDrawdownAmount,
+            maxDrawdown,
+            capitalInicial,
+            runningBalance: trade.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0)
+          });
+        }
       }
     }
 
@@ -166,7 +279,7 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       maiorPerda: maiorPerda,
       
       // ✅ CORREÇÃO: Calcular métricas localmente em vez de usar API
-      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0,
+      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? grossProfit : 0),
       sharpeRatio: Number(safeMetrics.sharpeRatio) || 0, // Manter da API por enquanto (não calculamos localmente)
       recoveryFactor: Number(safeMetrics.recoveryFactor) || 0,
       averageTradeDuration: safeMetrics.averageTradeDuration || "N/A",
@@ -203,7 +316,7 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
     };
 
     setAnimatedMetrics(metricsWithDefaults);
-  }, [metrics]);
+  }, [metrics, trade, tradesLucrativos, tradesLoss, ganhoMedio, perdaMedia, payoff, payoffDiario, perdaMaximaDiaria, perdaMaximaPorOperacao, maiorGanho, maiorPerda, totalTrades, winRate, netProfit, grossProfit, grossLoss]);
 
   const getMetricColor = (metric: string, value: number): string => {
     if (isNaN(value) || value === null || value === undefined)
@@ -277,103 +390,66 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
   };
 
-
-
-  // ✅ CORREÇÃO: Calcular métricas diretamente dos trades
-  const tradesLucrativos = trade.filter(
-    (trade: unknown) => (
-      ((trade as { pnl?: number }).pnl || 0) > 0
-    )
-  );
-
-  const tradesLoss = trade.filter(
-    (trade: unknown) => (
-      ((trade as { pnl?: number }).pnl || 0) < 0
-    )
-  );
-
-
-  
-  // ✅ CORREÇÃO: Calcular métricas de performance do TOTAL (sem agrupar por data)
-  const ganhoMedio = tradesLucrativos.length > 0 
-    ? tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0) / tradesLucrativos.length 
-    : 0;
-    
-  const perdaMedia = tradesLoss.length > 0 
-    ? tradesLoss.reduce((sum: number, t: unknown) => sum + Math.abs((t as { pnl?: number }).pnl || 0), 0) / tradesLoss.length 
-    : 0;
-    
-  const payoff = perdaMedia > 0 ? ganhoMedio / perdaMedia : 0;
-  
-  // ✅ CORREÇÃO: Payoff diário também do TOTAL (não agrupar por data)
-  const payoffDiario = payoff; // Usar o mesmo payoff do total
-  
-
-  
-  // ✅ CORREÇÃO: Calcular perda máxima diária
-  const calcularPerdaMaximaDiaria = () => {
-    if (trade.length === 0) return 0;
-    
-    const dailyResults = new Map<string, number>();
-    
-    trade.forEach((t) => {
-      const tradeData = t as Record<string, unknown>;
-      const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
-      const pnl = tradeData.pnl as number || 0;
-      
-      const current = dailyResults.get(date) || 0;
-      dailyResults.set(date, current + pnl);
-    });
-    
-    // Encontrar o dia com maior perda
-    let perdaMaximaDiaria = 0;
-    dailyResults.forEach((dailyPnL) => {
-      if (dailyPnL < 0 && Math.abs(dailyPnL) > perdaMaximaDiaria) {
-        perdaMaximaDiaria = Math.abs(dailyPnL);
-      }
-    });
-    
-    return perdaMaximaDiaria;
-  };
-  
-  const perdaMaximaDiaria = calcularPerdaMaximaDiaria();
-  
-  // ✅ CORREÇÃO: Calcular perda máxima por operação (1 trade)
-  const perdaMaximaPorOperacao = tradesLoss.length > 0 
-    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
-    : 0;
-  
-  // ✅ CORREÇÃO: Calcular maior ganho/perda geral
-  const maiorGanho = tradesLucrativos.length > 0 
-    ? Math.max(...tradesLucrativos.map(t => (t as { pnl?: number }).pnl || 0))
-    : 0;
-    
-  const maiorPerda = tradesLoss.length > 0 
-    ? Math.min(...tradesLoss.map(t => (t as { pnl?: number }).pnl || 0))
-    : 0;
-  
-  // ✅ CORREÇÃO: Calcular métricas adicionais
-  const totalTrades = trade.length;
-  const winRate = totalTrades > 0 ? (tradesLucrativos.length / totalTrades) * 100 : 0;
-  const netProfit = trade.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
-  
-  // ✅ CORREÇÃO: Calcular gross profit/loss localmente
-  const grossProfit = tradesLucrativos.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
-  const grossLoss = Math.abs(tradesLoss.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0));
-  
-
   console.log('🔍 COMPARAÇÃO - Locais vs API:', {
     local: {
-      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0,
+      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? grossProfit : 0),
       payoff,
       winRate,
-      netProfit
+      netProfit,
+      totalTrades,
+      tradesLucrativos: tradesLucrativos.length,
+      tradesLoss: tradesLoss.length
     },
     api: {
       profitFactor: metrics?.profitFactor,
       payoff: metrics?.payoff,
       winRate: metrics?.winRate,
-      netProfit: metrics?.netProfit
+      netProfit: metrics?.netProfit,
+      totalTrades: metrics?.totalTrades
+    },
+    tradeObject: {
+      tradesLength: tradeObject?.trades?.length || 0,
+      hasTrades: !!tradeObject?.trades
+    }
+  });
+
+  // ✅ NOVO: Debug detalhado para CSV único
+  console.log('🔍 DEBUG CSV ÚNICO:', {
+    tradeObject: {
+      hasTrades: !!tradeObject?.trades,
+      tradesLength: tradeObject?.trades?.length || 0,
+      firstTrade: tradeObject?.trades?.[0],
+      lastTrade: tradeObject?.trades?.[tradeObject?.trades?.length - 1]
+    },
+    trade: {
+      length: trade.length,
+      firstTrade: trade[0],
+      lastTrade: trade[trade.length - 1]
+    },
+    metrics: {
+      hasMetrics: !!metrics,
+      maxDrawdownAmount: metrics?.maxDrawdownAmount,
+      maxDrawdown: metrics?.maxDrawdown,
+      netProfit: metrics?.netProfit,
+      profitFactor: metrics?.profitFactor,
+      payoff: metrics?.payoff,
+      winRate: metrics?.winRate
+    },
+    fileResults: {
+      hasFileResults: !!fileResults,
+      fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
+      isMultipleFiles: fileResults && Object.keys(fileResults).length > 1
+    },
+    calculatedValues: {
+      netProfit,
+      grossProfit,
+      grossLoss,
+      profitFactor: grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? grossProfit : 0),
+      payoff,
+      winRate,
+      totalTrades,
+      tradesLucrativos: tradesLucrativos.length,
+      tradesLoss: tradesLoss.length
     }
   });
   
@@ -531,10 +607,10 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "profitFactor",
-                  grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0
+                  grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? grossProfit : 0)
                 )}`}
               >
-                {formatMetric(grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : 0)}
+                {formatMetric(grossProfit > 0 && grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? grossProfit : 0))}
               </p>
             </div>
 

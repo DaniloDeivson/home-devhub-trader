@@ -2200,14 +2200,11 @@ useEffect(() => {
                   {(() => {
                     // ✅ CORREÇÃO: Usar APENAS dados congelados para garantir que nunca mudem
                     const metricsToUse = frozenMetrics || convertToMetricsDashboardFormat(backtestResult);
-                    const tradesToUse = frozenTrades || { trades: Array.isArray(trades) ? trades : [] };
-                    
-
                     
                     return (
                       <MetricsDashboard 
                         metrics={metricsToUse}
-                        tradeObject={tradesToUse}
+                        tradeObject={{ trades: Array.isArray(trades) ? trades : [] }}
                         fileResults={fileResults}
                         showTitle={true}
                       />
