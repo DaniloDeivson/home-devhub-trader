@@ -364,6 +364,9 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   const [frozenAnalysisResult, setFrozenAnalysisResult] = useState<any>(null);
   const [frozenDrata, setFrozenDrata] = useState<any>(null);
   
+  // ✅ CORREÇÃO: Estado para congelar dados consolidados
+  const [frozenConsolidatedData, setFrozenConsolidatedData] = useState<any>(null);
+  
   // ✅ CORREÇÃO: Congelar métricas originais quando dados são carregados
   useEffect(() => {
     if (backtestResult && !frozenMetrics) {
@@ -396,6 +399,29 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       });
     }
   }, [backtestResult, emocional, analysisResult, drata, frozenEmocional, frozenAnalysisResult, frozenDrata]);
+  
+  // ✅ CORREÇÃO: Congelar dados consolidados quando são carregados
+  useEffect(() => {
+    if (backtestResult && trades.length > 0 && !frozenConsolidatedData) {
+      console.log('✅ CONGELANDO dados consolidados para sempre');
+      
+      const consolidatedData = {
+        trades: Array.isArray(trades) ? trades : [],
+        backtestResult: backtestResult,
+        totalTrades: trades.length,
+        netProfit: backtestResult["Performance Metrics"]?.["Net Profit"] || 0,
+        winRate: backtestResult["Performance Metrics"]?.["Win Rate (%)"] || 0
+      };
+      
+      setFrozenConsolidatedData(consolidatedData);
+      
+      console.log('✅ Dados consolidados congelados:', {
+        totalTrades: consolidatedData.totalTrades,
+        netProfit: consolidatedData.netProfit,
+        winRate: consolidatedData.winRate
+      });
+    }
+  }, [backtestResult, trades, frozenConsolidatedData]);
 
   function createFormData(file) {
   const formData = new FormData();
@@ -590,6 +616,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   // ✅ CORREÇÃO: Limpar dados congelados quando novos dados são carregados
   setFrozenMetrics(null);
   setFrozenTrades(null);
+  setFrozenConsolidatedData(null);
 
   try {
     let response;
@@ -1073,6 +1100,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     setFrozenMetrics(null);
     setFrozenTrades(null);
     setFrozenEmocional(null);
+    setFrozenConsolidatedData(null);
     setFrozenAnalysisResult(null);
     setFrozenDrata(null);
   };
@@ -2195,8 +2223,8 @@ useEffect(() => {
                   })()}
                 </div>
                 
-                {/* Individual Results Section - Show when multiple files */}
-                {Object.keys(fileResults).length > 0 && (
+                {/* Individual Results Section - Show only when multiple files (2 or more) */}
+                {Object.keys(fileResults).length > 1 && (
                   <IndividualResultsSection
                     fileResults={fileResults}
                     showIndividualResults={showIndividualResults}
@@ -2231,7 +2259,7 @@ useEffect(() => {
                   <SpecialEventsSection
                     showSpecialEvents={showSpecialEvents}
                     setShowSpecialEvents={setShowSpecialEvents}
-                    tadesData={{ trades: Array.isArray(trades) ? trades : [] }}
+                    tadesData={frozenConsolidatedData || frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
                     
                   />
                 </PlanRestrictedSection>
@@ -2240,15 +2268,15 @@ useEffect(() => {
                 <PositionSizingSection
                   showPositionSizing={showPositionSizing}
                   setShowPositionSizing={setShowPositionSizing}
-                  backtestResult={{ trades: trades }}
+                  backtestResult={frozenConsolidatedData || frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
                 />
-                {console.log('🔍 DEBUG - PositionSizing recebendo trades:', trades.length)}
+                {console.log('🔍 DEBUG - PositionSizing recebendo dados consolidados congelados:', frozenConsolidatedData ? frozenConsolidatedData.trades.length : (frozenTrades ? frozenTrades.trades.length : trades.length))}
                 
                 {/* Trade Duration Section - Available to all users */}
                 <TradeDurationSection
                   showTradeDuration={showTradeDuration}
                   setShowTradeDuration={setShowTradeDuration}
-                  backtestResult={{ trades: trades }}
+                  backtestResult={frozenConsolidatedData || frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
                 />
                 
               </div>

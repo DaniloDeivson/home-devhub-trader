@@ -3,30 +3,83 @@ import { FileText, ChevronDown, ChevronUp, BarChart3, TrendingUp, TrendingDown }
 import { MetricsDashboard } from './MetricsDashboard';
 
 // Função auxiliar para converter dados do backtest para o formato do MetricsDashboard
-const convertToMetricsDashboardFormat = (result: any) => {
+const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
   if (!result) return {};
   
-  const metrics = result["Performance Metrics"];
+  const metrics = result["Performance Metrics"] as Record<string, unknown>;
   if (!metrics) return {};
   
+  // ✅ CORREÇÃO: Processar trades para calcular estatísticas corretas
+  const trades = (result.trades as Array<Record<string, unknown>>) || [];
+  console.log(`📊 Processando ${trades.length} trades para ${result.fileName as string || 'arquivo'}`);
+  
+  // Calcular estatísticas dos trades
+  let profitableTrades = 0;
+  let lossTrades = 0;
+  let zeroTrades = 0;
+  let totalPnL = 0;
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let maxWin = 0;
+  let maxLoss = 0;
+  
+  trades.forEach((trade: Record<string, unknown>) => {
+    const pnl = Number(trade.pnl) || 0;
+    totalPnL += pnl;
+    
+    if (pnl > 0) {
+      profitableTrades++;
+      grossProfit += pnl;
+      maxWin = Math.max(maxWin, pnl);
+    } else if (pnl < 0) {
+      lossTrades++;
+      grossLoss += Math.abs(pnl);
+      maxLoss = Math.max(maxLoss, Math.abs(pnl));
+    } else {
+      zeroTrades++;
+    }
+  });
+  
+  // Calcular médias
+  const averageWin = profitableTrades > 0 ? grossProfit / profitableTrades : 0;
+  const averageLoss = lossTrades > 0 ? grossLoss / lossTrades : 0;
+  const averageTrade = trades.length > 0 ? totalPnL / trades.length : 0;
+  
+  console.log(`📊 Estatísticas calculadas:`, {
+    totalTrades: trades.length,
+    profitableTrades,
+    lossTrades,
+    zeroTrades,
+    grossProfit,
+    grossLoss,
+    averageWin,
+    averageLoss,
+    maxWin,
+    maxLoss
+  });
+  
   return {
-    profitFactor: metrics["Profit Factor"],
-    payoff: metrics["Payoff"],
-    winRate: metrics["Win Rate (%)"],
-    maxDrawdown: metrics["Max Drawdown ($)"],
-    maxDrawdownAmount: metrics["Max Drawdown ($)"],
-    netProfit: metrics["Net Profit"],
-    grossProfit: metrics["Gross Profit"],
-    grossLoss: metrics["Gross Loss"],
-    totalTrades: metrics["Total Trades"],
-    averageWin: metrics["Average Win"],
-    averageLoss: metrics["Average Loss"],
-    sharpeRatio: metrics["Sharpe Ratio"],
-    recoveryFactor: metrics["Recovery Factor"],
-    averageTrade: metrics["Average Trade"],
-    averageTradeDuration: metrics["Time in Market"],
-    maxConsecutiveWins: metrics["Max Consecutive Wins"],
-    maxConsecutiveLosses: metrics["Max Consecutive Losses"]
+    profitFactor: metrics["Profit Factor"] as number,
+    payoff: metrics["Payoff"] as number,
+    winRate: metrics["Win Rate (%)"] as number,
+    maxDrawdown: metrics["Max Drawdown ($)"] as number,
+    maxDrawdownAmount: metrics["Max Drawdown ($)"] as number,
+    netProfit: metrics["Net Profit"] as number,
+    grossProfit: grossProfit, // ✅ Usar valor calculado dos trades
+    grossLoss: grossLoss,     // ✅ Usar valor calculado dos trades
+    totalTrades: trades.length, // ✅ Usar número real de trades
+    profitableTrades: profitableTrades, // ✅ Usar valor calculado
+    lossTrades: lossTrades,   // ✅ Usar valor calculado
+    averageWin: averageWin,   // ✅ Usar valor calculado
+    averageLoss: averageLoss, // ✅ Usar valor calculado
+    sharpeRatio: metrics["Sharpe Ratio"] as number,
+    recoveryFactor: metrics["Recovery Factor"] as number,
+    averageTrade: averageTrade, // ✅ Usar valor calculado
+    averageTradeDuration: metrics["Time in Market"] as string,
+    maxConsecutiveWins: metrics["Max Consecutive Wins"] as number,
+    maxConsecutiveLosses: metrics["Max Consecutive Losses"] as number,
+    maiorGanho: maxWin,       // ✅ Usar valor calculado
+    maiorPerda: maxLoss       // ✅ Usar valor calculado
   };
 };
 
@@ -206,7 +259,16 @@ export function IndividualResultsSection({
                                          {/* Detalhes expandidos */}
                      {expandedFiles.includes(fileName) && (
                        <div className="bg-gray-800 rounded-lg p-4">
-                         {console.log(`📊 Trades para ${fileName}:`, result.trades?.length || 0)}
+                         {(() => {
+                           console.log(`📊 Trades para ${fileName}:`, result.trades?.length || 0);
+                           console.log(`📊 Dados completos para ${fileName}:`, {
+                             hasTrades: !!result.trades,
+                             tradesLength: result.trades?.length || 0,
+                             hasMetrics: !!result["Performance Metrics"],
+                             metrics: result["Performance Metrics"]
+                           });
+                           return null;
+                         })()}
                          <MetricsDashboard 
                            metrics={convertToMetricsDashboardFormat(result)}
                            tradeObject={{ trades: result.trades || [] }}

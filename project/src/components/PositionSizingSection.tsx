@@ -174,7 +174,9 @@ export function PositionSizingSection({
         percentage: Math.round(percentage * 10) / 10,
         winRate: Math.round(winRate * 10) / 10,
         profitFactor: Math.round(profitFactor * 100) / 100,
-        payoff: Math.round(payoff * 100) / 100
+        payoff: Math.round(payoff * 100) / 100,
+        // ✅ CORREÇÃO: Adicionar flag para ranges sem trades
+        hasTrades: count > 0
       };
       
       // ✅ DEBUG: Verificar resultado do range 1
@@ -183,7 +185,7 @@ export function PositionSizingSection({
       }
       
       return result;
-    }).filter(item => item.count > 0);
+    }).filter(item => item.count > 0 || item.position === '1'); // ✅ CORREÇÃO: Sempre mostrar range 1, mesmo sem trades
     
     // ✅ DEBUG: Verificar resultado final
     console.log('🔍 DEBUG PositionSizing - Resultado final:');
@@ -320,44 +322,67 @@ export function PositionSizingSection({
                 </thead>
                 <tbody>
                   {positionSizingData.resultByPosition.map((item, index) => (
-                    <tr key={index} className="border-b border-gray-700">
-                      <td className="px-3 py-2 font-medium">{item.position}</td>
-                      <td className="px-3 py-2 text-center">{item.count}</td>
+                    <tr key={index} className={`border-b border-gray-700 ${!item.hasTrades ? 'opacity-50' : ''}`}>
+                      <td className="px-3 py-2 font-medium">
+                        {item.position}
+                        {!item.hasTrades && item.position === '1' && (
+                          <span className="ml-2 text-xs text-gray-500">(sem trades)</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {item.hasTrades ? item.count : '-'}
+                      </td>
                       <td className="px-3 py-2 text-center text-blue-400 font-medium">
-                        {item.percentage}%
+                        {item.hasTrades ? `${item.percentage}%` : '-'}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <span className={
-                          item.profitFactor >= 1.5 ? 'text-green-400' : 
-                          item.profitFactor >= 1.0 ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }>
-                          {item.profitFactor.toFixed(2)}
-                        </span>
+                        {item.hasTrades ? (
+                          <span className={
+                            item.profitFactor >= 1.5 ? 'text-green-400' : 
+                            item.profitFactor >= 1.0 ? 'text-yellow-400' : 
+                            'text-red-400'
+                          }>
+                            {item.profitFactor.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <span className={
-                          item.winRate >= 60 ? 'text-green-400' : 
-                          item.winRate >= 45 ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }>
-                          {item.winRate.toFixed(1)}%
-                        </span>
+                        {item.hasTrades ? (
+                          <span className={
+                            item.winRate >= 60 ? 'text-green-400' : 
+                            item.winRate >= 45 ? 'text-yellow-400' : 
+                            'text-red-400'
+                          }>
+                            {item.winRate.toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <span className={
-                          item.payoff >= 1.5 ? 'text-green-400' : 
-                          item.payoff >= 1.0 ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }>
-                          {item.payoff.toFixed(2)}
-                        </span>
+                        {item.hasTrades ? (
+                          <span className={
+                            item.payoff >= 1.5 ? 'text-green-400' : 
+                            item.payoff >= 1.0 ? 'text-yellow-400' : 
+                            'text-red-400'
+                          }>
+                            {item.payoff.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
                       </td>
-                      <td className={`px-3 py-2 text-right font-medium ${item.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL'
-                        }).format(item.result)}
+                      <td className={`px-3 py-2 text-right font-medium ${item.hasTrades ? (item.result > 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
+                        {item.hasTrades ? (
+                          new Intl.NumberFormat('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL'
+                          }).format(item.result)
+                        ) : (
+                          '-'
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -376,6 +401,9 @@ export function PositionSizingSection({
                   <li>• Desvio padrão de {positionSizingData.standardDeviation} indica {positionSizingData.standardDeviation < 2 ? 'baixa' : positionSizingData.standardDeviation < 5 ? 'moderada' : 'alta'} variação nos tamanhos</li>
                   <li>• Melhor performance por posição: {positionSizingData.resultByPosition.length > 0 ? positionSizingData.resultByPosition.reduce((best, current) => current.profitFactor > best.profitFactor ? current : best).position : 'N/A'} {positionSizingData.unit} com fator de lucro {positionSizingData.resultByPosition.length > 0 ? positionSizingData.resultByPosition.reduce((best, current) => current.profitFactor > best.profitFactor ? current : best).profitFactor.toFixed(2) : 'N/A'}</li>
                   <li>• Consistência: posições com taxa de acerto acima de 60% oferecem melhor estabilidade</li>
+                  {positionSizingData.resultByPosition.find(item => item.position === '1' && !item.hasTrades) && (
+                    <li>• <span className="text-yellow-300">Nota:</span> Não foram encontrados trades com 1 {positionSizingData.unit} - considere analisar se sua estratégia permite posições menores</li>
+                  )}
                 </ul>
               </div>
             </div>
