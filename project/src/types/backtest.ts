@@ -4,6 +4,10 @@ export interface PerformanceMetrics {
   "Average Win": number;
   "Average Loss": number;
   "Win Rate (%)": number;
+  "Net Profit"?: number;
+  "Total Trades"?: number;
+  "Gross Profit"?: number;
+  "Gross Loss"?: number;
 }
 
 export interface DayStats {

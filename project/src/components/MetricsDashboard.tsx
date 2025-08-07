@@ -5,15 +5,8 @@ import {
   ChevronDown,
   TrendingUp,
   Award,
-  Clock,
-  DollarSign,
-  BarChartHorizontal,
-  Wallet,
-  TrendingDown,
-  ChevronRight,
-  BarChart
+  DollarSign
 } from "lucide-react";
-import { PositionSizingSection } from './PositionSizingSection';
 import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
 interface MetricsDashboardProps {
@@ -35,7 +28,7 @@ interface MetricsDashboardProps {
       position_size?: number;
       size?: number;
       volume?: number;
-      [key: string]: any;
+      [key: string]: unknown;
     }>;
     file?: File;
   };
@@ -86,47 +79,17 @@ interface MetricsDashboardProps {
 
 export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle = true }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [showPositionSizing, setShowPositionSizing] = useState(true);
-  const [selectedAsset, setSelectedAsset] = useState('all');
-  const [showAssetDetails, setShowAssetDetails] = useState(false);
-  const [selectedMetricForDetails, setSelectedMetricForDetails] = useState<string | null>(null);
-  const [positionSizingData, setPositionSizingData] = useState({
-    stocks: {
-      avgPositionPerTrade: 0,
-      medianPositionPerTrade: 0,
-      maxPositionPerTrade: 0,
-      maxContractsPerDay: 0
-    },
-    futures: {
-      avgPositionPerTrade: 0,
-      medianPositionPerTrade: 0,
-      maxPositionPerTrade: 0,
-      maxContractsPerDay: 0
-    },
-    general: {
-      maxOpenPositions: 0,
-      setupsMaximosPorDia: 0,
-      accountRisk: 0,
-      maxRiskPerTrade: 0,
-      riscoPorTrade: 2.00,
-      capitalEmRisco: 0.00,
-      posicaoRecomendada: 0,
-      exposicaoMaxima: 0.00
-    }
-  });
-  const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, any>>({});
-  const [showTradeDuration, setShowTradeDuration] = useState(false);
-  const [showSimplePositionSizing, setShowSimplePositionSizing] = useState(false);
+  const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, unknown>>({});
   
   // ✅ CORREÇÃO: Consolidar trades de múltiplos CSVs
   const trade = (() => {
     // Se temos fileResults (múltiplos CSVs), consolidar todos os trades
     if (fileResults && Object.keys(fileResults).length > 0) {
       console.log('📊 MÚLTIPLOS CSVs: Consolidando trades para MetricsDashboard');
-      const allTrades: any[] = [];
+      const allTrades: unknown[] = [];
       
       Object.keys(fileResults).forEach(fileName => {
-        const strategyData = fileResults[fileName] as any;
+        const strategyData = fileResults[fileName] as { trades?: unknown[] };
         if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
           allTrades.push(...strategyData.trades);
         }
@@ -135,8 +98,8 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       console.log(`📊 Consolidados ${allTrades.length} trades de ${Object.keys(fileResults).length} CSVs`);
       
       // ✅ DEBUG: Verificar se há trades com perda
-      const losingTrades = allTrades.filter(t => (t.pnl || 0) < 0);
-      const winningTrades = allTrades.filter(t => (t.pnl || 0) > 0);
+      const losingTrades = allTrades.filter(t => ((t as { pnl?: number }).pnl || 0) < 0);
+      const winningTrades = allTrades.filter(t => ((t as { pnl?: number }).pnl || 0) > 0);
       console.log(`📊 Trades com perda: ${losingTrades.length}`);
       console.log(`📊 Trades lucrativos: ${winningTrades.length}`);
       console.log(`📊 Total de trades: ${allTrades.length}`);
@@ -147,564 +110,6 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
       return tradeObject?.trades || [];
     }
   })();
-
-  // Function to detect asset type based on symbol
-  const detectAssetType = (symbol: string): string => {
-    if (!symbol) return 'acoes';
-    
-    const symbolUpper = symbol.toUpperCase();
-    
-    // Check for Bitcoin
-    if (symbolUpper.includes('BTC') || symbolUpper.includes('BITCOIN')) {
-      return 'bitcoin';
-    }
-    
-    // Check for Dollar
-    if (symbolUpper.includes('USD') || symbolUpper.includes('DOLAR') || symbolUpper.includes('DÓLAR')) {
-      return 'dolar';
-    }
-    
-    // Check for Index
-    if (symbolUpper.includes('IBOV') || symbolUpper.includes('INDICE') || symbolUpper.includes('ÍNDICE')) {
-      return 'indice';
-    }
-    
-    // Check for specific futures
-    if (symbolUpper.includes('WINFUT') || symbolUpper.includes('WDOFUT') || symbolUpper.includes('BITFUT')) {
-      return 'futuro';
-    }
-    
-    // Check if it's a stock (4 letters + number pattern)
-    const stockPattern = /^[A-Z]{4}\d+$/;
-    if (stockPattern.test(symbolUpper)) {
-      return 'acao';
-    }
-    
-    // Default to futures
-    return 'futuro';
-  };
-
-  // Get unique assets from trades
-  const getUniqueAssets = () => {
-    if (!trade || trade.length === 0) return [];
-    
-    const assets = trade.map(t => t.symbol || 'N/A').filter((symbol, index, arr) => arr.indexOf(symbol) === index);
-    return assets;
-  };
-
-  // Get position sizing data for specific asset
-  const getAssetPositionData = (assetSymbol: string) => {
-    if (!trade || trade.length === 0) return null;
-    
-    const assetTrades = trade.filter(t => t.symbol === assetSymbol);
-    if (assetTrades.length === 0) return null;
-    
-    const assetType = detectAssetType(assetSymbol);
-    
-    // Calculate position sizes for this specific asset
-    const positionSizes = assetTrades.map(trade => {
-      const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
-                          trade.qty_buy || trade.qty_sell || trade.quantity || 
-                          trade.qty || trade.quantity_buy || trade.quantity_sell ||
-                          trade.position_size || trade.size || trade.volume || 0;
-      return positionSize;
-    }).filter(size => size > 0);
-
-    if (positionSizes.length === 0) return null;
-
-    const maxPosition = Math.max(...positionSizes);
-    const avgPosition = positionSizes.reduce((sum, size) => sum + size, 0) / positionSizes.length;
-    const sortedPositions = [...positionSizes].sort((a, b) => a - b);
-    
-    let medianPosition = 0;
-    if (sortedPositions.length > 0) {
-      if (sortedPositions.length % 2 === 0) {
-        // Even number of elements - take average of two middle values
-        const mid1 = sortedPositions[sortedPositions.length / 2 - 1];
-        const mid2 = sortedPositions[sortedPositions.length / 2];
-        medianPosition = (mid1 + mid2) / 2;
-      } else {
-        // Odd number of elements - take middle value
-        medianPosition = sortedPositions[Math.floor(sortedPositions.length / 2)];
-      }
-    }
-
-    // Calculate max contracts per day for this asset
-    const tradesByDate = {};
-    assetTrades.forEach(trade => {
-      const date = new Date(trade.entry_date).toDateString();
-      if (!tradesByDate[date]) {
-        tradesByDate[date] = [];
-      }
-      tradesByDate[date].push(trade);
-    });
-
-    const maxContractsPerDay = Math.max(...Object.values(tradesByDate).map(trades => trades.length));
-    const avgContractsPerDay = assetTrades.length / Object.keys(tradesByDate).length;
-
-    console.log(`📊 Asset ${assetSymbol} analysis:`);
-    console.log(`  - Position sizes:`, positionSizes);
-    console.log(`  - Average position:`, avgPosition);
-    console.log(`  - Median position:`, medianPosition);
-    console.log(`  - Max position:`, maxPosition);
-    console.log(`  - Total trades:`, assetTrades.length);
-
-    return {
-      assetType,
-      maxPosition,
-      avgPosition: Math.round(avgPosition),
-      medianPosition: Math.round(medianPosition),
-      maxContractsPerDay,
-      avgContractsPerDay: Math.round(avgContractsPerDay),
-      totalTrades: assetTrades.length
-    };
-  };
-
-  // Sample data for the trade duration analysis with additional metrics
-  // Calculate real trade duration data from the trades array
-  const calculateTradeDurationData = () => {
-    if (!trade || trade.length === 0) {
-      return {
-        averageDuration: '0h 0m',
-        medianDuration: '0h 0m',
-        maxDuration: '0h 0m',
-        resultByDuration: []
-      };
-    }
-
-    console.log("trades? ",trade);
-    const tradesWithDuration = trade?.map((t: any) => {
-      const entryDate = new Date(t.entry_date);
-      const exitDate = new Date(t.exit_date);
-      const durationHours = (exitDate.getTime() - entryDate.getTime()) / (1000 * 60 * 60);
-      
-      return {
-        ...t,
-        durationHours: durationHours
-      };
-    });
-
-    // Calculate basic duration statistics
-    const durations = tradesWithDuration.map((t: any) => t.durationHours);
-    const avgDuration = durations.reduce((a: number, b: number) => a + b, 0) / durations.length;
-    const sortedDurations = [...durations].sort((a: number, b: number) => a - b);
-    const medianDuration = sortedDurations[Math.floor(sortedDurations.length / 2)];
-    const maxDuration = Math.max(...durations);
-
-    // Format duration helper function
-    const formatDuration = (hours: number) => {
-      const h = Math.floor(hours);
-      const m = Math.floor((hours - h) * 60);
-      return `${h}h ${m}m`;
-    };
-
-    // Group trades by duration ranges
-    const durationRanges = [
-       { label: '< 15min', min: 0, max: 0.25 },
-      { label: '15-30min', min: 0.25, max: 0.5 },
-      { label: '30min - 1h', min: 0.5, max: 1 },
-      { label: '1h - 2h', min: 1, max: 2 },
-      { label: '2h - 4h', min: 2, max: 4 },
-      { label: '4h - 9h', min: 4, max: 9 },
-      { label: '9h - 24h', min: 9, max: 24 },
-      { label: '24h - 72h', min: 24, max: 72},
-      { label: '72h - 168h', min: 72, max: 168 },
-      { label: '> 168h', min: 168, max: Infinity }
-    ];
-
-    const resultByDuration = durationRanges.map(range => {
-      const rangeTradesData = tradesWithDuration.filter((t: any) => 
-        t.durationHours >= range.min && t.durationHours < range.max
-      );
-      
-      if (rangeTradesData.length === 0) {
-        return {
-          duration: range.label,
-          result: 0,
-          count: 0,
-          profitFactor: 0,
-          winRate: 0,
-          payoff: 0
-        };
-      }
-
-      const totalResult = rangeTradesData.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
-      const winningTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) > 0);
-      const losingTrades = rangeTradesData.filter((t: any) => (t.pnl || 0) < 0);
-      
-      const winRate = (winningTrades.length / rangeTradesData.length) * 100;
-      
-      const grossProfit = winningTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
-      const grossLoss = Math.abs(losingTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0));
-      
-      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
-      
-      const avgWin = winningTrades.length > 0 ? grossProfit / winningTrades.length : 0;
-      const avgLoss = losingTrades.length > 0 ? grossLoss / losingTrades.length : 0;
-      const payoff = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? 999 : 0);
-
-      return {
-        duration: range.label,
-        result: totalResult,
-        count: rangeTradesData.length,
-        profitFactor: profitFactor,
-        winRate: winRate,
-        payoff: payoff
-      };
-    });
-
-    return {
-      averageDuration: formatDuration(avgDuration),
-      medianDuration: formatDuration(medianDuration),
-      maxDuration: formatDuration(maxDuration),
-      resultByDuration: resultByDuration
-    };
-  };
- 
-    const  tradeDurationData = calculateTradeDurationData();
-    console.log("duration data: ",tradeDurationData)
-  
-
-
-
-  // Calculate position sizing data using backend API
-  const calculatePositionSizingData = async () => {
-    if (!tradeObject?.trades || tradeObject.trades.length === 0) {
-      console.log("📊 No trades available for position sizing calculation");
-      return {
-    stocks: {
-          maxPositionPerTrade: 0,
-          avgPositionPerTrade: 0,
-          medianPositionPerTrade: 0,
-          avgLeverage: 0,
-          recommendedPosition: 0,
-          riskPerTrade: 0
-        },
-    futures: {
-          maxPositionPerTrade: 0,
-          avgPositionPerTrade: 0,
-          medianPositionPerTrade: 0,
-          avgLeverage: 0,
-          recommendedPosition: 0,
-          riskPerTrade: 0
-        },
-    general: {
-          maxOpenPositions: 0,
-          setupsMaximosPorDia: 0,
-          accountRisk: 0,
-          maxRiskPerTrade: 0
-        }
-      };
-    }
-
-    try {
-      console.log("📊 Calling position sizing API...");
-      
-      // Create FormData with trades data
-      const formData = new FormData();
-      
-      console.log("📊 TradeObject structure:", {
-        hasFile: !!tradeObject.file,
-        hasTrades: !!tradeObject.trades,
-        tradesLength: tradeObject.trades?.length,
-        fileType: tradeObject.file?.type,
-        fileName: tradeObject.file?.name
-      });
-      
-      // If we have file data, use it; otherwise create a mock file
-      if (tradeObject.file) {
-        formData.append('file', tradeObject.file);
-        console.log("📊 Using original file for position sizing API");
-      } else {
-        // Create a mock file from trades data for API testing
-        console.log("📊 Creating mock CSV from trades data");
-        const csvContent = createCSVFromTrades(tradeObject.trades);
-        console.log("📊 CSV Content preview:", csvContent.substring(0, 200) + "...");
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        formData.append('file', blob, 'trades.csv');
-      }
-
-      const response = await fetch('/api/position-sizing', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("❌ Position sizing API error:", errorData);
-        throw new Error(`API error: ${response.status} - ${errorData.error || 'Unknown error'}`);
-      }
-
-      const data = await response.json();
-      console.log("📊 Position sizing API response:", data);
-      
-      return data;
-      
-    } catch (error) {
-      console.error("❌ Error calling position sizing API:", error);
-      
-      // Fallback to local calculation
-      console.log("📊 Falling back to local position sizing calculation");
-      return calculatePositionSizingLocal();
-    }
-  };
-
-  // Local fallback calculation
-  const calculatePositionSizingLocal = () => {
-    const trades = tradeObject.trades;
-    console.log("📊 Calculating position sizing locally from", trades.length, "trades");
-    console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
-    console.log("📊 First trade data:", trades[0]);
-    
-    if (!trades || trades.length === 0) {
-      console.log("📊 No trades available for position sizing calculation");
-      return {
-        stocks: {
-          avgPositionPerTrade: 0,
-          medianPositionPerTrade: 0,
-          maxPositionPerTrade: 0,
-          maxContractsPerDay: 0
-        },
-        futures: {
-          avgPositionPerTrade: 0,
-          medianPositionPerTrade: 0,
-          maxPositionPerTrade: 0,
-          maxContractsPerDay: 0
-        },
-        general: {
-          maxOpenPositions: 0,
-          setupsMaximosPorDia: 0,
-          accountRisk: 0,
-          maxRiskPerTrade: 0,
-          riscoPorTrade: 2.00,
-          capitalEmRisco: 0.00,
-          posicaoRecomendada: 0,
-          exposicaoMaxima: 0.00
-        }
-      };
-    }
-    
-    // Calculate account risk (2% rule from position sizing principles)
-    const totalPnL = trades.reduce((sum: number, trade: any) => sum + (trade.pnl || 0), 0);
-    const netProfit = Math.max(0, totalPnL); // Assume positive capital
-    const accountRisk = netProfit * 0.02; // 2% risk per trade
-    
-    // Calculate max risk per trade (1% of account)
-    const maxRiskPerTrade = netProfit * 0.01; // 1% max risk per trade
-    
-    // Calculate position sizes based on actual trade data
-    const positionSizes = trades.map((trade: any) => {
-      // Try different possible column names for position size
-      const positionSize = trade.quantity_total || trade.quantity_compra || trade.quantity_venda ||
-                          trade.qty_buy || trade.qty_sell || trade.quantity || 
-                          trade.qty || trade.quantity_buy || trade.quantity_sell ||
-                          trade.position_size || trade.size || trade.volume || 
-                          trade.quantity_total || trade.quantity_compra || trade.quantity_venda || 0;
-      return positionSize;
-    }).filter((size: number) => size > 0);
-
-    console.log("📊 Position sizes found:", positionSizes.length, "valid positions");
-    console.log("📊 Position sizes sample:", positionSizes.slice(0, 5));
-    
-    // Log detailed position data for debugging
-    if (trades.length > 0) {
-      console.log("📊 Position data analysis:");
-      trades.slice(0, 3).forEach((trade: any, index: number) => {
-        console.log(`  Trade ${index + 1}:`, {
-          quantity_total: trade.quantity_total,
-          quantity_compra: trade.quantity_compra,
-          quantity_venda: trade.quantity_venda,
-          qty_buy: trade.qty_buy,
-          qty_sell: trade.qty_sell,
-          pnl: trade.pnl,
-          symbol: trade.symbol
-        });
-      });
-    }
-
-    // Calculate basic position statistics
-    const maxPositionPerTrade = positionSizes.length > 0 ? Math.max(...positionSizes) : 0;
-    const avgPositionPerTrade = positionSizes.length > 0 ? 
-      positionSizes.reduce((sum: number, size: number) => sum + size, 0) / positionSizes.length : 0;
-    
-    const sortedPositions = [...positionSizes].sort((a: number, b: number) => a - b);
-    let medianPositionPerTrade = 0;
-    
-    if (sortedPositions.length > 0) {
-      if (sortedPositions.length % 2 === 0) {
-        // Even number of elements - take average of two middle values
-        const mid1 = sortedPositions[sortedPositions.length / 2 - 1];
-        const mid2 = sortedPositions[sortedPositions.length / 2];
-        medianPositionPerTrade = (mid1 + mid2) / 2;
-      } else {
-        // Odd number of elements - take middle value
-        medianPositionPerTrade = sortedPositions[Math.floor(sortedPositions.length / 2)];
-      }
-    }
-
-    // Calculate max contracts per day
-    const tradesByDay = trades.reduce((acc: any, trade: any) => {
-      const date = new Date(trade.entry_date).toDateString();
-      if (!acc[date]) acc[date] = [];
-      acc[date].push(trade);
-      return acc;
-    }, {});
-
-    const maxContractsPerDay = Math.max(...Object.values(tradesByDay).map((dayTrades: any) => dayTrades.length), 0);
-
-    // Determine if stocks or futures based on position sizes and symbols
-    const avgPosition = avgPositionPerTrade;
-    const symbols = trades.map((trade: any) => trade.symbol).filter(Boolean);
-    const mostCommonSymbol = symbols.length > 0 ? 
-      symbols.reduce((a: string, b: string) => 
-        symbols.filter(v => v === a).length >= symbols.filter(v => v === b).length ? a : b
-      ) : '';
-    
-    const assetType = detectAssetType(mostCommonSymbol);
-    const isStocks = avgPosition > 100 || assetType === 'acao' || avgPosition === 0; // Default to stocks if no position data
-
-    // Calculate recommended position based on risk management
-    const recommendedPosition = maxRiskPerTrade > 0 ? Math.floor(maxRiskPerTrade / (avgPosition || 1)) : 0;
-
-    // Calculate exposure percentage
-    const totalExposure = positionSizes.reduce((sum: number, size: number) => sum + size, 0);
-    const exposurePercentage = netProfit > 0 ? (totalExposure / netProfit) * 100 : 0;
-
-    console.log("📊 Position sizing calculations:", {
-      totalPnL,
-      netProfit,
-      accountRisk,
-      maxRiskPerTrade,
-      avgPositionPerTrade,
-      medianPositionPerTrade,
-      maxPositionPerTrade,
-      maxContractsPerDay,
-      isStocks,
-      assetType,
-      mostCommonSymbol,
-      recommendedPosition,
-      exposurePercentage,
-      symbols: symbols.slice(0, 5)
-    });
-
-    return {
-      stocks: {
-        avgPositionPerTrade: isStocks ? avgPositionPerTrade : 0,
-        medianPositionPerTrade: isStocks ? medianPositionPerTrade : 0,
-        maxPositionPerTrade: isStocks ? maxPositionPerTrade : 0,
-        maxContractsPerDay: isStocks ? maxContractsPerDay : 0
-      },
-      futures: {
-        avgPositionPerTrade: !isStocks ? avgPositionPerTrade : 0,
-        medianPositionPerTrade: !isStocks ? medianPositionPerTrade : 0,
-        maxPositionPerTrade: !isStocks ? maxPositionPerTrade : 0,
-        maxContractsPerDay: !isStocks ? maxContractsPerDay : 0
-      },
-      general: {
-        maxOpenPositions: maxContractsPerDay,
-        setupsMaximosPorDia: maxContractsPerDay,
-        accountRisk: accountRisk,
-        maxRiskPerTrade: maxRiskPerTrade,
-        riscoPorTrade: 2.00,
-        capitalEmRisco: accountRisk,
-        posicaoRecomendada: recommendedPosition,
-        exposicaoMaxima: exposurePercentage
-      }
-    };
-  };
-
-  // Helper function to create CSV from trades data
-  const createCSVFromTrades = (trades: any[]) => {
-    console.log("📊 Creating CSV from trades:", trades.length, "trades");
-    console.log("📊 Sample trade structure:", trades[0] ? Object.keys(trades[0]) : "No trades");
-    
-    // Create CSV with proper headers that match the backend expectations
-    const csvHeaders = [
-      'Ativo', 'Abertura', 'Fechamento', 'Tempo Operação', 'Qtd Compra', 'Qtd Venda',
-      'Lado', 'Preço Compra', 'Preço Venda', 'Preço de Mercado', 'Médio',
-      'Res. Intervalo', 'Res. Intervalo (%)', 'Número Operação', 'Res. Operação', 'Res. Operação (%)',
-      'Drawdown', 'Ganho Max.', 'Perda Max.', 'TET', 'Total'
-    ];
-    
-    const csvRows = [csvHeaders.join(';')];
-    
-    trades.forEach((trade: any, index: number) => {
-      // Map trade data to CSV format expected by backend
-      // Formatar datas no formato esperado pelo backend (dd/mm/yyyy hh:mm:ss)
-      const formatDate = (dateStr: any) => {
-        if (!dateStr) return '';
-        try {
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) return '';
-          return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
-          });
-        } catch {
-          return '';
-        }
-      };
-
-      const row = [
-        trade.symbol || 'N/A',                    // Ativo
-        formatDate(trade.entry_date),             // Abertura
-        formatDate(trade.exit_date),              // Fechamento
-        trade.duration_str || '00:00:00',        // Tempo Operação
-        trade.quantity_compra || trade.qty_buy || '0',  // Qtd Compra
-        trade.quantity_venda || trade.qty_sell || '0',  // Qtd Venda
-        trade.direction === 'long' ? 'C' : 'V',  // Lado
-        trade.entry_price || '0',                 // Preço Compra
-        trade.exit_price || '0',                  // Preço Venda
-        trade.market_price || '0',                // Preço de Mercado
-        trade.avg_price || '0',                   // Médio
-        trade.pnl || '0',                         // Res. Intervalo
-        trade.pnl_pct || '0',                     // Res. Intervalo (%)
-        trade.trade_number || index + 1,          // Número Operação
-        trade.operation_result || trade.pnl || '0', // Res. Operação
-        trade.operation_result_pct || '0',        // Res. Operação (%)
-        trade.drawdown || '0',                    // Drawdown
-        trade.max_gain || '0',                    // Ganho Max.
-        trade.max_loss || '0',                    // Perda Max.
-        trade.tet || '0',                         // TET
-        trade.total || '0'                        // Total
-      ];
-      
-      csvRows.push(row.join(';'));
-    });
-    
-    const csvContent = csvRows.join('\n');
-    console.log("📊 Generated CSV with", csvRows.length - 1, "trades");
-    console.log("📊 CSV Headers:", csvHeaders.join(';'));
-    console.log("📊 CSV Sample (first 2 rows):", csvRows.slice(0, 2).join('\n'));
-    
-    return csvContent;
-  };
-
-  // Load position sizing data when component mounts or trades change
-  useEffect(() => {
-    const loadPositionSizingData = async () => {
-      if (tradeObject?.trades && tradeObject.trades.length > 0) {
-        console.log("📊 Loading position sizing data for", tradeObject.trades.length, "trades");
-        const data = await calculatePositionSizingData();
-        console.log("📊 Position sizing data calculated:", data);
-        setPositionSizingData(data);
-      } else {
-        console.log("📊 No trades available for position sizing calculation");
-      }
-    };
-
-    loadPositionSizingData();
-  }, [tradeObject?.trades]);
-
-  // Debug effect to log current state
-  useEffect(() => {
-    console.log("📊 Current position sizing data:", positionSizingData);
-    console.log("📊 Trade object:", tradeObject);
-    console.log("📊 Selected asset:", selectedAsset);
-    console.log("📊 Trades length:", tradeObject?.trades?.length);
-    console.log("📊 Sample trade:", tradeObject?.trades?.[0]);
-  }, [positionSizingData, tradeObject, selectedAsset]);
 
   // Animate metrics when they change
   useEffect(() => {
@@ -877,29 +282,27 @@ export function MetricsDashboard({ metrics, tradeObject, fileResults, showTitle 
 
     return isPercentage ? `${numValue.toFixed(2)}%` : numValue.toFixed(2);
   };
-  const filteredTradeDurationData = tradeDurationData.resultByDuration.filter(
-    (trade: any) => trade.count !== 0
-  )
+
   const tradesLucrativos = trade.filter(
-    (trade: any) => (
-      trade.pnl > 0
+    (trade: unknown) => (
+      ((trade as { pnl?: number }).pnl || 0) > 0
       
     )
   )
 
   const tradesLoss = trade.filter(
-    (trade: any) => (
-      trade.pnl < 0
+    (trade: unknown) => (
+      ((trade as { pnl?: number }).pnl || 0) < 0
     )
   )
 
   const tradesNull = trade.filter(
-    (trade: any) => (
-      trade.pnl === 0
+    (trade: unknown) => (
+      ((trade as { pnl?: number }).pnl || 0) === 0
     )
   )
- const maiorGanho = Math.max(...trade.map((trade: any) => (trade.pnl || 0) ));
-const maiorPerda = Math.min(...trade.map((trade: any) => (trade.pnl || 0) ));
+  const maiorGanho = Math.max(...trade.map((trade: unknown) => ((trade as { pnl?: number }).pnl || 0)));
+  const maiorPerda = Math.min(...trade.map((trade: unknown) => ((trade as { pnl?: number }).pnl || 0)));
 
 // ✅ DEBUG: Verificar estatísticas calculadas
 console.log('📊 DEBUG - Estatísticas de Trades:');
@@ -910,111 +313,22 @@ console.log(`  📊 Trades zerados: ${tradesNull.length}`);
 console.log(`  📊 Maior ganho: ${maiorGanho}`);
 console.log(`  📊 Maior perda: ${maiorPerda}`);
 
-  // Função para abrir modal de detalhes
-  const handleShowDetails = (metricType: string, assetType?: string) => {
-    console.log(`📊 Abrindo detalhes para: ${metricType}${assetType ? ` - ${assetType}` : ''}`);
-    setSelectedMetricForDetails(metricType);
-    setShowAssetDetails(true);
-  };
+// ✅ DEBUG: Verificar dados do animatedMetrics para arquivo único
+if (!fileResults || Object.keys(fileResults).length <= 1) {
+  console.log('📊 DEBUG - Dados do animatedMetrics (arquivo único):');
+  console.log(`  📊 Total de trades: ${animatedMetrics.totalTrades as number || 0}`);
+  console.log(`  📊 Trades lucrativos: ${animatedMetrics.profitableTrades as number || 0}`);
+  console.log(`  📊 Trades com perda: ${animatedMetrics.lossTrades as number || 0}`);
+  console.log(`  📊 Trades zerados: ${(animatedMetrics.totalTrades as number || 0) - (animatedMetrics.profitableTrades as number || 0) - (animatedMetrics.lossTrades as number || 0)}`);
+  
+  console.log('📊 DEBUG - Métricas Avançadas (arquivo único):');
+  console.log(`  📊 Maior Ganho (API): ${animatedMetrics.maiorGanho as number || 0}`);
+  console.log(`  📊 Maior Perda (API): ${animatedMetrics.maiorPerda as number || 0}`);
+  console.log(`  📊 Ganho Bruto (API): ${animatedMetrics.grossProfit as number || 0}`);
+  console.log(`  📊 Perda Bruta (API): ${animatedMetrics.grossLoss as number || 0}`);
+  console.log(`  📊 Trade Médio (calculado): ${((animatedMetrics.averageWin as number || 0) - Math.abs(animatedMetrics.averageLoss as number || 0))}`);
+}
 
-  // Função para obter informações detalhadas
-  const getDetailedInfo = (metricType: string, assetType?: string) => {
-    const trades = tradeObject?.trades || [];
-    const totalTrades = trades.length;
-    
-    // Obter dados corretos baseados no assetType
-    const getDataForAssetType = (type: string) => {
-      if (type === 'stocks') {
-        return positionSizingData.stocks;
-      } else if (type === 'futures') {
-        return positionSizingData.futures;
-      } else {
-        // Para 'all' ou undefined, usar dados consolidados
-        return {
-          avgPositionPerTrade: positionSizingData.stocks.avgPositionPerTrade || positionSizingData.futures.avgPositionPerTrade || 0,
-          medianPositionPerTrade: positionSizingData.stocks.medianPositionPerTrade || positionSizingData.futures.medianPositionPerTrade || 0,
-          maxPositionPerTrade: positionSizingData.stocks.maxPositionPerTrade || positionSizingData.futures.maxPositionPerTrade || 0,
-          maxContractsPerDay: positionSizingData.general.setupsMaximosPorDia || 0
-        };
-      }
-    };
-    
-    const assetData = getDataForAssetType(assetType || 'all');
-    
-    console.log('📊 getDetailedInfo debug:', {
-      metricType,
-      assetType,
-      assetData,
-      positionSizingData,
-      totalTrades
-    });
-    
-    switch (metricType) {
-      case 'Posição Média':
-        const avgPosition = assetData.avgPositionPerTrade || 0;
-        return {
-          title: 'Posição Média por Trade',
-          description: 'Representa o volume médio de contratos utilizados em cada operação',
-          value: `${Math.round(avgPosition)} contratos`,
-          details: [
-            `Total de trades analisados: ${totalTrades}`,
-            `Tipo de ativo: ${assetType === 'stocks' ? 'Ações' : assetType === 'futures' ? 'Futuros' : 'Misto'}`,
-            `Baseado em dados reais dos trades`,
-            `Valor calculado: ${avgPosition.toFixed(2)}`
-          ]
-        };
-      
-      case 'Posição Mediana':
-        const medianPosition = assetData.medianPositionPerTrade || 0;
-        return {
-          title: 'Posição Mediana por Trade',
-          description: 'Indica o valor central da distribuição de posições',
-          value: `${Math.round(medianPosition)} contratos`,
-          details: [
-            `Representa o valor do meio quando ordenados por tamanho`,
-            `Mais robusto que a média para dados assimétricos`,
-            `Total de trades: ${totalTrades}`,
-            `Valor calculado: ${medianPosition.toFixed(2)}`
-          ]
-        };
-      
-      case 'Posição Máxima':
-        const maxPosition = assetData.maxPositionPerTrade || 0;
-        return {
-          title: 'Maior Posição Utilizada',
-          description: 'Representa o maior volume negociado em um único trade',
-          value: `${Math.round(maxPosition)} contratos`,
-          details: [
-            `Maior posição encontrada nos dados`,
-            `Útil para entender o limite máximo utilizado`,
-            `Baseado em ${totalTrades} trades analisados`,
-            `Valor calculado: ${maxPosition.toFixed(2)}`
-          ]
-        };
-      
-      case 'Setup Máximo por Dia':
-        const maxSetups = assetData.maxContractsPerDay || 0;
-        return {
-          title: 'Máximo de Setups por Dia',
-          description: 'Indica o limite de operações diárias recomendado',
-          value: `${maxSetups} setups`,
-          details: [
-            `Baseado na análise de trades por dia`,
-            `Recomendação para controle de risco`,
-            `Análise de ${totalTrades} trades no total`,
-            `Valor calculado: ${maxSetups}`
-          ]
-        };
-      
-      default:
-        return {
-          title: 'Informações Detalhadas',
-          description: 'Detalhes da métrica selecionada',
-          value: 'N/A',
-          details: ['Informações não disponíveis']
-        };
-    }
-  };
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
       {/* Header */}
@@ -1048,10 +362,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-3xl font-bold ${getMetricColor(
                   "netProfit",
-                  animatedMetrics.netProfit || 0
+                  animatedMetrics.netProfit as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.netProfit, false, true)}
+                {formatMetric(animatedMetrics.netProfit as number || 0, false, true)}
               </p>
             </div>
 
@@ -1059,10 +373,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Drawdown Máximo R$</p>
               <p className="text-3xl font-bold text-red-500">
-                {formatMetric(animatedMetrics.maxDrawdownAmount, false, true)}
+                {formatMetric(animatedMetrics.maxDrawdownAmount as number || 0, false, true)}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {formatMetric(animatedMetrics.maxDrawdown, true)} do capital
+                {formatMetric(animatedMetrics.maxDrawdown as number || 0, true)} do capital
               </p>
             </div>
 
@@ -1080,10 +394,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "profitFactor",
-                  animatedMetrics.profitFactor || 0
+                  animatedMetrics.profitFactor as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.profitFactor)}
+                {formatMetric(animatedMetrics.profitFactor as number || 0)}
               </p>
             </div>
 
@@ -1093,10 +407,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "payoff",
-                  animatedMetrics.payoff || 0
+                  animatedMetrics.payoff as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.payoff)}
+                {formatMetric(animatedMetrics.payoff as number || 0)}
               </p>
             </div>
 
@@ -1106,10 +420,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "sharpeRatio",
-                  animatedMetrics.sharpeRatio || 0
+                  animatedMetrics.sharpeRatio as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.sharpeRatio)}
+                {formatMetric(animatedMetrics.sharpeRatio as number || 0)}
               </p>
             </div>
 
@@ -1119,10 +433,10 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "recoveryFactor",
-                  animatedMetrics.recoveryFactor || 0
+                  animatedMetrics.recoveryFactor as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.recoveryFactor)}
+                {formatMetric(animatedMetrics.recoveryFactor as number || 0)}
               </p>
             </div>
 
@@ -1132,15 +446,13 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "winRate",
-                  animatedMetrics.winRate || 0
+                  animatedMetrics.winRate as number || 0
                 )}`}
               >
-                {formatMetric(animatedMetrics.winRate, true)}
+                {formatMetric(animatedMetrics.winRate as number || 0, true)}
               </p>
             </div>
           </div>
-
-
 
           {/* Trade Statistics and Advanced Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -1154,38 +466,54 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Total de Trades</td>
                     <td className="py-2 text-right">
-                     {trade.length > 0 ? trade.length : (metrics?.totalTrades ?? 0)}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar trade.length */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? trade.length 
+                        : (animatedMetrics.totalTrades as number || 0)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                     <td className="py-2 text-right text-green-500">
-                      {tradesLucrativos.length|| "0"}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesLucrativos */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? tradesLucrativos.length 
+                        : (animatedMetrics.profitableTrades as number || 0)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {tradesLoss.length|| "0"}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesLoss */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? tradesLoss.length 
+                        : (animatedMetrics.lossTrades as number || 0)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Zerados</td>
                     <td className="py-2 text-right text-white">
-                      {tradesNull.length|| "0"}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar tradesNull */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? tradesNull.length 
+                        : (animatedMetrics.totalTrades as number - (animatedMetrics.profitableTrades as number || 0) - (animatedMetrics.lossTrades as number || 0) || 0)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Médio</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(animatedMetrics.averageWin, false, true)}
+                      {formatMetric(animatedMetrics.averageWin as number || 0, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Média</td>
                     <td className="py-2 text-right text-red-500">
                       {formatMetric(
-                        Math.abs(animatedMetrics.averageLoss || 0),
+                        Math.abs(animatedMetrics.averageLoss as number || 0),
                         false,
                         true
                       )}
@@ -1196,7 +524,7 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
                       Máx. Perdas Consecutivas
                     </td>
                     <td className="py-2 text-right">
-                      {animatedMetrics.maxConsecutiveLosses || "0"}
+                      {animatedMetrics.maxConsecutiveLosses as number || "0"}
                     </td>
                   </tr>
                   <tr>
@@ -1204,7 +532,7 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
                       Máx. Ganhos Consecutivos
                     </td>
                     <td className="py-2 text-right text-green-500">
-                      {animatedMetrics.maxConsecutiveWins || "0"}
+                      {animatedMetrics.maxConsecutiveWins as number || "0"}
                     </td>
                   </tr>
                 </tbody>
@@ -1221,188 +549,59 @@ console.log(`  📊 Maior perda: ${maiorPerda}`);
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trade Médio</td>
                     <td className="py-2 text-right">
-                    {formatMetric(((animatedMetrics.averageWin || 0) - Math.abs(animatedMetrics.averageLoss || 0)), false, true)}
+                    {formatMetric(((animatedMetrics.averageWin as number || 0) - Math.abs(animatedMetrics.averageLoss as number || 0)), false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Ganho</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(maiorGanho, false, true)}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar maiorGanho calculado */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? formatMetric(maiorGanho, false, true)
+                        : formatMetric(animatedMetrics.maiorGanho as number || 0, false, true)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {formatMetric(maiorPerda, false, true)}
+                      {/* ✅ CORREÇÃO: Para arquivo único, usar animatedMetrics; para múltiplos, usar maiorPerda calculado */}
+                      {fileResults && Object.keys(fileResults).length > 1 
+                        ? formatMetric(maiorPerda, false, true)
+                        : formatMetric(animatedMetrics.maiorPerda as number || 0, false, true)
+                      }
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Bruto</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(animatedMetrics.grossProfit, false, true)}
+                      {formatMetric(animatedMetrics.grossProfit as number || 0, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Bruta</td>
                     <td className="py-2 text-right text-red-500">
-                      {formatMetric(animatedMetrics.grossLoss, false, true)}
+                      {formatMetric(animatedMetrics.grossLoss as number || 0, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                     <td className="py-2 text-right">
-                      {formatMetric(animatedMetrics.winRate, true)}
+                      {formatMetric(animatedMetrics.winRate as number || 0, true)}
                     </td>
                   </tr>
                   <tr>
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                     <td className="py-2 text-right">
-                      {formatMetric(100 - (animatedMetrics.winRate || 0), true)}
+                      {formatMetric(100 - (animatedMetrics.winRate as number || 0), true)}
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
-
-          {/* Trade Duration Section - Moved below advanced metrics */}
-          <div className="bg-gray-800 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center">
-                <Clock className="w-5 h-5 text-blue-400 mr-2" />
-                <h3 className="text-lg font-medium">Duração dos Trades</h3>
-              </div>
-              <button 
-                onClick={() => setShowTradeDuration(!showTradeDuration)}
-                className="p-1.5 hover:bg-gray-700 rounded-md"
-              >
-                {showTradeDuration ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
-                )}
-              </button>
-            </div>
-            
-            {!showTradeDuration ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  <p className="text-sm text-gray-400 mb-1">Duração Média</p>
-                  <p className="text-xl font-bold">{tradeDurationData.averageDuration}</p>
-                </div>
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  <p className="text-sm text-gray-400 mb-1">Duração Mediana</p>
-                  <p className="text-xl font-bold">{tradeDurationData.medianDuration}</p>
-                </div>
-                <div className="bg-gray-700 p-3 rounded-lg">
-                  <p className="text-sm text-gray-400 mb-1">Duração Máxima</p>
-                  <p className="text-xl font-bold">{tradeDurationData.maxDuration}</p>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="bg-gray-700 p-3 rounded-lg">
-                    <p className="text-sm text-gray-400 mb-1">Duração Média</p>
-                    <p className="text-xl font-bold">{tradeDurationData.averageDuration}</p>
-                  </div>
-                  <div className="bg-gray-700 p-3 rounded-lg">
-                    <p className="text-sm text-gray-400 mb-1">Duração Mediana</p>
-                    <p className="text-xl font-bold">{tradeDurationData.medianDuration}</p>
-                  </div>
-                  <div className="bg-gray-700 p-3 rounded-lg">
-                    <p className="text-sm text-gray-400 mb-1">Duração Máxima</p>
-                    <p className="text-xl font-bold">{tradeDurationData.maxDuration}</p>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="text-sm font-medium mb-3 text-gray-300">Análise por Faixa de Duração</h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-700">
-                          <th className="px-3 py-2 text-left">Duração</th>
-                          <th className="px-3 py-2 text-center">Trades</th>
-                          <th className="px-3 py-2 text-center">Fator de Lucro</th>
-                          <th className="px-3 py-2 text-center">Taxa de Acerto</th>
-                          <th className="px-3 py-2 text-center">Payoff</th>
-                          <th className="px-3 py-2 text-right">Resultado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredTradeDurationData.map((item, index) => (
-                          <tr key={index} className="border-b border-gray-700">
-                            <td className="px-3 py-2">{item.duration}</td>
-                            <td className="px-3 py-2 text-center">{item.count}</td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={
-                                item.profitFactor >= 1.5 ? 'text-green-400' : 
-                                item.profitFactor >= 1.0 ? 'text-yellow-400' : 
-                                'text-red-400'
-                              }>
-                                {item.profitFactor.toFixed(2)}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={
-                                item.winRate >= 60 ? 'text-green-400' : 
-                                item.winRate >= 45 ? 'text-yellow-400' : 
-                                'text-red-400'
-                              }>
-                                {item.winRate.toFixed(1)}%
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={
-                                item.payoff >= 1.5 ? 'text-green-400' : 
-                                item.payoff >= 1.0 ? 'text-yellow-400' : 
-                                'text-red-400'
-                              }>
-                                {item.payoff.toFixed(2)}
-                              </span>
-                            </td>
-                            <td className={`px-3 py-2 text-right ${item.result > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {formatMetric(item.result, false, true)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                
-                <div className="mt-4 p-3 bg-blue-900 bg-opacity-20 border border-blue-800 rounded-lg">
-                  <div className="flex items-start">
-                    <BarChart2 className="w-5 h-5 text-blue-400 mr-2 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-blue-300 mb-2">Insights de Duração</h4>
-                      <ul className="text-sm text-blue-200 space-y-1">
-                        <li>• Trades entre 1-2 horas apresentam melhor resultado e fator de lucro (2.10)</li>
-                        <li>• Operações muito curtas (menos de 30 min) tendem a ser negativas com baixa taxa de acerto (38.5%)</li>
-                        <li>• Melhor payoff (1.65) e taxa de acerto (65.8%) na faixa de 1-2 horas</li>
-                        <li>• Trades longos &gt;4h mostram baixo fator de lucro (0.78) e payoff abaixo de 1</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Simple Position Sizing Section - Similar to Trade Duration */}
-          <PositionSizingSection
-            showPositionSizing={showSimplePositionSizing}
-            setShowPositionSizing={setShowSimplePositionSizing}
-            backtestResult={tradeObject}
-          />
-
-
-
-
-
-         </div>
-       )}
-     </div>
-   );
- }
+        </div>
+      )}
+    </div>
+  );
+}

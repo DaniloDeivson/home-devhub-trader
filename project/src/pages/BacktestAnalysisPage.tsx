@@ -2231,7 +2231,7 @@ useEffect(() => {
                   <SpecialEventsSection
                     showSpecialEvents={showSpecialEvents}
                     setShowSpecialEvents={setShowSpecialEvents}
-                    tadesData={frozenTrades || { trades: Array.isArray(trades) ? trades : [] }}
+                    tadesData={{ trades: Array.isArray(trades) ? trades : [] }}
                     
                   />
                 </PlanRestrictedSection>

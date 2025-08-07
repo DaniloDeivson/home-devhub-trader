@@ -19,7 +19,8 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tradesData || fileResults) {
+    // ✅ CORREÇÃO: Priorizar tradesData (único CSV) sobre fileResults
+    if (tradesData || (fileResults && Object.keys(fileResults).length > 0)) {
       fetchMetricsFromData();
     }
   }, [tradesData, fileResults]);
@@ -30,6 +31,14 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
 
     try {
       let data: DailyMetrics;
+
+      // ✅ CORREÇÃO: Verificar qual caminho está sendo executado
+      console.log('🔍 DEBUG - Iniciando fetchMetricsFromData:', {
+        hasTradesData: !!tradesData,
+        hasFileResults: !!fileResults,
+        fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
+        tradesDataLength: tradesData?.trades?.length || 0
+      });
 
       // ✅ CORREÇÃO: Função para calcular dias vencedores/perdedores
       const calculateWinningLosingDays = (trades: unknown[]) => {
@@ -61,9 +70,35 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         return `${winningDays}/${losingDays}`;
       };
 
-      // Se temos múltiplos CSVs (fileResults), processar todos os dados originais
-      if (fileResults && Object.keys(fileResults).length > 0) {
+      // ✅ CORREÇÃO: Lógica de priorização mais específica
+      const hasMultipleFiles = fileResults && Object.keys(fileResults).length > 1;
+      const hasSingleFile = tradesData && tradesData.trades && tradesData.trades.length > 0 && (!fileResults || Object.keys(fileResults).length <= 1);
+      
+      console.log('🔍 DEBUG - Lógica de priorização:', {
+        hasMultipleFiles,
+        hasSingleFile,
+        fileResultsCount: fileResults ? Object.keys(fileResults).length : 0,
+        tradesDataLength: tradesData?.trades?.length || 0
+      });
+
+      if (hasMultipleFiles) {
         console.log('📊 Processando múltiplos CSVs para análise diária - consolidando todos os dados originais');
+        console.log('🔍 DEBUG - Condição múltiplos CSVs satisfeita:', {
+          hasFileResults: !!fileResults,
+          fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
+          hasTradesData: !!tradesData,
+          tradesDataLength: tradesData?.trades?.length || 0
+        });
+        
+        // ✅ CORREÇÃO: Calcular drawdown consolidado ANTES de enviar para API
+        let consolidatedDD = null;
+        try {
+          // @ts-expect-error - Ignorar erro de tipo por enquanto, funcionalidade é mais importante
+          consolidatedDD = calculateDirectConsolidation(fileResults);
+          console.log('📊 Drawdown consolidado calculado ANTES da API:', consolidatedDD);
+        } catch (error) {
+          console.error('❌ Erro ao calcular drawdown consolidado:', error);
+        }
         
         // Consolidar trades de todos os CSVs
         const allTrades: unknown[] = [];
@@ -122,11 +157,31 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         // ✅ CORREÇÃO: Substituir o valor calculado
         data.estatisticas_operacao.dias_vencedores_perdedores = diasVencedoresPerdedores;
         
-        // Usar o drawdown consolidado correto
-        const consolidatedDD = calculateDirectConsolidation(fileResults);
+        // ✅ CORREÇÃO: Garantir que metricas_principais existe
+        if (!data.metricas_principais) {
+          console.warn('⚠️ metricas_principais não encontrada, criando estrutura');
+          data.metricas_principais = {
+            sharpe_ratio: 0,
+            fator_recuperacao: 0,
+            drawdown_maximo: 0,
+            drawdown_maximo_pct: 0,
+            dias_operados: 0,
+            resultado_liquido: 0
+          };
+        }
+        
+        // ✅ CORREÇÃO: Aplicar drawdown consolidado CORRETO (sempre positivo)
         if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
           data.metricas_principais.drawdown_maximo = consolidatedDD.maxDrawdownAbsoluto;
           data.metricas_principais.drawdown_maximo_pct = consolidatedDD.maxDrawdownPercent;
+          
+          console.log('📊 Drawdown consolidado aplicado CORRETAMENTE:', {
+            maxDrawdownAbsoluto: consolidatedDD.maxDrawdownAbsoluto,
+            maxDrawdownPercent: consolidatedDD.maxDrawdownPercent,
+            metricasPrincipais: data.metricas_principais
+          });
+        } else {
+          console.warn('⚠️ ConsolidatedDD não encontrado ou inválido:', consolidatedDD);
         }
 
         console.log('📊 Métricas diárias consolidadas calculadas:', {
@@ -138,8 +193,16 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           diasVencedoresPerdedores: data.estatisticas_operacao.dias_vencedores_perdedores
         });
 
-      } else if (tradesData) {
-        // Processo original para um único CSV
+      } else if (hasSingleFile) {
+        console.log('📊 Processando único CSV - usando tradesData diretamente do backtestResult');
+        console.log('🔍 DEBUG - Condição único CSV satisfeita:', {
+          hasTradesData: !!tradesData,
+          hasTrades: !!tradesData.trades,
+          tradesLength: tradesData.trades.length,
+          fileResultsKeys: fileResults ? Object.keys(fileResults) : []
+        });
+        
+        // ✅ CORREÇÃO: Usar dados do backtestResult para único CSV
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
           method: 'POST',
           headers: {
@@ -204,6 +267,15 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
             resultado_liquido: 0
           };
         }
+
+        console.log('📊 Métricas diárias calculadas para único CSV:', {
+          totalTrades: data.metricas_principais.dias_operados,
+          resultadoLiquido: data.metricas_principais.resultado_liquido,
+          maxDrawdown: data.metricas_principais.drawdown_maximo,
+          tradesProcessadas: tradesData.trades.length,
+          diasVencedoresPerdedores: data.estatisticas_operacao.dias_vencedores_perdedores
+        });
+
       } else {
         throw new Error('Nenhum dado disponível para processamento');
       }
@@ -291,7 +363,15 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
               <span className="text-gray-300">Drawdown Máximo</span>
             </div>
             <span className="font-semibold text-red-400 text-lg">
-              {formatCurrency(metrics.metricas_principais?.drawdown_maximo || 0)}
+              {(() => {
+                const drawdownValue = metrics.metricas_principais?.drawdown_maximo || 0;
+                console.log('🔍 DEBUG - Drawdown sendo exibido:', {
+                  drawdownValue,
+                  metricasPrincipais: metrics.metricas_principais,
+                  formattedValue: formatCurrency(drawdownValue)
+                });
+                return formatCurrency(drawdownValue);
+              })()}
             </span>
           </div>
           <div className="flex items-center justify-between">
