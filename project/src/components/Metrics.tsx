@@ -32,13 +32,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
     try {
       let data: DailyMetrics;
 
-      // ✅ CORREÇÃO: Verificar qual caminho está sendo executado
-      console.log('🔍 DEBUG - Iniciando fetchMetricsFromData:', {
-        hasTradesData: !!tradesData,
-        hasFileResults: !!fileResults,
-        fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
-        tradesDataLength: tradesData?.trades?.length || 0
-      });
+
 
       // ✅ CORREÇÃO: Função para calcular dias vencedores/perdedores
       const calculateWinningLosingDays = (trades: unknown[]) => {
@@ -73,31 +67,17 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
       // ✅ CORREÇÃO: Lógica de priorização mais específica
       const hasMultipleFiles = fileResults && Object.keys(fileResults).length > 1;
       const hasSingleFile = tradesData && tradesData.trades && tradesData.trades.length > 0 && (!fileResults || Object.keys(fileResults).length <= 1);
-      
-      console.log('🔍 DEBUG - Lógica de priorização:', {
-        hasMultipleFiles,
-        hasSingleFile,
-        fileResultsCount: fileResults ? Object.keys(fileResults).length : 0,
-        tradesDataLength: tradesData?.trades?.length || 0
-      });
 
       if (hasMultipleFiles) {
-        console.log('📊 Processando múltiplos CSVs para análise diária - consolidando todos os dados originais');
-        console.log('🔍 DEBUG - Condição múltiplos CSVs satisfeita:', {
-          hasFileResults: !!fileResults,
-          fileResultsKeys: fileResults ? Object.keys(fileResults) : [],
-          hasTradesData: !!tradesData,
-          tradesDataLength: tradesData?.trades?.length || 0
-        });
+
         
         // ✅ CORREÇÃO: Calcular drawdown consolidado ANTES de enviar para API
         let consolidatedDD = null;
         try {
           // @ts-expect-error - Ignorar erro de tipo por enquanto, funcionalidade é mais importante
           consolidatedDD = calculateDirectConsolidation(fileResults);
-          console.log('📊 Drawdown consolidado calculado ANTES da API:', consolidatedDD);
         } catch (error) {
-          console.error('❌ Erro ao calcular drawdown consolidado:', error);
+          // Silent error handling
         }
         
         // Consolidar trades de todos os CSVs
@@ -114,14 +94,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           throw new Error('Nenhuma trade encontrada nos CSVs');
         }
 
-        console.log(`📊 Consolidando dados de ${Object.keys(fileResults).length} CSVs com ${allTrades.length} trades totais`);
 
-        // ✅ CORREÇÃO: Adicionar logs para verificar dados enviados
-        console.log('📊 Dados sendo enviados para API:', {
-          totalTrades: allTrades.length,
-          sampleTrade: allTrades[0],
-          lastTrade: allTrades[allTrades.length - 1]
-        });
 
         // Enviar todas as trades consolidadas para o backend para cálculo das métricas diárias
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
@@ -467,13 +440,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         data.metricas_principais.sharpe_ratio = sharpeRatioCalculado;
         data.metricas_principais.fator_recuperacao = fatorRecuperacaoCalculado;
         
-        console.log('📊 Valores calculados localmente:', {
-          payoffDiario: payoffDiarioCalculado,
-          sharpeRatio: sharpeRatioCalculado,
-          fatorRecuperacao: fatorRecuperacaoCalculado,
-          ganhosPerdas: ganhosPerdasCalculados,
-          estatisticas: estatisticasCalculadas
-        });
+
         
         // ✅ CORREÇÃO: Garantir que metricas_principais existe
         if (!data.metricas_principais) {
@@ -493,32 +460,15 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           data.metricas_principais.drawdown_maximo = consolidatedDD.maxDrawdownAbsoluto;
           data.metricas_principais.drawdown_maximo_pct = consolidatedDD.maxDrawdownPercent;
           
-          console.log('📊 Drawdown consolidado aplicado CORRETAMENTE:', {
-            maxDrawdownAbsoluto: consolidatedDD.maxDrawdownAbsoluto,
-            maxDrawdownPercent: consolidatedDD.maxDrawdownPercent,
-            metricasPrincipais: data.metricas_principais
-          });
+
         } else {
-          console.warn('⚠️ ConsolidatedDD não encontrado ou inválido:', consolidatedDD);
+          // Silent error handling
         }
 
-        console.log('📊 Métricas diárias consolidadas calculadas:', {
-          totalTrades: data.metricas_principais.dias_operados,
-          resultadoLiquido: data.metricas_principais.resultado_liquido,
-          maxDrawdown: data.metricas_principais.drawdown_maximo,
-          arquivosProcessados: Object.keys(fileResults).length,
-          tradesConsolidadas: allTrades.length,
-          diasVencedoresPerdedores: data.estatisticas_operacao.dias_vencedores_perdedores
-        });
+
 
       } else if (hasSingleFile) {
-        console.log('📊 Processando único CSV - usando tradesData diretamente do backtestResult');
-        console.log('🔍 DEBUG - Condição único CSV satisfeita:', {
-          hasTradesData: !!tradesData,
-          hasTrades: !!tradesData?.trades,
-          tradesLength: tradesData?.trades?.length || 0,
-          fileResultsKeys: fileResults ? Object.keys(fileResults) : []
-        });
+
         
         // ✅ CORREÇÃO: Usar dados do backtestResult para único CSV
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
@@ -538,7 +488,6 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         // ✅ CORREÇÃO: Calcular dias_vencedores_perdedores diretamente dos trades
         const diasVencedoresPerdedores = calculateWinningLosingDays(tradesData.trades || []);
-        console.log('📊 Dias vencedores/perdedores calculados:', diasVencedoresPerdedores);
         
         // ✅ CORREÇÃO: Calcular payoff diário localmente para CSV único
         const calcularPayoffDiario = (trades: unknown[]) => {
@@ -813,10 +762,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         const estatisticasCalculadas = calcularEstatisticasOperacao(tradesData.trades || []);
         
         // ✅ CORREÇÃO: Adicionar logs de debug para verificar dados
-        console.log('📊 Dados recebidos da API:', data);
-        console.log('📊 Estrutura estatisticas_operacao:', data.estatisticas_operacao);
-        console.log('📊 Campo dias_vencedores_perdedores:', data.estatisticas_operacao?.dias_vencedores_perdedores);
-        console.log('📊 Tipo do campo:', typeof data.estatisticas_operacao?.dias_vencedores_perdedores);
+
         
         // ✅ CORREÇÃO: Verificar se estatisticas_operacao existe e tem dados
         if (!data.estatisticas_operacao) {
@@ -872,13 +818,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         data.metricas_principais.sharpe_ratio = sharpeRatioCalculado;
         data.metricas_principais.fator_recuperacao = fatorRecuperacaoCalculado;
         
-        console.log('📊 Valores calculados localmente (CSV único):', {
-          payoffDiario: payoffDiarioCalculado,
-          sharpeRatio: sharpeRatioCalculado,
-          fatorRecuperacao: fatorRecuperacaoCalculado,
-          ganhosPerdas: ganhosPerdasCalculados,
-          estatisticas: estatisticasCalculadas
-        });
+
         
         // ✅ CORREÇÃO: Verificar se metricas_principais existe
         if (!data.metricas_principais) {
@@ -893,13 +833,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           };
         }
 
-        console.log('📊 Métricas diárias calculadas para único CSV:', {
-          totalTrades: data.metricas_principais.dias_operados,
-          resultadoLiquido: data.metricas_principais.resultado_liquido,
-          maxDrawdown: data.metricas_principais.drawdown_maximo,
-          tradesProcessadas: tradesData?.trades?.length || 0,
-          diasVencedoresPerdedores: data.estatisticas_operacao.dias_vencedores_perdedores
-        });
+
 
       } else {
         throw new Error('Nenhum dado disponível para processamento');
@@ -1114,7 +1048,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
             <span className="font-semibold text-lg text-white">
               {(() => {
                 const value = metrics.estatisticas_operacao?.dias_vencedores_perdedores || '0/0';
-                console.log('📊 Valor sendo exibido para dias_vencedores_perdedores:', value);
+        
                 return value;
               })()}
             </span>

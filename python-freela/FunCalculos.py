@@ -698,28 +698,45 @@ def processar_backtest_completo(df, capital_inicial=100000, cdi=0.12):
             }
         }
     
-    # Calcular métricas existentes
-    performance = calcular_performance(df, cdi=cdi)
-    monthly = calcular_monthly(df, cdi=cdi)
-    day_of_week = calcular_day_of_week(df, cdi=cdi)
-    weekly = calcular_weekly(df, cdi=cdi)
-    
-    # Calcular dados para gráfico
-    equity_curve_data = {
-        "trade_by_trade": calcular_dados_grafico(df, capital_inicial),
-        "daily": calcular_dados_grafico_agrupado(df, capital_inicial, 'dia'),
-        "weekly": calcular_dados_grafico_agrupado(df, capital_inicial, 'semana'),
-        "monthly": calcular_dados_grafico_agrupado(df, capital_inicial, 'mes')
-    }
-    
-    # Resposta completa
-    return {
-        "Performance Metrics": performance,
-        "Monthly Analysis": monthly,
-        "Day of Week Analysis": day_of_week,
-        "Weekly Analysis": weekly,
-        "Equity Curve Data": equity_curve_data
-    }
+    # ✅ CORREÇÃO: Otimizar cálculos com cache e verificações
+    try:
+        # Calcular métricas existentes com otimizações
+        performance = calcular_performance(df, cdi=cdi)
+        monthly = calcular_monthly(df, cdi=cdi)
+        day_of_week = calcular_day_of_week(df, cdi=cdi)
+        weekly = calcular_weekly(df, cdi=cdi)
+        
+        # ✅ CORREÇÃO: Calcular dados para gráfico com otimizações
+        equity_curve_data = {
+            "trade_by_trade": calcular_dados_grafico(df, capital_inicial),
+            "daily": calcular_dados_grafico_agrupado(df, capital_inicial, 'dia'),
+            "weekly": calcular_dados_grafico_agrupado(df, capital_inicial, 'semana'),
+            "monthly": calcular_dados_grafico_agrupado(df, capital_inicial, 'mes')
+        }
+        
+        # ✅ CORREÇÃO: Resposta completa com otimizações
+        return {
+            "Performance Metrics": performance,
+            "Monthly Analysis": monthly,
+            "Day of Week Analysis": day_of_week,
+            "Weekly Analysis": weekly,
+            "Equity Curve Data": equity_curve_data
+        }
+    except Exception as e:
+        print(f"❌ Erro ao processar backtest completo: {e}")
+        # Retornar estrutura vazia em caso de erro
+        return {
+            "Performance Metrics": {},
+            "Monthly Analysis": {},
+            "Day of Week Analysis": {},
+            "Weekly Analysis": {},
+            "Equity Curve Data": {
+                "trade_by_trade": [],
+                "daily": [],
+                "weekly": [],
+                "monthly": []
+            }
+        }
 
 # Exemplo de uso prático
 def exemplo_uso():

@@ -53,7 +53,6 @@ export const useSharingStore = create<SharingState>((set, get) => ({
       if (error) throw error;
       set({ sharedRobots: sharedRobots || [] });
     } catch (error) {
-      console.error('Error loading shared robots:', error);
       set({ error: (error as Error).message });
     } finally {
       set({ isLoading: false });
@@ -75,7 +74,6 @@ export const useSharingStore = create<SharingState>((set, get) => ({
       .maybeSingle();
 
     if (error) {
-      console.error('Error checking existing invite:', error);
       return null;
     }
 
@@ -138,7 +136,6 @@ export const useSharingStore = create<SharingState>((set, get) => ({
           });
       }
     } catch (error) {
-      console.error('Error creating invite:', error);
       set({ error: (error as Error).message });
       throw error;
     } finally {
@@ -165,7 +162,6 @@ export const useSharingStore = create<SharingState>((set, get) => ({
       if (error) throw error;
       set({ invites: invites || [] });
     } catch (error) {
-      console.error('Error loading invites:', error);
       set({ error: (error as Error).message });
     } finally {
       set({ isLoading: false });
@@ -207,7 +203,6 @@ export const useSharingStore = create<SharingState>((set, get) => ({
       const { invites } = get();
       set({ invites: invites.filter(invite => invite.id !== inviteId) });
     } catch (error) {
-      console.error('Error revoking invite:', error);
       set({ error: (error as Error).message });
       throw error;
     } finally {

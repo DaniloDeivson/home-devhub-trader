@@ -223,28 +223,7 @@ const normalizeDate = (dateStr) => {
 // Função para calcular métricas de eventos especiais - MELHORADA
 const calculateSpecialEventsMetrics = (tradesData) => {
   if (!tradesData || !Array.isArray(tradesData)) {
-    console.warn('Dados de trades inválidos:', tradesData);
     return [];
-  }
-  
-  console.log('=== DEBUG EVENTOS ESPECIAIS ===');
-  console.log('Total de trades recebidos:', tradesData.length);
-  
-  // Mostrar amostras de trades para debug
-  if (tradesData.length > 0) {
-    console.log('Primeiro trade:', tradesData[0]);
-    console.log('Último trade:', tradesData[tradesData.length - 1]);
-    
-    // Verificar quais campos de data existem
-    const firstTrade = tradesData[0];
-    const dateFields = Object.keys(firstTrade).filter(key => 
-      key.toLowerCase().includes('date') || 
-      key.toLowerCase().includes('data') ||
-      key.toLowerCase().includes('timestamp') ||
-      key.toLowerCase().includes('abertura') ||
-      key.toLowerCase().includes('entry')
-    );
-    console.log('Campos de data encontrados:', dateFields);
   }
   
   const specialDatesMap = new Map();
@@ -262,7 +241,7 @@ const calculateSpecialEventsMetrics = (tradesData) => {
     });
   });
   
-  console.log('Datas especiais mapeadas:', specialDatesMap.size);
+
   
   const eventMetrics = {};
   
@@ -308,13 +287,7 @@ const calculateSpecialEventsMetrics = (tradesData) => {
       }
     }
     
-    if (index < 5) { // Debug dos primeiros 5 trades
-      console.log(`Trade ${index + 1}:`, {
-        originalDate: possibleDateFields.find(d => d),
-        normalizedDate: tradeDate,
-        isSpecialDate: tradeDate && specialDatesMap.has(tradeDate)
-      });
-    }
+
     
     tradesProcessados++;
     
@@ -373,7 +346,7 @@ const calculateSpecialEventsMetrics = (tradesData) => {
   
   console.log(`Trades processados: ${tradesProcessados}`);
   console.log(`Trades com eventos especiais: ${tradesComEventos}`);
-  console.log('=== FIM DEBUG ===');
+
   
   // Calcular métricas finais
   return Object.values(eventMetrics)

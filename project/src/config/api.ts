@@ -58,19 +58,4 @@ export const apiRequest = async (
     ...defaultOptions,
     ...options,
   });
-};
-
-// Log da configuração atual (apenas em desenvolvimento)
-if (isDevelopment) {
-  console.log('🔧 API Config:', {
-    environment: 'development',
-    baseUrl: API_CONFIG.BASE_URL,
-    endpoints: {
-      tabela: buildApiUrl('/api/tabela'),
-      correlacao: buildApiUrl('/api/correlacao'),
-      trades: buildApiUrl('/api/trades'),
-      disciplina: buildApiUrl('/api/disciplina-completa'),
-      chat: buildApiUrl('/chat'),
-    }
-  });
-} 
+}; 

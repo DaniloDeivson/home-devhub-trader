@@ -54,7 +54,7 @@ async function retryWithExponentialBackoff<T>(
 ): Promise<T> {
   let currentTry = 0;
 
-  while (true) {
+  while (currentTry < maxRetries) {
     try {
       return await operation();
     } catch (error) {
@@ -73,10 +73,11 @@ async function retryWithExponentialBackoff<T>(
         ? parseInt(retryAfter) * 1000
         : initialDelay * Math.pow(2, currentTry - 1);
 
-      console.log(`Retrying after ${waitTime}ms...`);
       await delay(waitTime);
     }
   }
+  
+  throw new Error('Max retries reached');
 }
 
 // Function to extract structured data from text response

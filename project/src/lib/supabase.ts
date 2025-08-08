@@ -15,8 +15,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce',
-    debug: true
+    flowType: 'pkce'
   },
   global: {
     headers: { 
@@ -40,25 +39,19 @@ export async function testSupabaseConnection(retries = 3, delay = 1000) {
     try {
       const { error } = await supabase.auth.getSession();
       if (!error) {
-        console.log('Successfully connected to Supabase');
         return true;
       }
-      console.warn(`Connection attempt ${i + 1} failed: ${error.message}`);
       if (i < retries - 1) {
         const backoffDelay = delay * Math.pow(2, i);
-        console.log(`Retrying in ${backoffDelay}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     } catch (error) {
-      console.error('Supabase connection error:', error);
       if (i < retries - 1) {
         const backoffDelay = delay * Math.pow(2, i);
-        console.log(`Retrying in ${backoffDelay}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     }
   }
-  console.error('Failed to establish Supabase connection after all retries');
   return false;
 }
 
@@ -68,14 +61,12 @@ export async function initializeSupabase() {
     // Test the connection with retries
     const isConnected = await testSupabaseConnection();
     if (!isConnected) {
-      console.error('Failed to establish Supabase connection after retries');
       return false;
     }
 
     // Get current session with error handling
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-      console.error('Session error:', sessionError.message);
       return false;
     }
 
@@ -83,20 +74,17 @@ export async function initializeSupabase() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
         if (event === 'SIGNED_OUT') {
-          console.log('User signed out, clearing cache');
           // Add any cleanup logic here
         } else if (event === 'SIGNED_IN') {
-          console.log('User signed in, refreshing data');
           // Add any refresh logic here
         }
       } catch (error) {
-        console.error('Error in auth state change handler:', error);
+        // Silent error handling
       }
     });
 
     return true;
   } catch (error) {
-    console.error('Failed to initialize Supabase:', error);
     return false;
   }
 }

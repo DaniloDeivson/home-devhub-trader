@@ -200,7 +200,6 @@ export const useRobotStore = create<RobotState>((set, get) => ({
       set({ robotLimit: limit });
       return limit;
     } catch (error) {
-      console.error('Error getting robot limit:', error);
       return get().robotLimit; // Return current limit if there's an error
     }
   },

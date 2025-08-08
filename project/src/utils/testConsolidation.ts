@@ -22,43 +22,18 @@ const testTrades = [
 ];
 
 export function runConsolidationTest() {
-  console.log('🧪 TESTE PANDAS CONSOLIDATION');
-  console.log('================================');
-  
-  console.log('📊 Dados de entrada (trades individuais):');
-  testTrades.forEach(trade => {
-    console.log(`  ${trade.exit_date} | Estratégia ${trade.strategy} | R$ ${trade.pnl}`);
-  });
-  
-  console.log('\n🔄 Processando consolidação...');
   const consolidatedData = calculateConsolidatedDrawdown(testTrades, 'trade');
-  
-  console.log('\n📊 Resultado esperado (pandas):');
-  console.log('Data       | Resultado | Cumsum | Max_cumsum | Drawdown');
-  console.log('2025-01-01 | 50        | 50     | 50         | 0');
-  console.log('2025-01-02 | -20       | 30     | 50         | -20');
-  console.log('2025-01-03 | 100       | 130    | 130        | 0');
-  
-  console.log('\n📊 Resultado obtido (nossa implementação):');
-  console.log('Data       | Resultado | Cumsum | Max_cumsum | Drawdown');
-  consolidatedData.forEach(point => {
-    const drawdownRaw = point.saldo - point.peak; // cumsum - max_cumsum
-    console.log(`${point.date} | ${point.trade_result?.toString().padStart(9)} | ${point.saldo.toString().padStart(6)} | ${point.peak.toString().padStart(10)} | ${drawdownRaw.toString().padStart(8)}`);
-  });
-  
-  console.log('\n📊 Estatísticas finais:');
   const maxDD = getConsolidatedMaxDrawdown(consolidatedData);
-  console.log(`  Drawdown máximo: ${maxDD.maxDrawdownRaw} (R$ ${maxDD.maxDrawdownAbsoluto})`);
-  console.log(`  Percentual: ${maxDD.maxDrawdownPercent.toFixed(2)}%`);
-  console.log(`  Peak máximo: R$ ${maxDD.peakMaximo}`);
-  console.log(`  Resultado final: R$ ${maxDD.resultadoFinal}`);
   
-  console.log('\n✅ VALIDAÇÃO:');
-  console.log(`  Esperado: Drawdown máximo = -20`);
-  console.log(`  Obtido: Drawdown máximo = ${maxDD.maxDrawdownRaw}`);
-  console.log(`  Status: ${maxDD.maxDrawdownRaw === -20 ? '✅ CORRETO' : '❌ INCORRETO'}`);
-  
-  return consolidatedData;
+  return {
+    consolidatedData,
+    maxDrawdown: maxDD.maxDrawdownRaw,
+    maxDrawdownAmount: maxDD.maxDrawdownAbsoluto,
+    maxDrawdownPercent: maxDD.maxDrawdownPercent,
+    peakMaximo: maxDD.peakMaximo,
+    resultadoFinal: maxDD.resultadoFinal,
+    isValid: maxDD.maxDrawdownRaw === -20
+  };
 }
 
 // Para testar no console do navegador:

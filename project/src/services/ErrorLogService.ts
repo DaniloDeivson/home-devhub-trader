@@ -25,11 +25,6 @@ export class ErrorLogService {
     if (this.errors.length > this.maxErrors) {
       this.errors.pop();
     }
-    
-    // Also log to console
-    console.error(`[${errorRecord.timestamp.toISOString()}]`, 
-      context ? `[${context}]` : '', 
-      error);
   }
   
   /**

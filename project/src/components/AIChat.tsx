@@ -162,10 +162,10 @@ export function AIChat({ onGenerateCode, robotId, robotName, selectedVersion }: 
 
 useEffect(() => {
   if (robotId) {
-    console.log('Carregando versões para robotId:', robotId);
+
     
     loadVersions(robotId).then(loadedVersions => {
-      console.log('Versões carregadas:', loadedVersions.length);
+      
       
       if (loadedVersions.length > 0) {
         let currentVersion;
@@ -568,7 +568,10 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
     });
 
     let response;
-    while (true) {
+    let attempts = 0;
+    const maxAttempts = 60; // 60 seconds timeout
+    
+    while (attempts < maxAttempts) {
       const runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       
       if (runStatus.status === 'completed') {
@@ -578,7 +581,13 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
       } else if (runStatus.status === 'failed') {
         throw new Error('Assistant failed to process the request');
       }
+      
+      attempts++;
       await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    if (attempts >= maxAttempts) {
+      throw new Error('Request timeout: Assistant took too long to respond');
     }
 
     if (!response) {

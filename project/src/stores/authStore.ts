@@ -42,7 +42,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
         throw error;
       }
-      console.log("opa",email, password);
       await get().loadProfile();
     } catch (error) {
       throw error;
@@ -101,7 +100,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       return { user };
     } catch (error) {
-      console.error('Registration error:', error);
       throw error;
     }
   },
@@ -129,7 +127,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       set({ isLoading: false });
     } catch (error) {
-      console.error('Error loading profile:', error);
       set({ isLoading: false });
     }
   },
@@ -149,7 +146,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Reload profile to get updated data
       await get().loadProfile();
     } catch (error) {
-      console.error('Error updating profile:', error);
       throw error;
     }
   },
@@ -175,7 +171,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Update local state
       set({ profile: { ...profile, token_balance: newBalance } });
     } catch (error) {
-      console.error('Error updating token balance:', error);
       throw error;
     }
   }

@@ -120,7 +120,6 @@ export function AdminPanel() {
 
       setUsers(combinedUsers);
     } catch (err) {
-      console.error('Error loading users:', err);
       setError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
       setIsLoading(false);
@@ -174,7 +173,6 @@ export function AdminPanel() {
       setShowDeleteUserModal(false);
       setUserToDelete(null);
     } catch (err) {
-      console.error('Error deleting user:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete user');
       setTimeout(() => setError(null), 5000);
     } finally {
@@ -216,7 +214,6 @@ export function AdminPanel() {
       setSelectedUser(null);
       setTokenAmount('10');
     } catch (err) {
-      console.error('Error adding tokens:', err);
       setError(err instanceof Error ? err.message : 'Failed to add tokens');
       setTimeout(() => setError(null), 3000);
     } finally {
@@ -277,7 +274,6 @@ export function AdminPanel() {
       // Refresh user list
       await loadUsers();
     } catch (err) {
-      console.error('Error adding tokens directly:', err);
       setError(err instanceof Error ? err.message : 'Failed to add tokens');
       setTimeout(() => setError(null), 3000);
     } finally {
@@ -326,7 +322,6 @@ export function AdminPanel() {
       setUserToChangePlan(null);
       setSelectedPlan('');
     } catch (err) {
-      console.error('Error changing plan:', err);
       setError(err instanceof Error ? err.message : 'Failed to change plan');
       setTimeout(() => setError(null), 3000);
     } finally {
@@ -369,7 +364,6 @@ export function AdminPanel() {
       setSuccess(`User status updated to ${newStatus}`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      console.error('Error updating user status:', err);
       setError(err instanceof Error ? err.message : 'Failed to update user status');
       setTimeout(() => setError(null), 3000);
     }

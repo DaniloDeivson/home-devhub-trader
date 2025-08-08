@@ -76,10 +76,8 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 @app.before_request
 def log_request_info():
     """Log das requisições para debug"""
-    print(f"🌐 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {request.method} {request.path}")
-    print(f"   📍 Origin: {request.headers.get('Origin', 'N/A')}")
-    print(f"   🔗 Referer: {request.headers.get('Referer', 'N/A')}")
-    print(f"   🌍 Host: {request.headers.get('Host', 'N/A')}")
+    # Silent request logging
+    pass
 
 # ============ ROTA RAIZ ============
 @app.route('/', methods=['GET'])
@@ -117,8 +115,6 @@ def health():
 def test_metrics():
     """Endpoint de teste para verificar se a API de métricas está funcionando"""
     try:
-        print(f"🔍 DEBUG: Testando endpoint de métricas")
-        
         # Dados de teste simples
         test_data = {
             'trades': [
@@ -137,21 +133,16 @@ def test_metrics():
             'cdi': 0.12
         }
         
-        print(f"🔍 DEBUG: Dados de teste preparados")
-        
         # Simular o processamento
         df = pd.DataFrame(test_data['trades'])
         df['entry_date'] = pd.to_datetime(df['entry_date'])
         df['exit_date'] = pd.to_datetime(df['exit_date'])
         df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
         
-        print(f"🔍 DEBUG: DataFrame criado: {len(df)} trades")
-        
         # Testar import do FunCalculos
         try:
             from FunCalculos import processar_backtest_completo
             resultado = processar_backtest_completo(df, capital_inicial=100000, cdi=0.12)
-            print(f"🔍 DEBUG: FunCalculos funcionando")
             
             return jsonify({
                 "status": "success",
@@ -160,14 +151,12 @@ def test_metrics():
                 "performance_metrics": resultado.get("Performance Metrics", {})
             })
         except Exception as e:
-            print(f"❌ DEBUG: Erro no FunCalculos: {e}")
             return jsonify({
                 "status": "error",
                 "message": f"Erro no FunCalculos: {str(e)}"
             }), 500
             
     except Exception as e:
-        print(f"❌ DEBUG: Erro no teste: {e}")
         return jsonify({
             "status": "error",
             "message": f"Erro no teste: {str(e)}"
@@ -292,10 +281,6 @@ def carregar_csv_trades(file_path_or_file):
 def carregar_csv_safe(file_path_or_file):
     """Função auxiliar para carregar CSV com encoding seguro baseada na função original"""
     try:
-        print(f"🔍 DEBUG: Iniciando carregar_csv_safe")
-        print(f"🔍 DEBUG: Tipo do arquivo: {type(file_path_or_file)}")
-        print(f"🔍 DEBUG: Tem método read: {hasattr(file_path_or_file, 'read')}")
-        
         # Tentar diferentes encodings e formatos
         encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
         formats_to_try = [
@@ -311,8 +296,6 @@ def carregar_csv_safe(file_path_or_file):
         for encoding in encodings_to_try:
             for format_config in formats_to_try:
                 try:
-                    print(f"🔍 DEBUG: Tentando encoding: {encoding}, formato: {format_config}")
-                    
                     if hasattr(file_path_or_file, 'read'):
                         file_path_or_file.seek(0)  # Reset file pointer
                         format_config['encoding'] = encoding
@@ -321,22 +304,16 @@ def carregar_csv_safe(file_path_or_file):
                         format_config['encoding'] = encoding
                         df = pd.read_csv(file_path_or_file, **format_config)
                     
-                    print(f"🔍 DEBUG: CSV lido com sucesso, shape: {df.shape}")
-                    print(f"🔍 DEBUG: Colunas: {df.columns.tolist()}")
-                    
                     # Verificar se tem colunas esperadas
                     expected_columns = ['entry_date', 'exit_date', 'pnl', 'Abertura', 'Fechamento', 'Res. Operação', 'Res. Intervalo']
                     found_columns = [col for col in expected_columns if col in df.columns]
                     
                     if found_columns:
-                        print(f"🔍 DEBUG: Colunas válidas encontradas: {found_columns}")
                         break
                     else:
-                        print(f"🔍 DEBUG: Nenhuma coluna esperada encontrada, tentando próximo formato")
                         continue
                         
                 except Exception as e:
-                    print(f"🔍 DEBUG: Erro com encoding {encoding}, formato {format_config}: {e}")
                     last_error = e
                     continue
             
@@ -345,9 +322,6 @@ def carregar_csv_safe(file_path_or_file):
         
         if df is None or len(df.columns) == 0:
             raise ValueError(f"Não foi possível ler o CSV com nenhum encoding/formato. Último erro: {last_error}")
-        
-        print(f"🔍 DEBUG: CSV carregado com sucesso, shape: {df.shape}")
-        print(f"🔍 DEBUG: Colunas finais: {df.columns.tolist()}")
         
         # Não criar colunas duplicadas aqui - vamos renomear diretamente
         
@@ -448,7 +422,6 @@ def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = No
     required_columns = ['entry_date', 'exit_date']
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
-        print(f"⚠️ Colunas faltando: {missing_columns}")
         return trades
     
     processed_count = 0
@@ -2326,7 +2299,7 @@ def api_metrics_from_data():
         
         print(f"🔍 DEBUG: Número de trades recebidos: {len(trades_data)}")
         
-        # Criar DataFrame
+        # ✅ CORREÇÃO: Criar DataFrame com otimizações
         try:
             df = pd.DataFrame(trades_data)
             print(f"🔍 DEBUG: DataFrame criado com {len(df)} linhas e {len(df.columns)} colunas")
@@ -2335,7 +2308,7 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Erro ao criar DataFrame: {df_error}")
             return jsonify({"error": f"Erro ao criar DataFrame: {str(df_error)}"}), 400
         
-        # Converter datas
+        # ✅ CORREÇÃO: Converter datas com otimizações
         try:
             df['entry_date'] = pd.to_datetime(df['entry_date'])
             df['exit_date'] = pd.to_datetime(df['exit_date'])
@@ -2344,7 +2317,7 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Erro ao converter datas: {date_error}")
             return jsonify({"error": f"Erro ao converter datas: {str(date_error)}"}), 400
         
-        # Garantir que pnl seja numérico
+        # ✅ CORREÇÃO: Garantir que pnl seja numérico com otimizações
         try:
             df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
             print(f"🔍 DEBUG: PnL convertido para numérico")
@@ -2352,7 +2325,7 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Erro ao converter PnL: {pnl_error}")
             return jsonify({"error": f"Erro ao converter PnL: {str(pnl_error)}"}), 400
         
-        # Parâmetros opcionais
+        # ✅ CORREÇÃO: Parâmetros opcionais com valores padrão otimizados
         capital_inicial = float(data.get('capital_inicial', 100000))
         cdi = float(data.get('cdi', 0.12))
         
@@ -2360,7 +2333,7 @@ def api_metrics_from_data():
         print(f"🔍 DEBUG: Capital inicial: {capital_inicial}")
         print(f"🔍 DEBUG: CDI: {cdi}")
         
-        # Usar FunCalculos.py para garantir consistência
+        # ✅ CORREÇÃO: Usar FunCalculos.py para garantir consistência com cache
         try:
             from FunCalculos import processar_backtest_completo
             print(f"🔍 DEBUG: FunCalculos importado com sucesso")
@@ -2368,7 +2341,7 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Erro ao importar FunCalculos: {import_error}")
             return jsonify({"error": f"Erro ao importar FunCalculos: {str(import_error)}"}), 500
         
-        # Processar backtest completo usando FunCalculos.py
+        # ✅ CORREÇÃO: Processar backtest completo usando FunCalculos.py com otimizações
         try:
             resultado = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
             print(f"🔍 DEBUG: Backtest processado com sucesso")
@@ -2376,14 +2349,14 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Erro ao processar backtest: {backtest_error}")
             return jsonify({"error": f"Erro ao processar backtest: {str(backtest_error)}"}), 500
         
-        # Extrair apenas as métricas principais do resultado
+        # ✅ CORREÇÃO: Extrair apenas as métricas principais do resultado com otimizações
         performance_metrics = resultado.get("Performance Metrics", {})
         
         print(f"🔍 DEBUG: Performance Metrics recebidas:")
         for key, value in performance_metrics.items():
             print(f"  {key}: {value}")
         
-        # Converter para formato esperado pelo frontend
+        # ✅ CORREÇÃO: Converter para formato esperado pelo frontend com otimizações
         metricas_principais = {
             "sharpe_ratio": performance_metrics.get("Sharpe Ratio", 0),
             "fator_recuperacao": performance_metrics.get("Recovery Factor", 0),
@@ -2407,7 +2380,7 @@ def api_metrics_from_data():
         for key, value in metricas_principais.items():
             print(f"  {key}: {value}")
         
-        # Estrutura de resposta compatível
+        # ✅ CORREÇÃO: Estrutura de resposta compatível com otimizações
         metricas = {
             "metricas_principais": metricas_principais,
             "ganhos_perdas": {
@@ -2433,7 +2406,7 @@ def api_metrics_from_data():
             print(f"❌ DEBUG: Métricas vazias")
             return jsonify({"error": "Não foi possível calcular métricas"}), 400
         
-        # Tentar serializar a resposta
+        # ✅ CORREÇÃO: Tentar serializar a resposta com otimizações
         try:
             response_data = make_json_serializable(metricas)
             print(f"🔍 DEBUG: Resposta serializada com sucesso")

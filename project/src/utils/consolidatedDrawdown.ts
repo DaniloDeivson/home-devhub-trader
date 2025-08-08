@@ -53,7 +53,6 @@ export function calculateConsolidatedDrawdown(
   sortedTrades: Trade[], 
   timeRange: 'trade' | 'daily' | 'weekly' | 'monthly'
 ): ConsolidatedPoint[] {
-  console.log('🔧 CONSOLIDAÇÃO CRONOLÓGICA: Implementando metodologia correta para múltiplos CSVs');
   
   const alignedData: ConsolidatedPoint[] = [];
   
@@ -106,15 +105,7 @@ export function calculateConsolidatedDrawdown(
       const drawdownAbsoluto = Math.abs(drawdown); // Para exibição sempre positiva
       const drawdownPercentTotal = peakTotal > 0 ? (drawdownAbsoluto / peakTotal) * 100 : 0;
       
-      if (index < 3) {
-        console.log(`🔍 PANDAS METODOLOGIA - Data ${dateGroup.date}:`);
-        console.log(`  📊 Estratégias: ${Array.from(dateGroup.estrategias).join(',')}`);
-        console.log(`  📊 Resultado do dia: ${dateGroup.resultado}`);
-        console.log(`  📊 Cumsum (equity): ${runningTotal}`);
-        console.log(`  📊 Max_cumsum (peak): ${peakTotal}`);
-        console.log(`  📊 Drawdown (cumsum - max_cumsum): ${drawdown}`);
-        console.log(`  📊 Drawdown absoluto: ${drawdownAbsoluto}`);
-      }
+
       
       alignedData.push({
         fullDate: dateGroup.date,
@@ -196,15 +187,7 @@ export function calculateConsolidatedDrawdown(
       const drawdownAbsoluto = Math.abs(drawdown); // Para exibição sempre positiva
       const drawdownPercentTotal = peakTotal > 0 ? (drawdownAbsoluto / peakTotal) * 100 : 0;
       
-      if (index < 3) {
-        console.log(`🔍 PANDAS METODOLOGIA - Período ${period.date}:`);
-        console.log(`  📊 Estratégias: ${Array.from(period.estrategias).join(',')}`);
-        console.log(`  📊 Resultado do período: ${period.resultado}`);
-        console.log(`  📊 Cumsum (equity): ${runningTotal}`);
-        console.log(`  📊 Max_cumsum (peak): ${peakTotal}`);
-        console.log(`  📊 Drawdown (cumsum - max_cumsum): ${drawdown}`);
-        console.log(`  📊 Drawdown absoluto: ${drawdownAbsoluto}`);
-      }
+
       
       alignedData.push({
         fullDate: period.date,
@@ -222,18 +205,7 @@ export function calculateConsolidatedDrawdown(
     });
   }
   
-  console.log(`✅ CONSOLIDAÇÃO CRONOLÓGICA CONCLUÍDA: ${alignedData.length} pontos processados`);
-  if (alignedData.length > 0) {
-    // ✅ Calcular drawdown máximo seguindo pandas: Math.min(...drawdowns) 
-    // porque drawdown negativo indica perda em relação ao pico
-    const allDrawdownsRaw = alignedData.map(p => p.saldo - p.peak); // cumsum - max_cumsum
-    const maxDrawdownRaw = Math.min(...allDrawdownsRaw); // O mais negativo
-    const maxDrawdownAbsoluto = Math.abs(maxDrawdownRaw); // Para exibição positiva
-    
-    console.log(`📊 Drawdown máximo consolidado (pandas): ${maxDrawdownRaw} → R$ ${maxDrawdownAbsoluto.toLocaleString()}`);
-    console.log(`📊 Resultado final consolidado: R$ ${alignedData[alignedData.length - 1].saldo.toLocaleString()}`);
-    console.log(`📊 Peak máximo atingido: R$ ${Math.max(...alignedData.map(p => p.peak)).toLocaleString()}`);
-  }
+
   
   return alignedData;
 }
@@ -270,7 +242,7 @@ export function getConsolidatedMaxDrawdown(consolidatedData: ConsolidatedPoint[]
   const resultadoFinal = consolidatedData[consolidatedData.length - 1].saldo;
   const maxDrawdownPercent = peakMaximo > 0 ? (maxDrawdownAbsoluto / peakMaximo) * 100 : 0;
   
-  console.log(`📊 PANDAS DD MÁXIMO: ${maxDrawdownRaw} (${maxDrawdownPercent.toFixed(2)}%)`);
+
   
   return {
     maxDrawdownRaw,

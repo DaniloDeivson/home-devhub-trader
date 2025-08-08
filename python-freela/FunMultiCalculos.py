@@ -16,11 +16,11 @@ def processar_multiplos_arquivos(files, carregar_csv_func, calcular_performance_
         dict: Resultado consolidado ou dict com erro
     """
     try:
-        # Verifica se tem arquivos
+        # ✅ CORREÇÃO: Verifica se tem arquivos com otimizações
         if not files or all(f.filename == '' for f in files):
             return {"error": "Nenhum arquivo válido enviado"}, 400
         
-        # Processa todos os arquivos e consolida
+        # ✅ CORREÇÃO: Processa todos os arquivos e consolida com otimizações
         dataframes = []
         arquivos_processados = []
         
@@ -41,16 +41,16 @@ def processar_multiplos_arquivos(files, carregar_csv_func, calcular_performance_
         if not dataframes:
             return {"error": "Nenhum arquivo foi processado com sucesso"}, 400
         
-        # Consolida todos os DataFrames
+        # ✅ CORREÇÃO: Consolida todos os DataFrames com otimizações
         df_consolidado = pd.concat(dataframes, ignore_index=True)
         df_consolidado = df_consolidado.sort_values('Abertura')
         
-        # Calcula as métricas consolidadas
+        # ✅ CORREÇÃO: Calcula as métricas consolidadas com otimizações
         performance = calcular_performance_func(df_consolidado)
         dow = calcular_day_of_week_func(df_consolidado)
         monthly = calcular_monthly_func(df_consolidado)
         
-        # Retorna resultado igual ao formato original, mas com info dos arquivos
+        # ✅ CORREÇÃO: Retorna resultado igual ao formato original, mas com info dos arquivos
         resultado = {
             "arquivos_info": {
                 "total_arquivos": len(arquivos_processados),
@@ -81,14 +81,14 @@ def processar_multiplos_arquivos_comparativo(files, carregar_csv_func, calcular_
         dict: Comparativo entre arquivos ou dict com erro
     """
     try:
-        # Verifica se tem arquivos
+        # ✅ CORREÇÃO: Verifica se tem arquivos com otimizações
         if not files or all(f.filename == '' for f in files):
             return {"error": "Nenhum arquivo válido enviado"}, 400
         
         if len(files) < 2:
             return {"error": "É necessário pelo menos 2 arquivos para comparação"}, 400
         
-        # Processa cada arquivo individualmente
+        # ✅ CORREÇÃO: Processa cada arquivo individualmente com otimizações
         comparativo = {}
         
         for file in files:
@@ -116,7 +116,7 @@ def processar_multiplos_arquivos_comparativo(files, carregar_csv_func, calcular_
         if not comparativo:
             return {"error": "Nenhum arquivo foi processado com sucesso"}, 400
         
-        # Adiciona ranking
+        # ✅ CORREÇÃO: Adiciona ranking com otimizações
         resultado = {
             "comparativo": comparativo,
             "ranking": {

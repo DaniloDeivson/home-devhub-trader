@@ -7,7 +7,6 @@ import { initializeSupabase } from './lib/supabase';
 // Initialize Supabase before rendering
 initializeSupabase().then((initialized) => {
   if (!initialized) {
-    console.error('Failed to initialize Supabase');
     // Render a fallback UI instead of the main app
     createRoot(document.getElementById('root')!).render(
       <StrictMode>

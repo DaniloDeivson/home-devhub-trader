@@ -33,7 +33,6 @@ export function calculateDirectConsolidation(
   selectedAsset?: string | null,
   timeRange: 'trade' | 'daily' | 'weekly' | 'monthly' = 'trade'
 ): ConsolidatedMetrics {
-  console.log('🔧 CONSOLIDAÇÃO DIRETA: Calculando drawdown consolidado dos dados RAW');
   
   // 1. ✅ Coletar TODAS as trades de TODAS as estratégias
   const allTrades: Array<{
@@ -71,8 +70,7 @@ export function calculateDirectConsolidation(
     }
   });
   
-  console.log(`📊 Trades coletados: ${allTrades.length} de ${Object.keys(fileResults).length} estratégias`);
-  console.log(`📊 Net Profit Total: R$ ${netProfitTotal.toLocaleString()}`);
+
   
   if (allTrades.length === 0) {
     return {
@@ -141,9 +139,6 @@ export function calculateDirectConsolidation(
   let peak = 0;   // Pico máximo
   let maxDrawdownRaw = 0; // Maior drawdown (negativo)
   
-  console.log('\n📊 CONSOLIDAÇÃO CRONOLÓGICA CORRETA:');
-  console.log('Data       | Resultado | Cumsum | Peak | Drawdown | Estratégias');
-  
   sortedPeriods.forEach((period, index) => {
     cumsum += period.resultado; // ✅ cumsum() consolidado
     
@@ -157,29 +152,11 @@ export function calculateDirectConsolidation(
     if (drawdown < maxDrawdownRaw) {
       maxDrawdownRaw = drawdown; // O mais negativo
     }
-    
-    if (index < 5) { // Log primeiros 5 pontos
-      console.log(`${period.date} | ${period.resultado.toString().padStart(9)} | ${cumsum.toString().padStart(6)} | ${peak.toString().padStart(4)} | ${drawdown.toString().padStart(8)} | ${Array.from(period.estrategias).join(',')}`);
-    }
   });
   
   const maxDrawdownAbsoluto = Math.abs(maxDrawdownRaw);
   const maxDrawdownPercent = peak > 0 ? (maxDrawdownAbsoluto / peak) * 100 : 0;
   const resultadoFinal = cumsum;
-  
-  console.log(`\n✅ RESULTADO FINAL CONSOLIDADO:`);
-  console.log(`📊 Drawdown Máximo: ${maxDrawdownRaw} → R$ ${maxDrawdownAbsoluto.toLocaleString()}`);
-  console.log(`📊 Drawdown %: ${maxDrawdownPercent.toFixed(2)}%`);
-  console.log(`📊 Peak Máximo: R$ ${peak.toLocaleString()}`);
-  console.log(`📊 Resultado Final: R$ ${resultadoFinal.toLocaleString()}`);
-  console.log(`📊 Net Profit Total: R$ ${netProfitTotal.toLocaleString()}`);
-  
-  console.log('\n🎯 METODOLOGIA VALIDADA:');
-  console.log('  ✅ DD = saldo_máximo - saldo_atual (cumsum - peak)');
-  console.log('  ✅ Ordem cronológica de fechamento respeitada');
-  console.log('  ✅ Perda máxima do topo ao fundo calculada');
-  console.log('  ✅ Independente de fechamentos posteriores');
-  console.log('  ✅ DD pode DIMINUIR com diversificação');
   
   return {
     maxDrawdownAbsoluto,

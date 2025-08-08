@@ -249,9 +249,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       }
 
       try {
-        console.log('📊 Recalculando métricas com dados consolidados:', allTrades.length, 'trades');
-        console.log('📊 Exemplo de trades enviados:', allTrades.slice(0, 3));
-        
         const response = await fetch(buildApiUrl('/api/trades/metrics-from-data'), {
           method: 'POST',
           headers: {
@@ -262,8 +259,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
         if (response.ok) {
           const recalculatedData = await response.json();
-          console.log('📊 Resposta completa da API:', recalculatedData);
-          
+  
           // 🎯 CORREÇÃO: Se a API retorna valores 0, calcular localmente
           if (recalculatedData.metricas_principais) {
             const metrics = recalculatedData.metricas_principais;
@@ -273,7 +269,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
               const profitableTrades = allTrades.filter(trade => (trade.pnl || 0) > 0).length;
               const totalTrades = allTrades.length;
               metrics.win_rate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
-              console.log('🔧 Win Rate calculado localmente:', metrics.win_rate);
             }
             
             // Se fator_lucro é 0, calcular localmente
@@ -283,14 +278,12 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
               const grossLoss = Math.abs(allTrades.filter(trade => (trade.pnl || 0) < 0)
                 .reduce((sum, trade) => sum + (trade.pnl || 0), 0));
               metrics.fator_lucro = grossLoss > 0 ? grossProfit / grossLoss : 0;
-              console.log('🔧 Fator de Lucro calculado localmente:', metrics.fator_lucro);
             }
             
             // Se roi é 0, calcular localmente
             if (metrics.roi === 0 || metrics.roi === undefined) {
               const totalProfit = allTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
               metrics.roi = (totalProfit / 100000) * 100; // Assumindo investimento de R$ 100.000
-              console.log('🔧 ROI calculado localmente:', metrics.roi);
             }
             
             // Se drawdown_medio é 0, calcular localmente
@@ -314,20 +307,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
               });
               
               metrics.drawdown_medio = drawdownCount > 0 ? totalDrawdown / drawdownCount : 0;
-              console.log('🔧 Drawdown Médio calculado localmente:', metrics.drawdown_medio);
             }
           }
           
           setRecalculatedMetrics(recalculatedData);
-          
-          console.log('📊 Métricas recalculadas com sucesso:', {
-            sharpeRatio: recalculatedData.metricas_principais?.sharpe_ratio,
-            profitFactor: recalculatedData.metricas_principais?.fator_lucro,
-            winRate: recalculatedData.metricas_principais?.win_rate,
-            roi: recalculatedData.metricas_principais?.roi,
-            avgDrawdown: recalculatedData.metricas_principais?.drawdown_medio,
-            totalTrades: allTrades.length
-          });
         } else {
           console.error('❌ Erro ao recalcular métricas:', response.status);
           setRecalculatedMetrics(null);
@@ -339,7 +322,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     };
 
     recalculateMetrics();
-  }, [fileResults, showConsolidated, selectedFiles]);
+  }, [fileResults, showConsolidated, selectedFiles, selectedStrategy]); // ✅ CORREÇÃO: Adicionar selectedStrategy como dependência
+
   const [filteredTrades, setFilteredTrades] = useState<Trade[]>([]);
   const [tradeSearch, setTradeSearch] = useState('');
   const [emocional, setEmocional] = useState<any>(null);
@@ -370,41 +354,27 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
   // ✅ CORREÇÃO: Congelar métricas originais quando dados são carregados
   useEffect(() => {
     if (backtestResult && !frozenMetrics) {
-      console.log('✅ CONGELANDO métricas originais para sempre');
       const originalMetrics = convertToMetricsDashboardFormat(backtestResult);
       const originalTrades = { trades: Array.isArray(trades) ? trades : [] };
       
       setFrozenMetrics(originalMetrics);
       setFrozenTrades(originalTrades);
-      
-      console.log('✅ Métricas congeladas:', originalMetrics);
-      console.log('✅ Trades congelados:', originalTrades);
     }
   }, [backtestResult, frozenMetrics, trades]);
   
   // ✅ CORREÇÃO: Congelar análises originais quando dados são carregados
   useEffect(() => {
     if (backtestResult && !frozenEmocional && !frozenAnalysisResult && !frozenDrata) {
-      console.log('✅ CONGELANDO análises originais para sempre');
-      
       // Congelar análises originais dos dados da API
       setFrozenEmocional(emocional);
       setFrozenAnalysisResult(analysisResult);
       setFrozenDrata(drata);
-      
-      console.log('✅ Análises congeladas:', {
-        emocional: emocional,
-        analysisResult: analysisResult,
-        drata: drata
-      });
     }
   }, [backtestResult, emocional, analysisResult, drata, frozenEmocional, frozenAnalysisResult, frozenDrata]);
   
   // ✅ CORREÇÃO: Congelar dados consolidados quando são carregados
   useEffect(() => {
     if (backtestResult && trades.length > 0 && !frozenConsolidatedData) {
-      console.log('✅ CONGELANDO dados consolidados para sempre');
-      
       const consolidatedData = {
         trades: Array.isArray(trades) ? trades : [],
         backtestResult: backtestResult,
@@ -414,12 +384,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       };
       
       setFrozenConsolidatedData(consolidatedData);
-      
-      console.log('✅ Dados consolidados congelados:', {
-        totalTrades: consolidatedData.totalTrades,
-        netProfit: consolidatedData.netProfit,
-        winRate: consolidatedData.winRate
-      });
     }
   }, [backtestResult, trades, frozenConsolidatedData]);
 
@@ -660,10 +624,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       
       const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
         setTrades(parsedTrades);
-        console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
-        if (parsedTrades.length > 0) {
-          console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
-        }
     } catch (error) {
       console.error('Error fetching emotional data:', error);
       setEmocional(null);
@@ -681,7 +641,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         [fileName]: data
       };
       setFileResults(fileResultsData);
-      console.log('📊 FileResults criado para arquivo único:', fileName);
+
       
       // Para 1 arquivo, não há correlação, mas podemos definir dados vazios
       data.dateDirectionCorrelation = {
@@ -700,7 +660,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       
       setDrata(data);
       
-      console.log(JSON.stringify(data.EquityCurveData))
+
     } else if (files.length >= 2) {
     try {
       let correlationData = null;
@@ -775,10 +735,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         
         const parsedTrades = Array.isArray(datara) ? datara : (datara?.trades || []);
         setTrades(parsedTrades);
-        console.log('🔍 DEBUG - Trades carregados:', parsedTrades.length);
-        if (parsedTrades.length > 0) {
-          console.log('🔍 DEBUG - Primeiro trade:', parsedTrades[0]);
-        }
+
       } catch (error) {
         console.error('Error fetching emotional data:', error);
         setEmocional(null);
@@ -797,11 +754,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         // Usar dados consolidados como principal
         data = responseData.consolidado;
         
-        console.log('📊 Resultados individuais processados:', Object.keys(responseData.individuais));
-        console.log('📊 Dados consolidados processados:', Object.keys(responseData.consolidado));
+
       } else {
         // Fallback para formato antigo - criar fileResults manualmente
-        console.log('⚠️ Formato antigo detectado, criando fileResults manualmente');
+        
         
         // Para arquivo único, criar fileResults com o nome do arquivo
         if (files.length === 1) {
@@ -810,14 +766,14 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
             [fileName]: responseData
           };
           setFileResults(fileResultsData);
-          console.log('📊 FileResults criado para arquivo único:', fileName);
+
         } else {
           // Para múltiplos arquivos sem dados individuais, usar dados consolidados
           const fileResultsData = {
             'consolidado': responseData
           };
           setFileResults(fileResultsData);
-          console.log('📊 FileResults criado para dados consolidados');
+
         }
         
         data = responseData;
@@ -839,7 +795,7 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
           correlationMetadata: correlationData.metadata,
           dateDirectionCorrelation: dateDirectionData
         });
-        console.log('📊 Correlação tradicional adicionada (2 arquivos)');
+
       } else if (files.length >= 3) {
         // Para 3+ arquivos, chamar API de correlação matricial
         try {

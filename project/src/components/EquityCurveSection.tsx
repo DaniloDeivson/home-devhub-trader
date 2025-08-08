@@ -121,59 +121,32 @@ export function EquityCurveSection({
   // ✅ CORREÇÃO: Função centralizada para aplicar filtros
   const getFilteredFileResults = () => {
     if (!fileResults) {
-      console.log('❌ fileResults é null/undefined');
       return {};
     }
-    
-    console.log('🔧 getFilteredFileResults - Parâmetros:');
-    console.log('  📊 showConsolidated:', showConsolidated);
-    console.log('  📁 selectedFiles:', selectedFiles);
-    console.log('  🎯 selectedStrategy:', selectedStrategy);
-    console.log('  🎯 selectedAsset:', selectedAsset);
-    console.log('  📁 fileResults keys:', Object.keys(fileResults));
     
     let filteredResults = { ...fileResults };
     
     // ✅ CORREÇÃO: Aplicar filtros baseado no modo e seleções
     if (!showConsolidated && selectedFiles.length > 0) {
       // Modo individual: usar apenas os arquivos selecionados
-      console.log('🎯 MODO INDIVIDUAL: Aplicando filtros para arquivos selecionados');
-      console.log('📁 selectedFiles:', selectedFiles);
-      
       filteredResults = {};
       selectedFiles.forEach(fileName => {
         if (fileResults[fileName]) {
           filteredResults[fileName] = fileResults[fileName];
-          console.log(`✅ Adicionado ${fileName} ao filtro individual`);
-        } else {
-          console.log(`❌ ${fileName} não encontrado em fileResults`);
         }
       });
-      
-      console.log('📊 FileResults filtrado para modo individual:', Object.keys(filteredResults));
     } else if (showConsolidated && selectedStrategy) {
       // Modo consolidado com filtro de estratégia
-      console.log('🎯 MODO CONSOLIDADO: Aplicando filtro de estratégia:', selectedStrategy);
-      
       filteredResults = {};
       Object.keys(fileResults).forEach(fileName => {
         if (fileName === selectedStrategy || fileName === `${selectedStrategy}.csv`) {
           filteredResults[fileName] = fileResults[fileName];
-          console.log(`✅ Adicionado ${fileName} ao filtro consolidado`);
         }
       });
-      
-      console.log('📊 FileResults filtrado para estratégia:', Object.keys(filteredResults));
-    } else if (showConsolidated) {
-      // Modo consolidado sem filtro de estratégia: usar todos os arquivos
-      console.log('🎯 MODO CONSOLIDADO: Usando todos os arquivos (sem filtro de estratégia)');
-      console.log('📊 FileResults original:', Object.keys(filteredResults));
     }
     
     // ✅ CORREÇÃO: Aplicar filtro de ativo se selecionado
     if (selectedAsset) {
-      console.log('🎯 Aplicando filtro de ativo:', selectedAsset);
-      
       const assetFilteredResults = {};
       Object.keys(filteredResults).forEach(fileName => {
         const strategyData = filteredResults[fileName] as Record<string, unknown>;
@@ -187,18 +160,13 @@ export function EquityCurveSection({
               ...strategyData,
               trades: filteredTrades
             };
-            console.log(`✅ ${fileName}: ${filteredTrades.length} trades após filtro de ativo`);
-      } else {
-            console.log(`❌ ${fileName}: Nenhum trade encontrado para ativo ${selectedAsset}`);
           }
         }
       });
       
       filteredResults = assetFilteredResults;
-      console.log('📊 FileResults após filtro de ativo:', Object.keys(filteredResults));
     }
     
-    console.log('🔧 getFilteredFileResults - Resultado final:', Object.keys(filteredResults));
     return filteredResults;
   };
 
@@ -213,7 +181,6 @@ export function EquityCurveSection({
       }
     });
     
-    console.log('📊 Trades filtrados obtidos:', allTrades.length);
     return allTrades;
   };
 
