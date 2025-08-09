@@ -753,6 +753,27 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
         
         // Usar dados consolidados como principal
         data = responseData.consolidado;
+
+        // ✅ Unificar fonte de operações: usar trades consolidados do backend (mesma base das métricas)
+        try {
+          if (data && Array.isArray(data.trades)) {
+            setTrades(data.trades);
+          } else {
+            // Fallback: consolidar a partir dos resultados individuais
+            const combinedTrades: any[] = [];
+            Object.keys(responseData.individuais).forEach((fileName: string) => {
+              const strategyData = responseData.individuais[fileName];
+              if (strategyData && Array.isArray(strategyData.trades)) {
+                combinedTrades.push(...strategyData.trades);
+              }
+            });
+            if (combinedTrades.length > 0) {
+              setTrades(combinedTrades);
+            }
+          }
+        } catch (e) {
+          console.warn('Não foi possível definir trades consolidados:', e);
+        }
         
 
       } else {
@@ -904,6 +925,33 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       }
 
       data = await response.json();
+
+      // ✅ Estruturar como no fluxo de 2 arquivos: usar consolidado como principal
+      try {
+        if (data && data.consolidado && data.individuais) {
+          setFileResults(data.individuais);
+          const consolidado = data.consolidado;
+          data = consolidado;
+          if (Array.isArray(consolidado.trades)) {
+            setTrades(consolidado.trades);
+          } else {
+            // Fallback: consolidar a partir de individuais
+            const combinedTrades: any[] = [];
+            Object.keys(data.individuais || {}).forEach((fileName: string) => {
+              const strategyData = data.individuais[fileName];
+              if (strategyData && Array.isArray(strategyData.trades)) {
+                combinedTrades.push(...strategyData.trades);
+              }
+            });
+            if (combinedTrades.length > 0) setTrades(combinedTrades);
+          }
+        } else if (data && Array.isArray(data.trades)) {
+          // Caso o endpoint já retorne diretamente o consolidado
+          setTrades(data.trades);
+        }
+      } catch (e) {
+        console.warn('Não foi possível consolidar trades (3+ arquivos):', e);
+      }
       
       // Adicionar dados de correlação matricial
       if (correlationData) {
@@ -1137,9 +1185,17 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       profitFactor: perfMetrics["Profit Factor"]
     });
     
+    const apiTotalTrades = perfMetrics["Total Trades"] ?? 0;
+    const tradesCount = Array.isArray(result.trades) ? result.trades.length : 0;
+    // Preferir Total Trades da API (já considera abertas), mas alinhar com trades.length se maior
+    const totalTrades = Math.max(apiTotalTrades, tradesCount);
+    const winRatePct = perfMetrics["Win Rate (%)"] ?? 0;
+    const profitableTrades = Math.round(totalTrades * (winRatePct / 100));
+    const lossTrades = Math.max(0, totalTrades - profitableTrades);
+
     return {
       profitFactor: perfMetrics["Profit Factor"] ?? 0,
-      winRate: perfMetrics["Win Rate (%)"] ?? 0,
+      winRate: winRatePct,
       payoff: perfMetrics["Payoff"] ?? 0,
       maxDrawdown: perfMetrics["Max Drawdown (%)"] ?? 0,
       maxDrawdownAmount: perfMetrics["Max Drawdown ($)"] ?? 0,
@@ -1149,13 +1205,13 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       netProfit: perfMetrics["Net Profit"] ?? 0,
       grossProfit: perfMetrics["Gross Profit"] ?? 0,
       grossLoss: perfMetrics["Gross Loss"] ?? 0,
-      totalTrades: perfMetrics["Total Trades"] ?? 0,
-      profitableTrades: Math.round((perfMetrics["Total Trades"] ?? 0) * (perfMetrics["Win Rate (%)"] ?? 0) / 100),
-      lossTrades: Math.round((perfMetrics["Total Trades"] ?? 0) * (1 - (perfMetrics["Win Rate (%)"] ?? 0) / 100)),
+      totalTrades,
+      profitableTrades,
+      lossTrades,
       averageWin: perfMetrics["Average Win"] ?? 0,
       averageLoss: perfMetrics["Average Loss"] ?? 0,
       sharpeRatio: perfMetrics["Sharpe Ratio"] ?? 0,
-      averageTrade: ((perfMetrics["Net Profit"] ?? 0) / (perfMetrics["Total Trades"] ?? 1)),
+      averageTrade: (perfMetrics["Net Profit"] ?? 0) / (totalTrades || 1),
       averageTradeDuration: perfMetrics["Time in Market"] ?? "0",
       dayOfWeekAnalysis: convertedDayOfWeekAnalysis,
       monthlyAnalysis: convertedMonthlyAnalysis,
@@ -2122,19 +2178,7 @@ useEffect(() => {
                 )}
                 
                 {/* Trades Section - Available to all users */}
-                <TradesTable
-                  sampleTrades={trades}
-                  setShowTrades={setShowTrades}
-                  filteredTrades={filteredTrades}
-                  tradeSearch={tradeSearch}
-                  setTradeSearch={setTradeSearch}
-                  selectedAsset={selectedAsset}
-                  setSelectedAsset={setSelectedAsset}
-                  selectedStrategy={selectedStrategy}
-                  setSelectedStrategy={setSelectedStrategy}
-                  availableAssets={availableAssets}
-                  availableStrategies={availableStrategies}
-                />
+                 <TradesTable sampleTrades={trades} />
                 
                 {/* Daily Analysis Section - PRO only */}
                                 <PlanRestrictedSection
@@ -2160,8 +2204,8 @@ useEffect(() => {
                     return (
                       <MetricsDashboard 
                         metrics={metricsToUse}
+                        // Trades já consolidados (único CSV ou múltiplos via backend)
                         tradeObject={{ trades: Array.isArray(trades) ? trades : [] }}
-                        fileResults={fileResults}
                         showTitle={true}
                       />
                     );

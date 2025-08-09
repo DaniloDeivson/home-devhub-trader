@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FileText, ChevronDown, ChevronUp, BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
 import { MetricsDashboard } from './MetricsDashboard';
+import type { FileResult } from '../types/backtest';
 
 // Função auxiliar para converter dados do backtest para o formato do MetricsDashboard
 const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
@@ -59,12 +60,12 @@ const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
   });
   
   return {
-    profitFactor: metrics["Profit Factor"] as number,
-    payoff: metrics["Payoff"] as number,
-    winRate: metrics["Win Rate (%)"] as number,
-    maxDrawdown: metrics["Max Drawdown ($)"] as number,
-    maxDrawdownAmount: metrics["Max Drawdown ($)"] as number,
-    netProfit: metrics["Net Profit"] as number,
+    profitFactor: Number(metrics["Profit Factor"]) || 0,
+    payoff: Number(metrics["Payoff"]) || 0,
+    winRate: Number(metrics["Win Rate (%)"]) || 0,
+    maxDrawdown: Number(metrics["Max Drawdown ($)"]) || 0,
+    maxDrawdownAmount: Number(metrics["Max Drawdown ($)"]) || 0,
+    netProfit: Number(metrics["Net Profit"]) || 0,
     grossProfit: grossProfit, // ✅ Usar valor calculado dos trades
     grossLoss: grossLoss,     // ✅ Usar valor calculado dos trades
     totalTrades: trades.length, // ✅ Usar número real de trades
@@ -72,8 +73,8 @@ const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
     lossTrades: lossTrades,   // ✅ Usar valor calculado
     averageWin: averageWin,   // ✅ Usar valor calculado
     averageLoss: averageLoss, // ✅ Usar valor calculado
-    sharpeRatio: metrics["Sharpe Ratio"] as number,
-    recoveryFactor: metrics["Recovery Factor"] as number,
+    sharpeRatio: Number(metrics["Sharpe Ratio"]) || 0,
+    recoveryFactor: Number(metrics["Recovery Factor"]) || 0,
     averageTrade: averageTrade, // ✅ Usar valor calculado
     averageTradeDuration: metrics["Time in Market"] as string,
     maxConsecutiveWins: metrics["Max Consecutive Wins"] as number,
@@ -84,7 +85,7 @@ const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
 };
 
 interface IndividualResultsSectionProps {
-  fileResults: {[key: string]: any};
+  fileResults: Record<string, FileResult>;
   showIndividualResults: boolean;
   setShowIndividualResults: (show: boolean) => void;
 }
@@ -151,9 +152,13 @@ export function IndividualResultsSection({
       {showIndividualResults && (
         <div className="space-y-4">
           {Object.entries(fileResults).map(([fileName, result]) => {
-            const hasError = result.error;
-            const metrics = result["Performance Metrics"];
-            const info = result.info_arquivo;
+            const hasError = (result as Record<string, unknown>).error !== undefined;
+            const errorText = typeof (result as Record<string, unknown>).error === 'string'
+              ? ((result as Record<string, unknown>).error as string)
+              : (JSON.stringify((result as Record<string, unknown>).error ?? '') || '');
+            const metrics = result["Performance Metrics"] as Record<string, unknown> | undefined;
+            const info = result.info_arquivo as { total_registros?: number } | undefined;
+            const sr = Number(metrics?.["Sharpe Ratio"]) || 0;
             
             return (
               <div key={fileName} className="bg-gray-700 rounded-lg p-4 shadow-md">
@@ -185,7 +190,7 @@ export function IndividualResultsSection({
 
                 {hasError ? (
                   <div className="bg-red-900 bg-opacity-20 border border-red-800 p-4 rounded-lg">
-                    <p className="text-red-400 text-sm">{result.error}</p>
+                    <p className="text-red-400 text-sm">{errorText}</p>
                   </div>
                 ) : (
                   <>
@@ -193,13 +198,13 @@ export function IndividualResultsSection({
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
                       {metrics && (
                         <>
-                          <div className="bg-gray-800 p-3 rounded-lg">
+                           <div className="bg-gray-800 p-3 rounded-lg">
                             <div className="flex items-center mb-1">
                               <TrendingUp className="w-4 h-4 text-green-400 mr-1" />
                               <span className="text-xs text-gray-400">Lucro Líquido</span>
                             </div>
-                            <p className={`text-lg font-semibold ${getPerformanceColor(metrics["Net Profit"] || 0)}`}>
-                              {formatCurrency(metrics["Net Profit"] || 0)}
+                             <p className={`text-lg font-semibold ${getPerformanceColor(Number(metrics["Net Profit"]) || 0)}`}>
+                              {formatCurrency(Number(metrics["Net Profit"]) || 0)}
                             </p>
                           </div>
 
@@ -208,8 +213,8 @@ export function IndividualResultsSection({
                               <BarChart3 className="w-4 h-4 text-blue-400 mr-1" />
                               <span className="text-xs text-gray-400">Total Trades</span>
                             </div>
-                            <p className="text-lg font-semibold text-white">
-                              {metrics["Total Trades"] || 0}
+                             <p className="text-lg font-semibold text-white">
+                              {Number(metrics["Total Trades"]) || 0}
                             </p>
                           </div>
 
@@ -218,8 +223,8 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-green-400 mr-1" />
                               <span className="text-xs text-gray-400">Win Rate</span>
                             </div>
-                            <p className="text-lg font-semibold text-green-400">
-                              {formatPercentage(metrics["Win Rate (%)"] || 0)}
+                             <p className="text-lg font-semibold text-green-400">
+                              {formatPercentage(Number(metrics["Win Rate (%)"]) || 0)}
                             </p>
                           </div>
 
@@ -228,8 +233,8 @@ export function IndividualResultsSection({
                               <TrendingDown className="w-4 h-4 text-red-400 mr-1" />
                               <span className="text-xs text-gray-400">Max Drawdown</span>
                             </div>
-                            <p className="text-lg font-semibold text-red-400">
-                              {formatCurrency(metrics["Max Drawdown ($)"] || 0)}
+                             <p className="text-lg font-semibold text-red-400">
+                              {formatCurrency(Number(metrics["Max Drawdown ($)"]) || 0)}
                             </p>
                           </div>
 
@@ -238,8 +243,8 @@ export function IndividualResultsSection({
                               <BarChart3 className="w-4 h-4 text-yellow-400 mr-1" />
                               <span className="text-xs text-gray-400">Fator de Lucro</span>
                             </div>
-                            <p className={`text-lg font-semibold ${(metrics["Profit Factor"] || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
-                              {(metrics["Profit Factor"] || 0).toFixed(2)}
+                             <p className={`text-lg font-semibold ${(Number(metrics["Profit Factor"]) || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                              {(Number(metrics["Profit Factor"]) || 0).toFixed(2)}
                             </p>
                           </div>
 
@@ -248,8 +253,8 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-purple-400 mr-1" />
                               <span className="text-xs text-gray-400">Sharpe Ratio</span>
                             </div>
-                            <p className={`text-lg font-semibold ${(metrics["Sharpe Ratio"] || 0) >= 1 ? 'text-green-400' : (metrics["Sharpe Ratio"] || 0) >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                              {(metrics["Sharpe Ratio"] || 0).toFixed(2)}
+                             <p className={`text-lg font-semibold ${sr >= 1 ? 'text-green-400' : sr >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {sr.toFixed(2)}
                             </p>
                           </div>
                         </>
@@ -269,9 +274,16 @@ export function IndividualResultsSection({
                            });
                            return null;
                          })()}
-                         <MetricsDashboard 
+                          <MetricsDashboard 
                            metrics={convertToMetricsDashboardFormat(result)}
-                           tradeObject={{ trades: result.trades || [] }}
+                           tradeObject={{
+                             trades: (result.trades || []).map((t: Record<string, unknown>) => ({
+                               symbol: t.symbol as string | undefined,
+                               entry_date: String(t.entry_date ?? t.date ?? ''),
+                               exit_date: String(t.exit_date ?? t.entry_date ?? t.date ?? ''),
+                               pnl: Number(t.pnl) || 0
+                             }))
+                           }}
                            showTitle={false}
                          />
                        </div>

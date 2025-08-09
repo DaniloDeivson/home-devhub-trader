@@ -223,6 +223,7 @@ def carregar_csv_trades(file_path_or_file):
         # Usar função de limpeza para valores numéricos
         numeric_columns = ['Res. Operação', 'Res. Operação (%)', 'Preço Compra', 'Preço Venda', 
                           'Preço de Mercado', 'Médio', 'Res. Intervalo', 'Res. Intervalo (%)',
+                          'Res. Intervalo Bruto', 'Res. Intervalo Bruto (%)',
                           'Drawdown', 'Ganho Max.', 'Perda Max.', 'Qtd Compra', 'Qtd Venda']
         
         for col in numeric_columns:
@@ -242,8 +243,11 @@ def carregar_csv_trades(file_path_or_file):
             'Preço Venda': 'exit_price',
             'Preço de Mercado': 'market_price',
             'Médio': 'avg_price',
+            # Algumas planilhas usam "Res. Intervalo Bruto"
             'Res. Intervalo': 'pnl',
             'Res. Intervalo (%)': 'pnl_pct',
+            'Res. Intervalo Bruto': 'pnl',
+            'Res. Intervalo Bruto (%)': 'pnl_pct',
             'Número Operação': 'trade_number',
             'Res. Operação': 'operation_result',
             'Res. Operação (%)': 'operation_result_pct',
@@ -355,6 +359,8 @@ def carregar_csv_safe(file_path_or_file):
             'Médio': 'avg_price',
             'Res. Intervalo': 'pnl',
             'Res. Intervalo (%)': 'pnl_pct',
+            'Res. Intervalo Bruto': 'pnl',
+            'Res. Intervalo Bruto (%)': 'pnl_pct',
             'Número Operação': 'trade_number',
             'Res. Operação': 'operation_result',
             'Res. Operação (%)': 'operation_result_pct',
@@ -372,7 +378,11 @@ def carregar_csv_safe(file_path_or_file):
         if 'direction' in df.columns:
             df['direction'] = df['direction'].map({'C': 'long', 'V': 'short'}).fillna('long')
         
-        # Não reatribuir pnl para evitar duplicatas - já foi renomeado acima
+        # Garantir que a coluna 'pnl' exista e seja numérica
+        if 'pnl' not in df.columns and 'operation_result' in df.columns:
+            df['pnl'] = df['operation_result']
+        if 'pnl' in df.columns:
+            df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
         
         # Calcular duração em horas se não existir
         if 'entry_date' in df.columns and 'exit_date' in df.columns:
@@ -412,59 +422,64 @@ def carregar_csv_safe(file_path_or_file):
         raise ValueError(f"Erro ao processar CSV: {e}")
 
 def processar_trades(df: pd.DataFrame, arquivo_para_indices: Dict[int, str] = None) -> List[Dict]:
-    """Converte DataFrame em lista de trades para o frontend"""
+    """Converte DataFrame em lista de trades para o frontend
+    - Inclui também operações em aberto (sem exit_date), usando entry_date como fallback para exit_date
+    - Mantém PnL informado no CSV
+    """
     trades = []
-    
+
     print(f"🔍 Processando trades - DataFrame shape: {df.shape}")
     print(f"📅 Colunas disponíveis: {list(df.columns)}")
-    
-    # Verificar se as colunas necessárias existem
-    required_columns = ['entry_date', 'exit_date']
+
+    # Verificar se a coluna mínima necessária existe
+    required_columns = ['entry_date']
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         return trades
-    
+
     processed_count = 0
     skipped_count = 0
-    
+
     for idx, row in df.iterrows():
-        # Verificar se as datas são válidas (não NaT)
+        # Validar entry_date
         entry_date = row.get('entry_date')
-        exit_date = row.get('exit_date')
-        
-        if (pd.isna(entry_date) or pd.isna(exit_date) or 
-            pd.isna(entry_date) or pd.isna(exit_date)):
+        if pd.isna(entry_date):
             skipped_count += 1
             continue
-        
-        # Determinar a estratégia baseada no arquivo de origem
-        strategy = "Manual"  # Default
+
+        # exit_date pode ser ausente em operações abertas; usar entry_date como fallback
+        raw_exit_date = row.get('exit_date')
+        is_open = pd.isna(raw_exit_date)
+        exit_date = raw_exit_date if pd.notna(raw_exit_date) else entry_date
+
+        # Determinar a estratégia baseada no arquivo de origem (se disponível)
+        strategy = "Manual"
         if arquivo_para_indices and idx in arquivo_para_indices:
-            # Extrair nome do arquivo sem extensão como estratégia
             filename = arquivo_para_indices[idx]
             strategy = filename.replace('.csv', '').replace('.CSV', '')
-        
+
         trade = {
-            "entry_date": row['entry_date'].isoformat() if pd.notna(row['entry_date']) and not pd.isna(row['entry_date']) else None,
-            "exit_date": row['exit_date'].isoformat() if pd.notna(row['exit_date']) and not pd.isna(row['exit_date']) else None,
+            "entry_date": entry_date.isoformat() if pd.notna(entry_date) else None,
+            "exit_date": exit_date.isoformat() if pd.notna(exit_date) else None,
             "entry_price": float(row.get('entry_price', 0)) if pd.notna(row.get('entry_price')) else 0,
             "exit_price": float(row.get('exit_price', 0)) if pd.notna(row.get('exit_price')) else 0,
             "pnl": float(row.get('pnl', 0)) if pd.notna(row.get('pnl')) else 0,
             "pnl_pct": float(row.get('pnl_pct', 0)) if pd.notna(row.get('pnl_pct')) else 0,
             "direction": row.get('direction', 'long'),
             "symbol": str(row.get('symbol', 'N/A')),
-            "strategy": strategy,  # Usar estratégia baseada no arquivo
-            "quantity_total": int(row.get('qty_buy'))+int(row.get('qty_sell')) if pd.notna(row.get('qty_buy')) and pd.notna(row.get('qty_sell')) else 0,
+            "strategy": strategy,
+            "quantity_total": int(row.get('qty_buy')) + int(row.get('qty_sell')) if pd.notna(row.get('qty_buy')) and pd.notna(row.get('qty_sell')) else 0,
             "quantity_compra": int(row.get('qty_buy', 0)) if pd.notna(row.get('qty_buy')) else 0,
             "quantity_venda": int(row.get('qty_sell', 0)) if pd.notna(row.get('qty_sell')) else 0,
             "duration": float(row.get('duration_hours', 0)) if pd.notna(row.get('duration_hours')) else 0,
             "drawdown": float(row.get('drawdown', 0)) if pd.notna(row.get('drawdown')) else 0,
             "max_gain": float(row.get('max_gain', 0)) if pd.notna(row.get('max_gain')) else 0,
-            "max_loss": float(row.get('max_loss', 0)) if pd.notna(row.get('max_loss')) else 0
+            "max_loss": float(row.get('max_loss', 0)) if pd.notna(row.get('max_loss')) else 0,
+            "is_open": bool(is_open)
         }
         trades.append(trade)
         processed_count += 1
-    
+
     print(f"✅ Trades processados: {processed_count}, pulados: {skipped_count}")
     return trades
 
@@ -1617,10 +1632,43 @@ def api_tabela_multipla():
                 print(f"     📊 Registros: {len(df)}")
                 print(f"     📅 Colunas: {list(df.columns)}")
                 
+                # Garantir que 'pnl' exista antes de qualquer cálculo
+                try:
+                    if 'pnl' not in df.columns:
+                        if 'operation_result' in df.columns:
+                            df['pnl'] = df['operation_result']
+                        elif 'Res. Intervalo Bruto' in df.columns:
+                            df['pnl'] = pd.to_numeric(df['Res. Intervalo Bruto'], errors='coerce')
+                        elif 'Res. Intervalo' in df.columns:
+                            df['pnl'] = pd.to_numeric(df['Res. Intervalo'], errors='coerce')
+                    # Converter para numérico por segurança
+                    if 'pnl' in df.columns:
+                        df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
+                except Exception as e:
+                    print(f"⚠️ DEBUG: Falha ao garantir 'pnl' antes do debug_drawdown: {e}")
+
                 # DEBUG: Verificar padronização do drawdown
                 debug_drawdown_calculation(df)
                 
+                # Garantir que 'pnl' exista antes de calcular métricas
+                if 'pnl' not in df.columns and 'operation_result' in df.columns:
+                    df['pnl'] = df['operation_result']
+                if 'pnl' in df.columns:
+                    df['pnl'] = pd.to_numeric(df['pnl'], errors='coerce')
+
                 resultado_individual = processar_backtest_completo(df, capital_inicial=capital_inicial, cdi=cdi)
+
+                # Garantir compatibilidade de chaves no resultado individual (para o frontend)
+                try:
+                    # Copiar em camelCase as seções principais
+                    if 'Day of Week Analysis' in resultado_individual:
+                        resultado_individual['day_of_week'] = resultado_individual['Day of Week Analysis']
+                    if 'Monthly Analysis' in resultado_individual:
+                        resultado_individual['monthly'] = resultado_individual['Monthly Analysis']
+                    if 'Equity Curve Data' in resultado_individual:
+                        resultado_individual['equity_curve_data'] = resultado_individual['Equity Curve Data']
+                except Exception as e:
+                    print(f"⚠️ DEBUG: Falha ao padronizar chaves camelCase: {e}")
                 
                 if 'equity_curve_data' not in resultado_individual:
                     print(f"     ⚡ Gerando equity curve data para {nome_arquivo}")
@@ -1663,6 +1711,16 @@ def api_tabela_multipla():
         print(f"   📋 DataFrame consolidado criado com {len(df_consolidado)} registros")
         
         resultado_consolidado = processar_backtest_completo(df_consolidado, capital_inicial=capital_inicial, cdi=cdi)
+        # Padronizar chaves também no consolidado
+        try:
+            if 'Day of Week Analysis' in resultado_consolidado:
+                resultado_consolidado['day_of_week'] = resultado_consolidado['Day of Week Analysis']
+            if 'Monthly Analysis' in resultado_consolidado:
+                resultado_consolidado['monthly'] = resultado_consolidado['Monthly Analysis']
+            if 'Equity Curve Data' in resultado_consolidado:
+                resultado_consolidado['equity_curve_data'] = resultado_consolidado['Equity Curve Data']
+        except Exception as e:
+            print(f"⚠️ DEBUG: Falha ao padronizar chaves no consolidado: {e}")
         if 'equity_curve_data' not in resultado_consolidado:
             print(f"   ⚡ Gerando equity curve data consolidada")
             equity_data = gerar_equity_curve_data(df_consolidado, capital_inicial)

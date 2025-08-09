@@ -93,6 +93,9 @@ export interface BacktestResult {
 export interface Trade {
   entry_date: string;
   pnl: number;
+  exit_date?: string;
+  symbol?: string;
+  date?: string;
   [key: string]: unknown;
 }
 
@@ -104,6 +107,42 @@ export interface TradesData {
       hourly?: Record<string, { count: number; sum: number }>;
     };
   };
+  [key: string]: unknown;
+}
+
+// Pontos usados nas curvas de equity/drawdown
+export interface EquityCurvePoint {
+  date: string;
+  fullDate: string;
+  valor: number;
+  resultado: number;
+  drawdown: number;
+  drawdownPercent: number;
+  peak: number;
+  trades: number;
+  trade_result?: number;
+  trade_percent?: number;
+  month?: string;
+  isStart?: boolean;
+  saldo?: number;
+  saldoMA?: number | null;
+  resultado_periodo?: number;
+  periodo?: string;
+}
+
+export interface EquityCurveData {
+  trade_by_trade: EquityCurvePoint[];
+  daily: EquityCurvePoint[];
+  weekly?: EquityCurvePoint[];
+  monthly?: EquityCurvePoint[];
+}
+
+// Resultado por arquivo (estratégia)
+export interface FileResult {
+  trades?: Trade[];
+  "Performance Metrics"?: PerformanceMetrics & { [key: string]: unknown };
+  "Equity Curve Data"?: EquityCurveData;
+  equity_curve_data?: EquityCurveData;
   [key: string]: unknown;
 }
 

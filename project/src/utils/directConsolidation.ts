@@ -1,23 +1,10 @@
 /**
  * ✅ CONSOLIDAÇÃO DIRETA: Calcular drawdown consolidado diretamente dos fileResults
- * 
+ *
  * Esta função garante que estamos calculando drawdown consolidado cronológico
  * corretamente, sem passar por processamentos intermediários que podem corromper os dados.
  */
-
-interface FileResult {
-  trades: Array<{
-    exit_date?: string;
-    entry_date: string;
-    pnl: number;
-    symbol?: string;
-    [key: string]: any;
-  }>;
-  "Performance Metrics": {
-    "Net Profit": number;
-    [key: string]: any;
-  };
-}
+import type { FileResult, Trade } from '../types/backtest';
 
 interface ConsolidatedMetrics {
   maxDrawdownAbsoluto: number;
@@ -47,20 +34,21 @@ export function calculateDirectConsolidation(
   
   Object.keys(fileResults).forEach(fileName => {
     const strategyData = fileResults[fileName];
-    if (strategyData && strategyData.trades) {
+    const trades = strategyData?.trades ?? [];
+    if (trades.length > 0) {
       // Somar net profit das Performance Metrics
       if (strategyData["Performance Metrics"]) {
-        netProfitTotal += strategyData["Performance Metrics"]["Net Profit"] || 0;
+        netProfitTotal += Number(strategyData["Performance Metrics"]["Net Profit"]) || 0;
       }
       
-      strategyData.trades.forEach((trade: any) => {
+      trades.forEach((trade: Trade) => {
         // Filtrar por ativo se especificado
         if (selectedAsset && trade.symbol !== selectedAsset) {
           return;
         }
         
         allTrades.push({
-          exit_date: (trade.exit_date || trade.entry_date).split('T')[0], // YYYY-MM-DD
+          exit_date: String((trade.exit_date || trade.entry_date)).split('T')[0], // YYYY-MM-DD
           pnl: Number(trade.pnl) || 0,
           strategy: fileName,
           symbol: trade.symbol

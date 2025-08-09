@@ -1,0 +1,14 @@
+{
+    "tasks": [
+        {
+            "type": "npm",
+            "script": "lint",
+            "path": "project",
+            "problemMatcher": [
+                "$eslint-compact"
+            ],
+            "label": "npm: lint - project",
+            "detail": "eslint ."
+        }
+    ]
+}

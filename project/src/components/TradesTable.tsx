@@ -101,7 +101,7 @@ export function TradesTable({ sampleTrades }: { sampleTrades: Trade[] | TradesDa
         return false;
       }
 
-      // Filtro por data
+      // Filtro por data (considera entry_date; não exclui operações em aberto)
       if (dateFilter !== 'all') {
         const entryDate = new Date(trade.entry_date);
         const now = new Date();
