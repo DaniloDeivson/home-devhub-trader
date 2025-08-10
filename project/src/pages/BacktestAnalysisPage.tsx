@@ -2171,20 +2171,27 @@ useEffect(() => {
 
                     // Padronização: usar Sharpe Ratio e Fator de Recuperação da Análise Diária
                     // e Drawdown consolidado (R$ e %) quando disponível
+                    // Percentual do DD para o dashboard deve seguir a mesma lógica da legenda
+                    // Legenda exibe (DD / 100000) * 100
+                    const ddPercentForDashboard =
+                      ddAmountFromConsolidation !== undefined
+                        ? (Number(ddAmountFromConsolidation) / 100000) * 100
+                        : (ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown);
+
                     const metricsToUse = {
                       ...baseMetrics,
                       sharpeRatio: (computedSharpe !== undefined ? computedSharpe : (dailyMain?.sharpe_ratio)) ?? baseMetrics?.sharpeRatio,
                       recoveryFactor: dailyMain?.fator_recuperacao ?? baseMetrics?.recoveryFactor,
                       // DD consolidado: usar cálculo direto (idêntico à legenda). Se indisponível, cair para Análise Diária e depois para Performance Metrics
                       maxDrawdownAmount: ddAmountFromConsolidation ?? dailyMain?.drawdown_maximo ?? baseMetrics?.maxDrawdownAmount,
-                      maxDrawdown: ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown,
+                      maxDrawdown: ddPercentForDashboard,
                     } as typeof baseMetrics & {
                       sharpeRatio?: number;
                       recoveryFactor?: number;
                       maxDrawdownAmount?: number;
                       maxDrawdown?: number;
                     };
-
+                    
                     return (
                       <MetricsDashboard 
                         metrics={metricsToUse}
@@ -2264,7 +2271,7 @@ useEffect(() => {
               description="Compare a correlação entre diferentes estratégias para otimizar seu portfólio. Disponível apenas para usuários PRO."
               requiredPlan="Pro"
             >
-                <SimpleCorrelationComponent
+               <SimpleCorrelationComponent
                   showCorrelation={showCorrelation}
                   setShowCorrelation={setShowCorrelation}
                   backtestResult={originalCorrelationData || backtestResult}
