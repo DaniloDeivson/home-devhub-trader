@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
+import type { Trade, FileResult } from '../types/backtest';
 import { Filter, FileText } from 'lucide-react';
 
 interface StrategySelectorProps {
@@ -19,8 +20,8 @@ interface StrategySelectorProps {
   onResetFilters?: () => void;
   
   // Props para dados de trades para extrair ativos dinamicamente
-  trades?: any[];
-  fileResults?: { [key: string]: any };
+  trades?: Trade[];
+  fileResults?: Record<string, FileResult>;
 }
 
 export function StrategySelector({
@@ -57,9 +58,10 @@ export function StrategySelector({
     
     // Se há fileResults, extrair ativos de todas as estratégias
     if (fileResults && Object.keys(fileResults).length > 0) {
-      Object.values(fileResults).forEach((strategyData: any) => {
-        if (strategyData.trades && Array.isArray(strategyData.trades)) {
-          strategyData.trades.forEach((trade: any) => {
+      Object.values(fileResults).forEach((strategyData: FileResult) => {
+        const ts = strategyData.trades;
+        if (ts && Array.isArray(ts)) {
+          (ts as Trade[]).forEach((trade: Trade) => {
             if (trade.symbol) {
               assets.add(trade.symbol);
             }
