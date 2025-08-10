@@ -76,7 +76,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         try {
           // @ts-expect-error - Ignorar erro de tipo por enquanto, funcionalidade é mais importante
           consolidatedDD = calculateDirectConsolidation(fileResults);
-        } catch (error) {
+        } catch {
           // Silent error handling
         }
         
@@ -197,66 +197,12 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           return stdDev > 0 ? (meanReturn - riskFreeRate) / stdDev : 0;
         };
         
-        // ✅ CORREÇÃO: Calcular Fator de Recuperação por período mensal
-        const calcularFatorRecuperacao = (trades: unknown[]) => {
+        // ✅ ALTERAÇÃO: Fator de Recuperação TOTAL = Net Profit total / Max DD consolidado
+        const calcularFatorRecuperacaoTotal = (trades: unknown[], ddAbsoluto?: number) => {
           if (trades.length === 0) return 0;
-          
-          // Agrupar trades por mês
-          const monthlyResults = new Map<string, { trades: unknown[], netProfit: number, maxDrawdown: number }>();
-          
-          trades.forEach((trade) => {
-            const tradeData = trade as Record<string, unknown>;
-            const date = new Date(tradeData.entry_date as string);
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            
-            if (!monthlyResults.has(monthKey)) {
-              monthlyResults.set(monthKey, { trades: [], netProfit: 0, maxDrawdown: 0 });
-            }
-            
-            const monthData = monthlyResults.get(monthKey)!;
-            monthData.trades.push(trade);
-          });
-          
-          // Calcular Fator de Recuperação para cada mês
-          let totalFatorRecuperacao = 0;
-          let mesesComDados = 0;
-          
-          monthlyResults.forEach((monthData) => {
-            if (monthData.trades.length === 0) return;
-            
-            // Calcular lucro líquido do mês
-            const netProfit = monthData.trades.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
-            
-            // Calcular drawdown máximo do mês
-            let maxDrawdown = 0;
-            let peak = 0;
-            let runningTotal = 0;
-            
-            monthData.trades.forEach((trade) => {
-              const pnl = (trade as { pnl?: number }).pnl || 0;
-              runningTotal += pnl;
-              
-              if (runningTotal > peak) {
-                peak = runningTotal;
-              }
-              
-              const drawdown = peak - runningTotal;
-              if (drawdown > maxDrawdown) {
-                maxDrawdown = drawdown;
-              }
-            });
-            
-            // Fator de Recuperação do mês
-            const fatorRecuperacaoMes = maxDrawdown > 0 ? netProfit / maxDrawdown : 0;
-            
-            if (fatorRecuperacaoMes > 0) {
-              totalFatorRecuperacao += fatorRecuperacaoMes;
-              mesesComDados++;
-            }
-          });
-          
-          // Retornar média dos fatores de recuperação mensais
-          return mesesComDados > 0 ? totalFatorRecuperacao / mesesComDados : 0;
+          const netProfitTotal = trades.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+          if (ddAbsoluto && ddAbsoluto > 0) return netProfitTotal / ddAbsoluto;
+          return 0;
         };
 
         // ✅ NOVO: Calcular Ganhos e Perdas Diários localmente
@@ -380,7 +326,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         };
         
         const sharpeRatioCalculado = calcularSharpeRatio(allTrades);
-        const fatorRecuperacaoCalculado = calcularFatorRecuperacao(allTrades);
+        const fatorRecuperacaoCalculado = calcularFatorRecuperacaoTotal(allTrades, consolidatedDD?.maxDrawdownAbsoluto);
         
         // ✅ NOVO: Calcular Ganhos e Perdas Diários
         const ganhosPerdasCalculados = calcularGanhosPerdasDiarios(allTrades);
@@ -459,10 +405,6 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
           data.metricas_principais.drawdown_maximo = consolidatedDD.maxDrawdownAbsoluto;
           data.metricas_principais.drawdown_maximo_pct = consolidatedDD.maxDrawdownPercent;
-          
-
-        } else {
-          // Silent error handling
         }
 
 
@@ -571,65 +513,24 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           return stdDev > 0 ? (meanReturn - riskFreeRate) / stdDev : 0;
         };
         
-        const calcularFatorRecuperacao = (trades: unknown[]) => {
+        const calcularFatorRecuperacaoSingle = (trades: unknown[]) => {
           if (trades.length === 0) return 0;
-          
-          // Agrupar trades por mês
-          const monthlyResults = new Map<string, { trades: unknown[], netProfit: number, maxDrawdown: number }>();
-          
-          trades.forEach((trade) => {
-            const tradeData = trade as Record<string, unknown>;
-            const date = new Date(tradeData.entry_date as string);
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            
-            if (!monthlyResults.has(monthKey)) {
-              monthlyResults.set(monthKey, { trades: [], netProfit: 0, maxDrawdown: 0 });
-            }
-            
-            const monthData = monthlyResults.get(monthKey)!;
-            monthData.trades.push(trade);
-          });
-          
-          // Calcular Fator de Recuperação para cada mês
-          let totalFatorRecuperacao = 0;
-          let mesesComDados = 0;
-          
-          monthlyResults.forEach((monthData) => {
-            if (monthData.trades.length === 0) return;
-            
-            // Calcular lucro líquido do mês
-            const netProfit = monthData.trades.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
-            
-            // Calcular drawdown máximo do mês
-            let maxDrawdown = 0;
+          // Calcular DD absoluto a partir das trades
             let peak = 0;
-            let runningTotal = 0;
-            
-            monthData.trades.forEach((trade) => {
-              const pnl = (trade as { pnl?: number }).pnl || 0;
-              runningTotal += pnl;
-              
-              if (runningTotal > peak) {
-                peak = runningTotal;
-              }
-              
-              const drawdown = peak - runningTotal;
-              if (drawdown > maxDrawdown) {
-                maxDrawdown = drawdown;
-              }
+          let running = 0;
+          let maxDD = 0;
+          trades
+            .map(t => (t as { entry_date?: string; pnl?: number }))
+            .sort((a, b) => new Date(a.entry_date || '').getTime() - new Date(b.entry_date || '').getTime())
+            .forEach(t => {
+              const pnl = t.pnl || 0;
+              running += pnl;
+              if (running > peak) peak = running;
+              const dd = peak - running;
+              if (dd > maxDD) maxDD = dd;
             });
-            
-            // Fator de Recuperação do mês
-            const fatorRecuperacaoMes = maxDrawdown > 0 ? netProfit / maxDrawdown : 0;
-            
-            if (fatorRecuperacaoMes > 0) {
-              totalFatorRecuperacao += fatorRecuperacaoMes;
-              mesesComDados++;
-            }
-          });
-          
-          // Retornar média dos fatores de recuperação mensais
-          return mesesComDados > 0 ? totalFatorRecuperacao / mesesComDados : 0;
+          const netProfitTotal = trades.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+          return maxDD > 0 ? netProfitTotal / maxDD : 0;
         };
         
         // ✅ NOVO: Calcular Ganhos e Perdas Diários para CSV único
@@ -753,7 +654,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         };
         
         const sharpeRatioCalculado = calcularSharpeRatio(tradesData.trades || []);
-        const fatorRecuperacaoCalculado = calcularFatorRecuperacao(tradesData.trades || []);
+        const fatorRecuperacaoCalculado = calcularFatorRecuperacaoSingle(tradesData.trades || []);
         
         // ✅ NOVO: Calcular Ganhos e Perdas Diários para CSV único
         const ganhosPerdasCalculados = calcularGanhosPerdasDiarios(tradesData.trades || []);

@@ -27,6 +27,7 @@ import { ActiveFilesInfo } from '../components/ActiveFilesInfo';
 import { buildApiUrl } from '../config/api';
 import { PositionSizingSection } from '../components/PositionSizingSection';
 import { TradeDurationSection } from '../components/TradeDurationSection';
+import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
 // Special events data
 const specialEvents = [
@@ -259,57 +260,6 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
 
         if (response.ok) {
           const recalculatedData = await response.json();
-  
-          // 🎯 CORREÇÃO: Se a API retorna valores 0, calcular localmente
-          if (recalculatedData.metricas_principais) {
-            const metrics = recalculatedData.metricas_principais;
-            
-            // Se win_rate é 0, calcular localmente
-            if (metrics.win_rate === 0 || metrics.win_rate === undefined) {
-              const profitableTrades = allTrades.filter(trade => (trade.pnl || 0) > 0).length;
-              const totalTrades = allTrades.length;
-              metrics.win_rate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
-            }
-            
-            // Se fator_lucro é 0, calcular localmente
-            if (metrics.fator_lucro === 0 || metrics.fator_lucro === undefined) {
-              const grossProfit = allTrades.filter(trade => (trade.pnl || 0) > 0)
-                .reduce((sum, trade) => sum + (trade.pnl || 0), 0);
-              const grossLoss = Math.abs(allTrades.filter(trade => (trade.pnl || 0) < 0)
-                .reduce((sum, trade) => sum + (trade.pnl || 0), 0));
-              metrics.fator_lucro = grossLoss > 0 ? grossProfit / grossLoss : 0;
-            }
-            
-            // Se roi é 0, calcular localmente
-            if (metrics.roi === 0 || metrics.roi === undefined) {
-              const totalProfit = allTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
-              metrics.roi = (totalProfit / 100000) * 100; // Assumindo investimento de R$ 100.000
-            }
-            
-            // Se drawdown_medio é 0, calcular localmente
-            if (metrics.drawdown_medio === 0 || metrics.drawdown_medio === undefined) {
-              // Calcular drawdown médio baseado nos trades
-              let equity = 0;
-              let peak = 0;
-              let totalDrawdown = 0;
-              let drawdownCount = 0;
-              
-              allTrades.forEach(trade => {
-                equity += (trade.pnl || 0);
-                if (equity > peak) {
-                  peak = equity;
-                }
-                const drawdown = peak - equity;
-                if (drawdown > 0) {
-                  totalDrawdown += drawdown;
-                  drawdownCount++;
-                }
-              });
-              
-              metrics.drawdown_medio = drawdownCount > 0 ? totalDrawdown / drawdownCount : 0;
-            }
-          }
-          
           setRecalculatedMetrics(recalculatedData);
         } else {
           console.error('❌ Erro ao recalcular métricas:', response.status);
@@ -1120,35 +1070,8 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     // Check if Performance Metrics exists, if not return default values
     const perfMetrics = result["Performance Metrics"];
     if (!perfMetrics) {
-      return {
-        profitFactor: 0,
-        winRate: 0,
-        payoff: 0,
-        maxDrawdown: 0,
-        maxDrawdownAmount: 0,
-        netProfit: 0,
-        grossProfit: 0,
-        grossLoss: 0,
-        totalTrades: 0,
-        profitableTrades: 0,
-        lossTrades: 0,
-        averageWin: 0,
-        averageLoss: 0,
-        sharpeRatio: 0,
-        averageTrade: 0,
-        averageTradeDuration: "0",
-        dayOfWeekAnalysis: {},
-        monthlyAnalysis: {},
-        bestDay: null,
-        worstDay: null,
-        bestMonth: null,
-        worstMonth: null,
-        maxConsecutiveLosses: 0,
-        maxConsecutiveWins: 0,
-        maiorGanho: 0,
-        maiorPerda: 0,
-        recoveryFactor: 0
-      };
+      // Sem fallbacks: retornar vazio para a UI exibir N/A
+      return {};
     }
     
     const dayOfWeekAnalysis = result["Day of Week Analysis"];
@@ -1185,34 +1108,43 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       profitFactor: perfMetrics["Profit Factor"]
     });
     
-    const apiTotalTrades = perfMetrics["Total Trades"] ?? 0;
-    const tradesCount = Array.isArray(result.trades) ? result.trades.length : 0;
-    // Preferir Total Trades da API (já considera abertas), mas alinhar com trades.length se maior
-    const totalTrades = Math.max(apiTotalTrades, tradesCount);
-    const winRatePct = perfMetrics["Win Rate (%)"] ?? 0;
-    const profitableTrades = Math.round(totalTrades * (winRatePct / 100));
-    const lossTrades = Math.max(0, totalTrades - profitableTrades);
+    const apiTotalTrades = perfMetrics["Total Trades"];
+    const tradesCount = Array.isArray(result.trades) ? result.trades.length : undefined;
+    // Preferir Total Trades da API; usar trades.length apenas se a API não trouxer
+    const totalTrades = apiTotalTrades ?? tradesCount;
+    const winRatePct = perfMetrics["Win Rate (%)"];
+    const profitableTrades =
+      totalTrades !== undefined && winRatePct !== undefined
+        ? Math.round(Number(totalTrades) * (Number(winRatePct) / 100))
+        : undefined;
+    const lossTrades =
+      totalTrades !== undefined && profitableTrades !== undefined
+        ? Math.max(0, Number(totalTrades) - Number(profitableTrades))
+        : undefined;
 
     return {
-      profitFactor: perfMetrics["Profit Factor"] ?? 0,
+      profitFactor: perfMetrics["Profit Factor"],
       winRate: winRatePct,
-      payoff: perfMetrics["Payoff"] ?? 0,
-      maxDrawdown: perfMetrics["Max Drawdown (%)"] ?? 0,
-      maxDrawdownAmount: perfMetrics["Max Drawdown ($)"] ?? 0,
+      payoff: perfMetrics["Payoff"],
+      maxDrawdown: perfMetrics["Max Drawdown (%)"],
+      maxDrawdownAmount: perfMetrics["Max Drawdown ($)"],
       // PADRONIZAÇÃO: Valores padronizados
-      maxDrawdownPadronizado: perfMetrics["Max Drawdown Padronizado ($)"] ?? perfMetrics["Max Drawdown ($)"] ?? 0,
-      maxDrawdownPctPadronizado: perfMetrics["Max Drawdown Padronizado (%)"] ?? perfMetrics["Max Drawdown (%)"] ?? 0,
-      netProfit: perfMetrics["Net Profit"] ?? 0,
-      grossProfit: perfMetrics["Gross Profit"] ?? 0,
-      grossLoss: perfMetrics["Gross Loss"] ?? 0,
+      maxDrawdownPadronizado: perfMetrics["Max Drawdown Padronizado ($)"] ?? perfMetrics["Max Drawdown ($)"],
+      maxDrawdownPctPadronizado: perfMetrics["Max Drawdown Padronizado (%)"] ?? perfMetrics["Max Drawdown (%)"],
+      netProfit: perfMetrics["Net Profit"],
+      grossProfit: perfMetrics["Gross Profit"],
+      grossLoss: perfMetrics["Gross Loss"],
       totalTrades,
       profitableTrades,
       lossTrades,
-      averageWin: perfMetrics["Average Win"] ?? 0,
-      averageLoss: perfMetrics["Average Loss"] ?? 0,
-      sharpeRatio: perfMetrics["Sharpe Ratio"] ?? 0,
-      averageTrade: (perfMetrics["Net Profit"] ?? 0) / (totalTrades || 1),
-      averageTradeDuration: perfMetrics["Time in Market"] ?? "0",
+      averageWin: perfMetrics["Average Win"],
+      averageLoss: perfMetrics["Average Loss"],
+      sharpeRatio: perfMetrics["Sharpe Ratio"],
+      averageTrade:
+        perfMetrics["Net Profit"] !== undefined && totalTrades
+          ? Number(perfMetrics["Net Profit"]) / Number(totalTrades || 1)
+          : undefined,
+      averageTradeDuration: perfMetrics["Time in Market"],
       dayOfWeekAnalysis: convertedDayOfWeekAnalysis,
       monthlyAnalysis: convertedMonthlyAnalysis,
       
@@ -1223,11 +1155,11 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
       worstMonth: monthlyAnalysis?.["Worst Month"] || null,
       
       // Métricas complementares moved to advanced metrics section
-      maxConsecutiveLosses: perfMetrics["Max Consecutive Losses"] ?? 0,
-      maxConsecutiveWins: perfMetrics["Max Consecutive Wins"] ?? 0,
-      maiorGanho: perfMetrics["Max Trade Gain"] ?? 0,
-      maiorPerda: perfMetrics["Max Trade Loss"] ?? 0,
-      recoveryFactor: perfMetrics["Recovery Factor"] ?? 0
+      maxConsecutiveLosses: perfMetrics["Max Consecutive Losses"],
+      maxConsecutiveWins: perfMetrics["Max Consecutive Wins"],
+      maiorGanho: perfMetrics["Max Trade Gain"],
+      maiorPerda: perfMetrics["Max Trade Loss"],
+      recoveryFactor: perfMetrics["Recovery Factor"]
     };
   };
 
@@ -2198,9 +2130,61 @@ useEffect(() => {
                 {/* Metrics Dashboard - Available to all users */}
                 <div>
                   {(() => {
-                    // ✅ CORREÇÃO: Usar APENAS dados congelados para garantir que nunca mudem
-                    const metricsToUse = frozenMetrics || convertToMetricsDashboardFormat(backtestResult);
-                    
+                    // Base: Performance Metrics convertidos
+                    const baseMetrics = frozenMetrics || convertToMetricsDashboardFormat(backtestResult);
+                    // Referência: Métricas principais da Análise Diária (API /api/trades/metrics-from-data)
+                    const dailyMain = (recalculatedMetrics?.metricas_principais)
+                      || (drata?.metricas_principais)
+                      || (frozenDrata?.metricas_principais);
+
+                    // Fonte única para DD consolidado (mesmo cálculo da legenda da equity):
+                    let ddAmountFromConsolidation: number | undefined;
+                    let ddPctFromConsolidation: number | undefined;
+                    try {
+                      if (fileResults && Object.keys(fileResults).length > 0) {
+                        // @ts-expect-error compatibilidade de tipos
+                        const dd = calculateDirectConsolidation(fileResults);
+                        ddAmountFromConsolidation = dd?.maxDrawdownAbsoluto;
+                        ddPctFromConsolidation = dd?.maxDrawdownPercent;
+                      }
+                    } catch {}
+
+                    // Sharpe Ratio TOTAL padronizado (mesma lógica do Metrics/Daily):
+                    const computeDailySharpe = (allTrades: typeof trades) => {
+                      if (!allTrades || allTrades.length === 0) return undefined;
+                      const dailyMap = new Map<string, number>();
+                      allTrades.forEach(t => {
+                        const dateKey = new Date(t.entry_date).toISOString().split('T')[0];
+                        const current = dailyMap.get(dateKey) || 0;
+                        dailyMap.set(dateKey, current + (t.pnl || 0));
+                      });
+                      const returns = Array.from(dailyMap.values());
+                      if (returns.length === 0) return undefined;
+                      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+                      const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / returns.length;
+                      const stdDev = Math.sqrt(variance);
+                      const riskFreeDaily = 0.12 / 365; // mesmo RF utilizado em Metrics
+                      if (stdDev <= 0) return 0;
+                      return (mean - riskFreeDaily) / stdDev;
+                    };
+                    const computedSharpe = computeDailySharpe(Array.isArray(trades) ? trades : []);
+
+                    // Padronização: usar Sharpe Ratio e Fator de Recuperação da Análise Diária
+                    // e Drawdown consolidado (R$ e %) quando disponível
+                    const metricsToUse = {
+                      ...baseMetrics,
+                      sharpeRatio: (computedSharpe !== undefined ? computedSharpe : (dailyMain?.sharpe_ratio)) ?? baseMetrics?.sharpeRatio,
+                      recoveryFactor: dailyMain?.fator_recuperacao ?? baseMetrics?.recoveryFactor,
+                      // DD consolidado: usar cálculo direto (idêntico à legenda). Se indisponível, cair para Análise Diária e depois para Performance Metrics
+                      maxDrawdownAmount: ddAmountFromConsolidation ?? dailyMain?.drawdown_maximo ?? baseMetrics?.maxDrawdownAmount,
+                      maxDrawdown: ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown,
+                    } as typeof baseMetrics & {
+                      sharpeRatio?: number;
+                      recoveryFactor?: number;
+                      maxDrawdownAmount?: number;
+                      maxDrawdown?: number;
+                    };
+
                     return (
                       <MetricsDashboard 
                         metrics={metricsToUse}
@@ -2280,10 +2264,11 @@ useEffect(() => {
               description="Compare a correlação entre diferentes estratégias para otimizar seu portfólio. Disponível apenas para usuários PRO."
               requiredPlan="Pro"
             >
-               <SimpleCorrelationComponent
+                <SimpleCorrelationComponent
                   showCorrelation={showCorrelation}
                   setShowCorrelation={setShowCorrelation}
                   backtestResult={originalCorrelationData || backtestResult}
+                   fileResults={fileResults}
                   onResetCorrelation={handleResetFilters}
                   isUsingOriginalData={!!originalCorrelationData}
                 />

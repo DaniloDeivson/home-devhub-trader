@@ -10,77 +10,70 @@ const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
   const metrics = result["Performance Metrics"] as Record<string, unknown>;
   if (!metrics) return {};
   
-  // ✅ CORREÇÃO: Processar trades para calcular estatísticas corretas
+  // Preferir sempre dados reais da API; usar trades apenas como fallback quando a API não retornar
   const trades = (result.trades as Array<Record<string, unknown>>) || [];
-  console.log(`📊 Processando ${trades.length} trades para ${result.fileName as string || 'arquivo'}`);
-  
-  // Calcular estatísticas dos trades
-  let profitableTrades = 0;
-  let lossTrades = 0;
-  let zeroTrades = 0;
-  let totalPnL = 0;
-  let grossProfit = 0;
-  let grossLoss = 0;
-  let maxWin = 0;
-  let maxLoss = 0;
-  
-  trades.forEach((trade: Record<string, unknown>) => {
-    const pnl = Number(trade.pnl) || 0;
-    totalPnL += pnl;
-    
-    if (pnl > 0) {
-      profitableTrades++;
-      grossProfit += pnl;
-      maxWin = Math.max(maxWin, pnl);
-    } else if (pnl < 0) {
-      lossTrades++;
-      grossLoss += Math.abs(pnl);
-      maxLoss = Math.max(maxLoss, Math.abs(pnl));
-    } else {
-      zeroTrades++;
-    }
-  });
-  
-  // Calcular médias
-  const averageWin = profitableTrades > 0 ? grossProfit / profitableTrades : 0;
-  const averageLoss = lossTrades > 0 ? grossLoss / lossTrades : 0;
-  const averageTrade = trades.length > 0 ? totalPnL / trades.length : 0;
-  
-  console.log(`📊 Estatísticas calculadas:`, {
-    totalTrades: trades.length,
-    profitableTrades,
-    lossTrades,
-    zeroTrades,
-    grossProfit,
-    grossLoss,
-    averageWin,
-    averageLoss,
-    maxWin,
-    maxLoss
-  });
+  console.log(`📊 Dados recebidos | trades: ${trades.length}`);
+
+  // Fallbacks calculados APENAS se a API não trouxer
+  let fallbackProfitableTrades = 0;
+  let fallbackLossTrades = 0;
+  let fallbackGrossProfit = 0;
+  let fallbackGrossLoss = 0;
+  let fallbackMaxWin = 0;
+  let fallbackMaxLoss = 0;
+  let fallbackTotalPnL = 0;
+
+  if (trades.length > 0) {
+    trades.forEach((trade: Record<string, unknown>) => {
+      const pnl = Number(trade.pnl) || 0;
+      fallbackTotalPnL += pnl;
+      if (pnl > 0) {
+        fallbackProfitableTrades++;
+        fallbackGrossProfit += pnl;
+        fallbackMaxWin = Math.max(fallbackMaxWin, pnl);
+      } else if (pnl < 0) {
+        fallbackLossTrades++;
+        fallbackGrossLoss += Math.abs(pnl);
+        fallbackMaxLoss = Math.max(fallbackMaxLoss, Math.abs(pnl));
+      }
+    });
+  }
+  const fallbackAverageWin = fallbackProfitableTrades > 0 ? fallbackGrossProfit / fallbackProfitableTrades : undefined;
+  const fallbackAverageLoss = fallbackLossTrades > 0 ? fallbackGrossLoss / fallbackLossTrades : undefined;
+  const fallbackAverageTrade = trades.length > 0 ? fallbackTotalPnL / trades.length : undefined;
   
   return {
-    profitFactor: Number(metrics["Profit Factor"]) || 0,
-    payoff: Number(metrics["Payoff"]) || 0,
-    winRate: Number(metrics["Win Rate (%)"]) || 0,
-    maxDrawdown: Number(metrics["Max Drawdown ($)"]) || 0,
-    maxDrawdownAmount: Number(metrics["Max Drawdown ($)"]) || 0,
-    netProfit: Number(metrics["Net Profit"]) || 0,
-    grossProfit: grossProfit, // ✅ Usar valor calculado dos trades
-    grossLoss: grossLoss,     // ✅ Usar valor calculado dos trades
-    totalTrades: trades.length, // ✅ Usar número real de trades
-    profitableTrades: profitableTrades, // ✅ Usar valor calculado
-    lossTrades: lossTrades,   // ✅ Usar valor calculado
-    averageWin: averageWin,   // ✅ Usar valor calculado
-    averageLoss: averageLoss, // ✅ Usar valor calculado
-    sharpeRatio: Number(metrics["Sharpe Ratio"]) || 0,
-    recoveryFactor: Number(metrics["Recovery Factor"]) || 0,
-    averageTrade: averageTrade, // ✅ Usar valor calculado
-    averageTradeDuration: metrics["Time in Market"] as string,
-    maxConsecutiveWins: metrics["Max Consecutive Wins"] as number,
-    maxConsecutiveLosses: metrics["Max Consecutive Losses"] as number,
-    maiorGanho: maxWin,       // ✅ Usar valor calculado
-    maiorPerda: maxLoss       // ✅ Usar valor calculado
+    profitFactor: metrics["Profit Factor"] as number | undefined,
+    payoff: metrics["Payoff"] as number | undefined,
+    winRate: metrics["Win Rate (%)"] as number | undefined,
+    maxDrawdown: metrics["Max Drawdown ($)"] as number | undefined,
+    maxDrawdownAmount: metrics["Max Drawdown ($)"] as number | undefined,
+    netProfit: metrics["Net Profit"] as number | undefined,
+    grossProfit: (metrics["Gross Profit"] as number | undefined) ?? fallbackGrossProfit,
+    grossLoss: (metrics["Gross Loss"] as number | undefined) ?? fallbackGrossLoss,
+    totalTrades: (metrics["Total Trades"] as number | undefined) ?? (trades.length || undefined),
+    profitableTrades:
+      (metrics["Winning Trades"] as number | undefined) ??
+      (metrics["Win Rate (%)"] !== undefined && ((metrics["Total Trades"] as number | undefined) ?? trades.length)
+        ? Math.round(Number(metrics["Win Rate (%)"]) * Number(((metrics["Total Trades"] as number | undefined) ?? trades.length)) / 100)
+        : (fallbackProfitableTrades || undefined)),
+    lossTrades:
+      (metrics["Losing Trades"] as number | undefined) ??
+      (metrics["Win Rate (%)"] !== undefined && ((metrics["Total Trades"] as number | undefined) ?? trades.length)
+        ? Math.max(0, Number(((metrics["Total Trades"] as number | undefined) ?? trades.length)) - Math.round(Number(metrics["Win Rate (%)"]) * Number(((metrics["Total Trades"] as number | undefined) ?? trades.length)) / 100))
+        : (fallbackLossTrades || undefined)),
+    averageWin: (metrics["Average Win"] as number | undefined) ?? fallbackAverageWin,
+    averageLoss: (metrics["Average Loss"] as number | undefined) ?? fallbackAverageLoss,
+    sharpeRatio: metrics["Sharpe Ratio"] as number | undefined,
+    recoveryFactor: metrics["Recovery Factor"] as number | undefined,
+    averageTrade: (metrics["Net Profit"] !== undefined && ((metrics["Total Trades"] as number | undefined) ?? trades.length)
+      ? Number(metrics["Net Profit"]) / Number(((metrics["Total Trades"] as number | undefined) ?? trades.length) || 1)
+      : fallbackAverageTrade),
+    averageTradeDuration: metrics["Time in Market"] as string | undefined,
+    maxConsecutiveWins: metrics["Max Consecutive Wins"] as number | undefined,
+    maxConsecutiveLosses: metrics["Max Consecutive Losses"] as number | undefined,
+    maiorGanho: (metrics["Max Trade Gain"] as number | undefined) ?? fallbackMaxWin,
+    maiorPerda: (metrics["Max Trade Loss"] as number | undefined) ?? fallbackMaxLoss
   };
 };
 
@@ -105,15 +98,18 @@ export function IndividualResultsSection({
     );
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value?: number) => {
+    if (value === undefined || value === null || isNaN(Number(value))) return 'N/A';
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
-    }).format(value);
+    }).format(Number(value));
   };
 
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(2)}%`;
+  const formatPercentage = (value?: number) => {
+    if (value === undefined || value === null || isNaN(Number(value))) return 'N/A';
+    const v = Number(value);
+    return `${v.toFixed(2)}%`;
   };
 
   const getPerformanceColor = (value: number) => {
@@ -196,15 +192,15 @@ export function IndividualResultsSection({
                   <>
                     {/* Métricas principais em cards */}
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
-                      {metrics && (
+                      {metrics && Object.keys(metrics).length > 0 ? (
                         <>
                            <div className="bg-gray-800 p-3 rounded-lg">
                             <div className="flex items-center mb-1">
                               <TrendingUp className="w-4 h-4 text-green-400 mr-1" />
                               <span className="text-xs text-gray-400">Lucro Líquido</span>
                             </div>
-                             <p className={`text-lg font-semibold ${getPerformanceColor(Number(metrics["Net Profit"]) || 0)}`}>
-                              {formatCurrency(Number(metrics["Net Profit"]) || 0)}
+                              <p className={`text-lg font-semibold ${getPerformanceColor(Number(metrics?.["Net Profit"]) || 0)}`}>
+                              {formatCurrency(Number(metrics?.["Net Profit"]))}
                             </p>
                           </div>
 
@@ -213,8 +209,8 @@ export function IndividualResultsSection({
                               <BarChart3 className="w-4 h-4 text-blue-400 mr-1" />
                               <span className="text-xs text-gray-400">Total Trades</span>
                             </div>
-                             <p className="text-lg font-semibold text-white">
-                              {Number(metrics["Total Trades"]) || 0}
+                              <p className="text-lg font-semibold text-white">
+                              {metrics?.["Total Trades"] ?? 'N/A'}
                             </p>
                           </div>
 
@@ -223,8 +219,8 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-green-400 mr-1" />
                               <span className="text-xs text-gray-400">Win Rate</span>
                             </div>
-                             <p className="text-lg font-semibold text-green-400">
-                              {formatPercentage(Number(metrics["Win Rate (%)"]) || 0)}
+                              <p className="text-lg font-semibold text-green-400">
+                              {formatPercentage(Number(metrics?.["Win Rate (%)"]))}
                             </p>
                           </div>
 
@@ -233,8 +229,8 @@ export function IndividualResultsSection({
                               <TrendingDown className="w-4 h-4 text-red-400 mr-1" />
                               <span className="text-xs text-gray-400">Max Drawdown</span>
                             </div>
-                             <p className="text-lg font-semibold text-red-400">
-                              {formatCurrency(Number(metrics["Max Drawdown ($)"]) || 0)}
+                              <p className="text-lg font-semibold text-red-400">
+                              {formatCurrency(Number(metrics?.["Max Drawdown ($)"]))}
                             </p>
                           </div>
 
@@ -243,8 +239,8 @@ export function IndividualResultsSection({
                               <BarChart3 className="w-4 h-4 text-yellow-400 mr-1" />
                               <span className="text-xs text-gray-400">Fator de Lucro</span>
                             </div>
-                             <p className={`text-lg font-semibold ${(Number(metrics["Profit Factor"]) || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
-                              {(Number(metrics["Profit Factor"]) || 0).toFixed(2)}
+                              <p className={`text-lg font-semibold ${(Number(metrics?.["Profit Factor"]) || 0) >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                              {isNaN(Number(metrics?.["Profit Factor"])) ? 'N/A' : Number(metrics?.["Profit Factor"]).toFixed(2)}
                             </p>
                           </div>
 
@@ -253,11 +249,13 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-purple-400 mr-1" />
                               <span className="text-xs text-gray-400">Sharpe Ratio</span>
                             </div>
-                             <p className={`text-lg font-semibold ${sr >= 1 ? 'text-green-400' : sr >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                              {sr.toFixed(2)}
+                              <p className={`text-lg font-semibold ${sr >= 1 ? 'text-green-400' : sr >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {isNaN(sr) ? 'N/A' : sr.toFixed(2)}
                             </p>
                           </div>
                         </>
+                      ) : (
+                        <div className="col-span-full text-sm text-gray-400">Sem métricas disponíveis</div>
                       )}
                     </div>
 

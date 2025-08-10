@@ -1,5 +1,5 @@
 import { BarChart3, ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 
 // Types for backtest input and computed output
 type AssetType = 'stock' | 'future';
@@ -73,11 +73,24 @@ export function PositionSizingSection({
   backtestResult
 }: PositionSizingSectionProps) {
   const [selectedAsset, setSelectedAsset] = useState<string>('');
+
+  // Robust symbol extractor (supports alternative keys and normalizes)
+  const extractSymbol = (t: BacktestTrade): string => {
+    const candidates = [
+      t.symbol,
+      (t as Record<string, unknown>)['asset'] as string | undefined,
+      (t as Record<string, unknown>)['ativo'] as string | undefined,
+      (t as Record<string, unknown>)['ticker'] as string | undefined,
+      (t as Record<string, unknown>)['instrument'] as string | undefined,
+    ];
+    const raw = candidates.find((v) => typeof v === 'string' && v.trim().length > 0) || '';
+    return String(raw).trim().toUpperCase();
+  };
   
   const availableAssets: string[] = useMemo(() => {
     const trades: BacktestTrade[] = backtestResult?.trades ?? [];
     const symbols = trades
-      .map((t: BacktestTrade) => (t.symbol ? String(t.symbol) : ''))
+      .map((t: BacktestTrade) => extractSymbol(t))
       .filter((s: string) => s && s.trim().length > 0);
     return Array.from(new Set(symbols)).sort();
   }, [backtestResult?.trades]);
@@ -91,10 +104,10 @@ export function PositionSizingSection({
   };
 
   // Function to calculate position sizing data from backtestResult
-  const calculatePositionSizingData = (): PositionSizingData => {
+  const calculatePositionSizingData = useCallback((): PositionSizingData => {
     const trades: BacktestTrade[] = backtestResult?.trades ?? [];
     const filteredTrades: BacktestTrade[] = selectedAsset
-      ? trades.filter((t: BacktestTrade) => (t.symbol ?? '') === selectedAsset)
+      ? trades.filter((t: BacktestTrade) => extractSymbol(t) === selectedAsset.trim().toUpperCase())
       : trades;
     
     // Helper: parse numbers robustly from strings like "1", "1.0", "1,0", "1 contrato"
@@ -102,10 +115,14 @@ export function PositionSizingSection({
       if (value == null) return 0;
       if (typeof value === 'number' && isFinite(value)) return value;
       if (typeof value === 'string') {
-        const match = value.replace(/\s+/g, '').match(/-?[0-9]+([.,][0-9]+)?/);
+        const trimmed = value.trim();
+        const isParenNegative = /^\(.*\)$/.test(trimmed);
+        const numericText = trimmed.replace(/[R$]|\s+/g, '');
+        const match = numericText.match(/-?[0-9]+([.,][0-9]+)?/);
         if (!match) return 0;
         const normalized = match[0].replace(',', '.');
-        const n = Number(normalized);
+        let n = Number(normalized);
+        if (isParenNegative) n = -Math.abs(n);
         return isNaN(n) ? 0 : n;
       }
       return 0;
@@ -148,6 +165,40 @@ export function PositionSizingSection({
       best = Math.max(best, maxSide);
 
       return best > 0 ? best : 0;
+    };
+
+    // Helper: robust PnL extractor (handles numbers, strings and alternative keys)
+    const extractPnl = (trade: BacktestTrade): number => {
+      // Priority keys commonly seen across endpoints
+      const pnlKeys = [
+        'pnl', 'PnL', 'resultado', 'profit', 'net', 'net_profit', 'netProfit',
+        'retorno', 'gain', 'result', 'resultado_trade'
+      ];
+      for (const key of pnlKeys) {
+        if (key in trade) {
+          const value = trade[key as keyof BacktestTrade];
+          const parsed = parseNumeric(value);
+          if (!isNaN(parsed)) return parsed;
+        }
+      }
+      // As a last resort, deep-scan shallow nested objects for pnl-like fields
+      const tryScanObject = (obj: unknown, depth = 0): number | undefined => {
+        if (!obj || typeof obj !== 'object' || depth > 2) return undefined;
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+          if (/pnl|profit|result|retorno|ganho|perda|net/i.test(k)) {
+            const parsed = parseNumeric(v);
+            if (!isNaN(parsed) && parsed !== 0) return parsed;
+          }
+          if (v && typeof v === 'object') {
+            const nested = tryScanObject(v, depth + 1);
+            if (nested !== undefined) return nested;
+          }
+        }
+        return undefined;
+      };
+      const deep = tryScanObject(trade);
+      if (deep !== undefined) return deep;
+      return 0;
     };
 
     // Extract position sizes using robust extraction
@@ -219,16 +270,16 @@ export function PositionSizingSection({
         trade.positionSize >= range.min && trade.positionSize <= range.max
       );
       
-      const totalResult = tradesInRange.reduce((sum: number, trade: TradeWithPositionSize) => sum + (trade.pnl || 0), 0);
+      const totalResult = tradesInRange.reduce((sum: number, trade: TradeWithPositionSize) => sum + extractPnl(trade), 0);
       const count = tradesInRange.length;
       const percentage = positions.length > 0 ? (count / positions.length) * 100 : 0;
       
       // Calculate additional metrics similar to trade duration section
-      const winningTrades: TradeWithPositionSize[] = tradesInRange.filter((trade: TradeWithPositionSize) => (trade.pnl || 0) > 0);
-      const losingTrades: TradeWithPositionSize[] = tradesInRange.filter((trade: TradeWithPositionSize) => (trade.pnl || 0) < 0);
+      const winningTrades: TradeWithPositionSize[] = tradesInRange.filter((trade: TradeWithPositionSize) => extractPnl(trade) > 0);
+      const losingTrades: TradeWithPositionSize[] = tradesInRange.filter((trade: TradeWithPositionSize) => extractPnl(trade) < 0);
       
-      const totalWins = winningTrades.reduce((sum: number, trade: TradeWithPositionSize) => sum + (trade.pnl || 0), 0);
-      const totalLosses = Math.abs(losingTrades.reduce((sum: number, trade: TradeWithPositionSize) => sum + (trade.pnl || 0), 0));
+      const totalWins = winningTrades.reduce((sum: number, trade: TradeWithPositionSize) => sum + extractPnl(trade), 0);
+      const totalLosses = Math.abs(losingTrades.reduce((sum: number, trade: TradeWithPositionSize) => sum + extractPnl(trade), 0));
       
       const winRate = count > 0 ? (winningTrades.length / count) * 100 : 0;
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0);
@@ -281,9 +332,9 @@ export function PositionSizingSection({
       totalTrades: positions.length,
       uniqueDays: Object.keys(tradesByDate).length
     };
-  };
+  }, [backtestResult?.trades, selectedAsset]);
 
-  const positionSizingData = useMemo(() => calculatePositionSizingData(), [backtestResult?.trades, selectedAsset]);
+  const positionSizingData = useMemo(() => calculatePositionSizingData(), [calculatePositionSizingData]);
   
   // Guard clause to prevent rendering if backtestResult is null
   if (!backtestResult) return null;

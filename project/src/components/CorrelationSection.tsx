@@ -15,6 +15,7 @@ interface SimpleCorrelationProps {
   showCorrelation: boolean;
   setShowCorrelation: (show: boolean) => void;
   backtestResult: any;
+  fileResults?: Record<string, any>;
   onResetCorrelation?: () => void;
   isUsingOriginalData?: boolean;
 }
@@ -23,6 +24,7 @@ export function SimpleCorrelationComponent({
   showCorrelation,
   setShowCorrelation,
   backtestResult,
+  fileResults,
   onResetCorrelation,
   isUsingOriginalData = false
 }: SimpleCorrelationProps) {
@@ -231,6 +233,159 @@ export function SimpleCorrelationComponent({
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  // Nova aba: Matriz de Correlação (por Data + Direção, ignorando resultado)
+  const renderMatrizDirecaoTab = () => {
+    // Preferir os trades reais dos CSVs quando disponíveis
+    let detalhes: Array<any> | null = null;
+    if (fileResults && Object.keys(fileResults).length > 1) {
+      // Construir detalhes (data + direção) a partir de trades individuais
+      const rows: Array<any> = [];
+      Object.entries(fileResults).forEach(([nome, result]: any) => {
+        const trades: any[] = Array.isArray(result?.trades) ? result.trades : [];
+        // agrupar por data e direção
+        const map = new Map<string, { operou: boolean; num_operacoes: number }>();
+        trades.forEach((t) => {
+          const dateKey = new Date(t.entry_date || t.date || t.exit_date).toISOString().slice(0, 10);
+          const dir = String(t.direction || t.direcao || t.side || '')
+            .toUpperCase()
+            .replace('LONG', 'COMPRA')
+            .replace('SHORT', 'VENDA');
+          if (!dir) return;
+          const key = `${dateKey}__${dir}`;
+          const cur = map.get(key) || { operou: false, num_operacoes: 0 };
+          map.set(key, { operou: true, num_operacoes: cur.num_operacoes + 1 });
+        });
+        // empurrar linhas
+        map.forEach((v, key) => {
+          const [dateKey, direcao] = key.split('__');
+          rows.push({ data: dateKey, direcao, estrategias: { [nome]: { operou: v.operou, num_operacoes: v.num_operacoes } } });
+        });
+      });
+      // Consolidar por data+direção juntando estratégias
+      const merged = new Map<string, any>();
+      rows.forEach((r) => {
+        const k = `${r.data}__${r.direcao}`;
+        const cur = merged.get(k) || { data: r.data, direcao: r.direcao, estrategias: {} };
+        merged.set(k, { data: r.data, direcao: r.direcao, estrategias: { ...cur.estrategias, ...r.estrategias } });
+      });
+      detalhes = Array.from(merged.values());
+    }
+    if (!detalhes) {
+      if (!correlationData?.correlacao_data_direcao?.detalhes) return null;
+      detalhes = correlationData.correlacao_data_direcao.detalhes as Array<any>;
+    }
+
+    // 1) Coletar nomes de estratégias
+    const strategySet = new Set<string>();
+    detalhes.forEach((row) => {
+      if (row?.estrategias) {
+        Object.keys(row.estrategias).forEach((nome) => strategySet.add(nome));
+      }
+    });
+    const strategies = Array.from(strategySet).sort();
+
+    // 2) Construir mapa por data -> estrategia -> flags de COMPRA/VENDA (incidência)
+    type DirFlags = { buy: boolean; sell: boolean };
+    const byDateFlags: Record<string, Record<string, DirFlags>> = {};
+    detalhes.forEach((row) => {
+      const dateKey = row?.data;
+      const direcao = String(row?.direcao || '').toUpperCase();
+      if (!dateKey || !row?.estrategias) return;
+      if (!byDateFlags[dateKey]) byDateFlags[dateKey] = {};
+      Object.entries(row.estrategias).forEach(([nome, dados]: any) => {
+        if (!dados?.operou) return;
+        if (!byDateFlags[dateKey][nome]) byDateFlags[dateKey][nome] = { buy: false, sell: false };
+        if (direcao === 'COMPRA') byDateFlags[dateKey][nome].buy = true;
+        if (direcao === 'VENDA') byDateFlags[dateKey][nome].sell = true;
+      });
+    });
+
+    // 3) Indicador direcional por data/estratégia (signo): +1 só COMPRA, -1 só VENDA, 0 (ambíguo/nenhum)
+    const indicatorByDate: Record<string, Record<string, number>> = {};
+    Object.entries(byDateFlags).forEach(([dateKey, map]) => {
+      indicatorByDate[dateKey] = {};
+      strategies.forEach((nome) => {
+        const flags = map[nome];
+        if (!flags) { indicatorByDate[dateKey][nome] = 0; return; }
+        indicatorByDate[dateKey][nome] = flags.buy && !flags.sell ? 1 : (!flags.buy && flags.sell ? -1 : 0);
+      });
+    });
+
+    // 4) Calcular matriz de correlação: média de (signA * signB) nas datas em que ambos ≠ 0
+    const matrix: number[][] = Array.from({ length: strategies.length }, () => Array(strategies.length).fill(0));
+    const allDates = Object.values(indicatorByDate);
+    for (let i = 0; i < strategies.length; i++) {
+      for (let j = 0; j < strategies.length; j++) {
+        if (i === j) {
+          matrix[i][j] = 1;
+          continue;
+        }
+        const a = strategies[i];
+        const b = strategies[j];
+        // Média do acordo direcional nos dias em que pelo menos uma operou (ignora 0,0)
+        let sum = 0;
+        let days = 0;
+        allDates.forEach((daily) => {
+          const sa = Number(daily[a] || 0);
+          const sb = Number(daily[b] || 0);
+          if (sa !== 0 || sb !== 0) {
+            sum += sa * sb; // +1 acordo, -1 desacordo, 0 ambíguo
+            days += 1;
+          }
+        });
+        matrix[i][j] = days > 0 ? sum / days : 0;
+      }
+    }
+
+    // Cor de fundo estilo heatmap (HSL: -1 -> vermelho, 0 -> amarelo, 1 -> verde)
+    const getBg = (v: number) => {
+      const clamped = Math.max(-1, Math.min(1, v));
+      // Mapa mais legível: vermelho (-1), amarelo (0), verde (1)
+      const hue = (clamped + 1) * 60;
+      const light = 40 + Math.abs(clamped) * 10; // mais claro quando perto de 0
+      return `hsl(${hue}deg 75% ${light}%)`;
+    };
+    const getText = (v: number) => (Math.abs(v) > 0.6 ? 'text-white' : 'text-gray-900');
+
+    return (
+      <div className="space-y-4">
+        <div className="text-sm text-gray-300">
+          Matriz (Data + Direção): 1 = totalmente correlacionado; 0 = pouca correlação; -1 = correlação oposta.
+        </div>
+        <div className="overflow-x-auto">
+          <table className="text-xs min-w-max">
+            <thead>
+              <tr>
+                <th className="sticky left-0 bg-gray-800 px-2 py-2 text-left z-10">Estratégias</th>
+                {strategies.map((col) => (
+                  <th key={col} className="px-2 py-2 bg-gray-700 text-center whitespace-nowrap">{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {strategies.map((rowName, i) => (
+                <tr key={rowName}>
+                  <th className="sticky left-0 bg-gray-700 px-2 py-1 text-left z-10 whitespace-nowrap">{rowName}</th>
+                  {strategies.map((_, j) => (
+                    <td key={`${i}-${j}`} className="px-1 py-1 text-center">
+                      <div
+                        className={`rounded ${getText(matrix[i][j])} font-semibold`}
+                        style={{ backgroundColor: getBg(matrix[i][j]) }}
+                        title={`Correlação: ${Math.max(-1, Math.min(1, matrix[i][j])).toFixed(6)}`}
+                      >
+                        {Math.max(-1, Math.min(1, matrix[i][j])).toFixed(6)}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
@@ -623,6 +778,18 @@ export function SimpleCorrelationComponent({
                       Por Direção
                     </button>
                     
+                    <button
+                      onClick={() => setActiveTab('matriz')}
+                      className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'matriz'
+                          ? 'bg-gray-600 text-white'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                      }`}
+                    >
+                      <Info className="w-4 h-4 mr-2" />
+                      Matriz
+                    </button>
+                    
                     {isMatricial && (
                       <button
                         onClick={() => setActiveTab('matricial')}
@@ -641,6 +808,7 @@ export function SimpleCorrelationComponent({
                   {/* Conteúdo das tabs */}
                   {activeTab === 'resultado' && renderResultadoTab()}
                   {activeTab === 'direcao' && renderDirecaoTab()}
+                  {activeTab === 'matriz' && renderMatrizDirecaoTab()}
                   {activeTab === 'matricial' && isMatricial && renderMatricialTab()}
                 </div>
               )}

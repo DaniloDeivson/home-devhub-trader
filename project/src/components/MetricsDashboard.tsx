@@ -163,26 +163,29 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
 
   // Trades consolidados são recebidos via tradeObject, mas as métricas exibidas vêm da API
 
-  // Estatísticas derivadas apenas de métricas da API (sem calcular a partir de trades)
+  // Estatísticas derivadas apenas de métricas da API (sem calcular localmente)
   const estatisticasTrades = {
-    totalTrades: Number(metrics?.totalTrades) || 0,
-    tradesLucrativos: Number(metrics?.profitableTrades) || 0,
-    tradesComPerda: Number(metrics?.lossTrades) || 0,
-    ganhoMedio: Number(metrics?.averageWin) || 0,
-    perdaMedia: Number(metrics?.averageLoss) || 0,
-    maxPerdasConsecutivas: Number(metrics?.maxConsecutiveLosses) || 0,
-    maxGanhosConsecutivos: Number(metrics?.maxConsecutiveWins) || 0,
-  };
+    totalTrades: metrics?.totalTrades,
+    tradesLucrativos: metrics?.profitableTrades,
+    tradesComPerda: metrics?.lossTrades,
+    ganhoMedio: metrics?.averageWin,
+    perdaMedia: metrics?.averageLoss,
+    maxPerdasConsecutivas: metrics?.maxConsecutiveLosses,
+    maxGanhosConsecutivos: metrics?.maxConsecutiveWins,
+  } as const;
 
   const metricasAvancadas = {
-    tradeMedio: Number(metrics?.averageTrade) || 0,
-    maiorGanho: Number(metrics?.maiorGanho) || 0,
-    maiorPerda: Number(metrics?.maiorPerda) || 0,
-    ganhoBruto: Number(metrics?.grossProfit) || 0,
-    perdaBruta: Number(metrics?.grossLoss) || 0,
-    tradesLucrativosPercent: Number(metrics?.winRate) || 0,
-    tradesComPerdaPercent: metrics?.winRate !== undefined ? Math.max(0, 100 - Number(metrics?.winRate)) : 0,
-  };
+    tradeMedio: metrics?.averageTrade,
+    maiorGanho: metrics?.maiorGanho,
+    maiorPerda: metrics?.maiorPerda,
+    ganhoBruto: metrics?.grossProfit,
+    perdaBruta: metrics?.grossLoss,
+    tradesLucrativosPercent: metrics?.winRate,
+    tradesComPerdaPercent:
+      metrics?.winRate !== undefined && metrics?.winRate !== null
+        ? Math.max(0, 100 - Number(metrics?.winRate))
+        : undefined,
+  } as const;
 
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
@@ -217,10 +220,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-3xl font-bold ${getMetricColor(
                   "netProfit",
-                  Number(metrics?.netProfit) || 0
+                  Number(metrics?.netProfit)
                 )}`}
               >
-                {formatMetric(Number(metrics?.netProfit) || 0, false, true)}
+                {formatMetric(Number(metrics?.netProfit), false, true)}
               </p>
             </div>
 
@@ -228,10 +231,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Drawdown Máximo R$</p>
               <p className="text-3xl font-bold text-red-500">
-                {formatMetric((animatedMetrics.maxDrawdownAmount as number) || 0, false, true)}
+                {formatMetric(animatedMetrics.maxDrawdownAmount as number, false, true)}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {formatMetric((animatedMetrics.maxDrawdown as number) || 0, true)} do capital
+                {formatMetric(animatedMetrics.maxDrawdown as number, true)} do capital
               </p>
             </div>
 
@@ -239,7 +242,7 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Total de Trades</p>
               <p className="text-3xl font-bold">
-                {Number(metrics?.totalTrades) || 0}
+                {metrics?.totalTrades ?? 'N/A'}
               </p>
             </div>
 
@@ -249,10 +252,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "profitFactor",
-                  Number(metrics?.profitFactor) || 0
+                  Number(metrics?.profitFactor)
                 )}`}
               >
-                {formatMetric(Number(metrics?.profitFactor) || 0)}
+                {formatMetric(Number(metrics?.profitFactor))}
               </p>
             </div>
 
@@ -262,10 +265,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "payoff",
-                  Number(metrics?.payoff) || 0
+                  Number(metrics?.payoff)
                 )}`}
               >
-                {formatMetric(Number(metrics?.payoff) || 0)}
+                {formatMetric(Number(metrics?.payoff))}
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Ganho Médio / Perda Média (Total)
@@ -278,10 +281,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "sharpeRatio",
-                  animatedMetrics.sharpeRatio as number || 0
+                  animatedMetrics.sharpeRatio as number
                 )}`}
               >
-                {formatMetric(animatedMetrics.sharpeRatio as number || 0)}
+                {formatMetric(animatedMetrics.sharpeRatio as number)}
               </p>
             </div>
 
@@ -291,10 +294,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "recoveryFactor",
-                  animatedMetrics.recoveryFactor as number || 0
+                  animatedMetrics.recoveryFactor as number
                 )}`}
               >
-                {formatMetric(animatedMetrics.recoveryFactor as number || 0)}
+                {formatMetric(animatedMetrics.recoveryFactor as number)}
               </p>
             </div>
 
@@ -304,10 +307,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "winRate",
-                  Number(metrics?.winRate) || 0
+                  Number(metrics?.winRate)
                 )}`}
               >
-                {formatMetric(Number(metrics?.winRate) || 0, true)}
+                {formatMetric(Number(metrics?.winRate), true)}
               </p>
             </div>
           </div>
@@ -324,32 +327,34 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Total de Trades</td>
                      <td className="py-2 text-right">
-                       {estatisticasTrades.totalTrades}
+                       {estatisticasTrades.totalTrades ?? 'N/A'}
                      </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                      <td className="py-2 text-right text-green-500">
-                       {estatisticasTrades.tradesLucrativos}
+                       {estatisticasTrades.tradesLucrativos ?? 'N/A'}
                      </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                      <td className="py-2 text-right text-red-500">
-                       {estatisticasTrades.tradesComPerda}
+                       {estatisticasTrades.tradesComPerda ?? 'N/A'}
                      </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Médio</td>
                      <td className="py-2 text-right text-green-500">
-                       {formatMetric(estatisticasTrades.ganhoMedio, false, true)}
+                       {formatMetric(estatisticasTrades.ganhoMedio as number, false, true)}
                      </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Média</td>
                     <td className="py-2 text-right text-red-500">
                       {formatMetric(
-                         Math.abs(estatisticasTrades.perdaMedia),
+                         estatisticasTrades.perdaMedia !== undefined && estatisticasTrades.perdaMedia !== null
+                           ? Math.abs(Number(estatisticasTrades.perdaMedia))
+                           : undefined,
                         false,
                         true
                       )}
@@ -360,7 +365,7 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
                       Máx. Perdas Consecutivas
                     </td>
                     <td className="py-2 text-right">
-                       {estatisticasTrades.maxPerdasConsecutivas}
+                       {estatisticasTrades.maxPerdasConsecutivas ?? 'N/A'}
                     </td>
                   </tr>
                   <tr>
@@ -368,7 +373,7 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
                       Máx. Ganhos Consecutivos
                     </td>
                     <td className="py-2 text-right text-green-500">
-                       {estatisticasTrades.maxGanhosConsecutivos}
+                       {estatisticasTrades.maxGanhosConsecutivos ?? 'N/A'}
                     </td>
                   </tr>
                 </tbody>
@@ -385,43 +390,43 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trade Médio</td>
                     <td className="py-2 text-right">
-                      {formatMetric(metricasAvancadas.tradeMedio, false, true)}
+                      {formatMetric(metricasAvancadas.tradeMedio as number, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Ganho</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(metricasAvancadas.maiorGanho, false, true)}
+                      {formatMetric(metricasAvancadas.maiorGanho as number, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Maior Perda</td>
                     <td className="py-2 text-right text-red-500">
-                      {formatMetric(metricasAvancadas.maiorPerda, false, true)}
+                      {formatMetric(metricasAvancadas.maiorPerda as number, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Ganho Bruto</td>
                     <td className="py-2 text-right text-green-500">
-                      {formatMetric(metricasAvancadas.ganhoBruto, false, true)}
+                      {formatMetric(metricasAvancadas.ganhoBruto as number, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Perda Bruta</td>
                     <td className="py-2 text-right text-red-500">
-                      {formatMetric(metricasAvancadas.perdaBruta, false, true)}
+                      {formatMetric(metricasAvancadas.perdaBruta as number, false, true)}
                     </td>
                   </tr>
                   <tr className="border-b border-gray-700">
                     <td className="py-2 text-gray-400">Trades Lucrativos</td>
                     <td className="py-2 text-right">
-                      {formatMetric(metricasAvancadas.tradesLucrativosPercent, true)}
+                      {formatMetric(metricasAvancadas.tradesLucrativosPercent as number, true)}
                     </td>
                   </tr>
                   <tr>
                     <td className="py-2 text-gray-400">Trades com Perda</td>
                     <td className="py-2 text-right">
-                      {formatMetric(metricasAvancadas.tradesComPerdaPercent, true)}
+                      {formatMetric(metricasAvancadas.tradesComPerdaPercent as number, true)}
                     </td>
                   </tr>
                 </tbody>
