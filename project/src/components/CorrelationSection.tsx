@@ -341,15 +341,18 @@ export function SimpleCorrelationComponent({
       }
     }
 
-    // Cor de fundo estilo heatmap (HSL: -1 -> vermelho, 0 -> amarelo, 1 -> verde)
+    // Cor de fundo estilo heatmap (HSL): reforça vermelhos e verdes com mais saturação e contraste
     const getBg = (v: number) => {
       const clamped = Math.max(-1, Math.min(1, v));
-      // Mapa mais legível: vermelho (-1), amarelo (0), verde (1)
+      // -1 -> 0° (vermelho) | 0 -> 60° (amarelo) | 1 -> 120° (verde)
       const hue = (clamped + 1) * 60;
-      const light = 40 + Math.abs(clamped) * 10; // mais claro quando perto de 0
-      return `hsl(${hue}deg 75% ${light}%)`;
+      // Saturação cresce com a intensidade do sinal para destacar extremos
+      const saturation = 70 + Math.round(Math.abs(clamped) * 25); // 70% a 95%
+      // Luminosidade diminui com a intensidade para dar mais contraste nos extremos
+      const lightness = 55 - Math.round(Math.abs(clamped) * 20); // 55% a 35%
+      return `hsl(${hue}deg ${saturation}% ${lightness}%)`;
     };
-    const getText = (v: number) => (Math.abs(v) > 0.6 ? 'text-white' : 'text-gray-900');
+    const getText = (v: number) => (Math.abs(v) > 0.45 ? 'text-white' : 'text-gray-900');
 
     return (
       <div className="space-y-4">

@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
-import { Send, RefreshCw, XCircle, Bot, User, Zap, PieChart, Layers, TrendingUp, Shield } from "lucide-react";
+import { Send, XCircle, Bot, User, Zap, PieChart, Layers, TrendingUp, Shield } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { buildApiUrl } from '../config/api';
 
@@ -10,9 +10,9 @@ interface AIResponseChatProps {
   onCancelAnalysis: () => void;
   error: string | null;
   setError: (error: string | null) => void;
-  analysisResult: any;
-  onMetricsReceived?: (metrics: any) => void;
-  backtestData?: any;
+  analysisResult: unknown;
+  onMetricsReceived?: (metrics: unknown) => void;
+  backtestData?: unknown;
 }
 
 interface Message {
@@ -32,7 +32,7 @@ interface QuickPrompt {
 export function AIResponseChat({
   isAnalyzing,
   setIsAnalyzing,
-  onCancelAnalysis,
+  // onCancelAnalysis, // not used in this component's current UI
   error,
   setError,
   analysisResult,
@@ -58,22 +58,18 @@ export function AIResponseChat({
 
   useEffect(() => {
     if (analysisResult) {
+      const ar = analysisResult as Record<string, unknown>;
+      const toNum = (v: unknown) => (typeof v === 'number' ? v : undefined);
+      const pf = toNum(ar?.profitFactor);
+      const wr = toNum(ar?.winRate);
+      const dd = toNum(ar?.maxDrawdown);
+      const np = toNum(ar?.netProfit);
       addMessage(
         "assistant",
-        "Análise concluída! Aqui estão os principais resultados:\n\n" +
-          `- Profit Factor: ${
-            analysisResult.profitFactor?.toFixed(2) || "N/A"
-          }\n` +
-          `- Win Rate: ${analysisResult.winRate?.toFixed(2) || "N/A"}%\n` +
-          `- Drawdown Máximo: ${
-            analysisResult.maxDrawdown?.toFixed(2) || "N/A"
-          }%\n` +
-          `- Lucro Líquido: R$ ${
-            analysisResult.netProfit?.toFixed(2) || "N/A"
-          }\n\n` +
-          "Você pode me perguntar mais detalhes sobre esses resultados ou pedir sugestões para melhorar a estratégia."
+        `Análise concluída! Aqui estão os principais resultados:\n\n- Profit Factor: ${pf !== undefined ? pf.toFixed(2) : 'N/A'}\n- Win Rate: ${wr !== undefined ? wr.toFixed(2) : 'N/A'}%\n- Drawdown Máximo: ${dd !== undefined ? dd.toFixed(2) : 'N/A'}%\n- Lucro Líquido: R$ ${np !== undefined ? np.toFixed(2) : 'N/A'}\n\nVocê pode me perguntar mais detalhes sobre esses resultados ou pedir sugestões para melhorar a estratégia.`
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisResult]);
 
   useEffect(() => {
@@ -93,6 +89,8 @@ export function AIResponseChat({
       content,
     };
     setMessages((prev) => [...prev, newMessage]);
+    // garantir scroll ao fim após cada mensagem
+    setTimeout(scrollToBottom, 0);
   };
 
   const prepareMessagesWithContext = (userMessage: string) => {
@@ -100,17 +98,33 @@ export function AIResponseChat({
     let contextMessage = "";
 
     if (backtestData) {
+      const bd = backtestData as Record<string, any>;
+      const pm = (bd?.["Performance Metrics"]) || {};
+      const allTrades = Array.isArray(bd?.trades) ? (bd.trades as Array<Record<string, any>>) : [];
+      // Amostra mínima de trades e apenas campos essenciais
+      const compactTrades = allTrades.slice(0, 20).map(t => ({
+        entry_date: t.entry_date ?? t.date ?? t.exit_date,
+        direction: t.direction ?? t.direcao ?? t.side ?? null,
+        pnl: t.pnl
+      }));
+      // Métricas essenciais apenas
+      const compactPerf = {
+        profitFactor: pm["Profit Factor"],
+        winRatePct: pm["Win Rate (%)"],
+        netProfit: pm["Net Profit"],
+        maxDD: pm["Max Drawdown ($)"],
+        maxDDPct: pm["Max Drawdown (%)"],
+        totalTrades: pm["Total Trades"]
+      };
       const contextData = {
-        performanceMetrics: backtestData["Performance Metrics"],
-        dayOfWeekAnalysis: backtestData["Day of Week Analysis"],
-        monthlyAnalysis: backtestData["Monthly Analysis"],
-        trades: backtestData.trades ? backtestData.trades.slice(0, 50) : [], // Limitar trades para evitar limite de tokens
-        totalTrades: backtestData.trades?.length || 0,
+        performanceMetrics: compactPerf,
+        tradesSample: compactTrades,
+        totalTrades: allTrades.length,
       };
 
       contextMessage = `
 CONTEXTO DOS DADOS DE BACKTEST:
-${JSON.stringify(contextData, null, 2)}
+${JSON.stringify(contextData)}
 
 PERGUNTA DO USUÁRIO: ${userMessage}
 
@@ -121,16 +135,13 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
     }
 
     // Preparar array de mensagens para enviar à API
+    // Enviar apenas instrução + contexto atual (sem histórico) para reduzir tokens
     const messagesToSend = [
       {
         role: "user",
         content:
-          "Você é um especialista em análise de trading e backtesting. Analise os dados fornecidos e forneça insights valiosos e sugestões práticas para melhorar estratégias de trading.",
+          "Você é um especialista em análise de trading e backtesting. Seja objetivo e prático nas recomendações.",
       },
-      ...messages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
       {
         role: "user",
         content: contextMessage,
@@ -162,6 +173,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
     // Add user message to chat
     addMessage("user", prompt.prompt);
     setIsTyping(true);
+    setIsAnalyzing(true);
     setError(null);
 
     try {
@@ -169,7 +181,8 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
       const messagesToSend = prepareMessagesWithContext(prompt.prompt);
 
       // Call the API
-      const response = await fetch(`${PYTHON_API_URL}/chat`, {
+      // Corrigir endpoint duplicado: buildApiUrl('/chat') já retorna /chat
+      const response = await fetch(PYTHON_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -193,6 +206,8 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
       // Add assistant response
       if (data.content) {
         addMessage("assistant", data.content);
+        // Propagar quaisquer métricas retornadas (se existirem)
+        onMetricsReceived?.(data.metrics ?? data);
       } else {
         throw new Error("Resposta inválida da API");
       }
@@ -204,6 +219,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
       setError(err instanceof Error ? err.message : "Erro ao processar análise");
     } finally {
       setIsTyping(false);
+      setIsAnalyzing(false);
     }
   };
 
@@ -288,7 +304,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
               icon: <PieChart className="w-4 h-4" />
             })}
             className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-left transition-colors"
-            disabled={!backtestData}
+            disabled={!backtestData || isAnalyzing}
           >
             <div className="flex items-center mb-2">
               <PieChart className="w-4 h-4 mr-2" />
@@ -311,7 +327,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
               icon: <Layers className="w-4 h-4" />
             })}
             className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-left transition-colors"
-            disabled={!backtestData}
+            disabled={!backtestData || isAnalyzing}
           >
             <div className="flex items-center mb-2">
               <Layers className="w-4 h-4 mr-2" />
@@ -334,7 +350,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
               icon: <TrendingUp className="w-4 h-4" />
             })}
             className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-left transition-colors"
-            disabled={!backtestData}
+            disabled={!backtestData || isAnalyzing}
           >
             <div className="flex items-center mb-2">
               <TrendingUp className="w-4 h-4 mr-2" />
@@ -357,7 +373,7 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
               icon: <Shield className="w-4 h-4" />
             })}
             className="p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-left transition-colors"
-            disabled={!backtestData}
+            disabled={!backtestData || isAnalyzing}
           >
             <div className="flex items-center mb-2">
               <Shield className="w-4 h-4 mr-2" />

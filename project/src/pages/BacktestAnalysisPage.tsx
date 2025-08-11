@@ -2137,7 +2137,7 @@ useEffect(() => {
                       || (drata?.metricas_principais)
                       || (frozenDrata?.metricas_principais);
 
-                    // Fonte única para DD consolidado (mesmo cálculo da legenda da equity):
+                    // Fonte única para DD consolidado (mesmo cálculo da legenda da equity)
                     let ddAmountFromConsolidation: number | undefined;
                     let ddPctFromConsolidation: number | undefined;
                     try {
@@ -2148,6 +2148,21 @@ useEffect(() => {
                         ddPctFromConsolidation = dd?.maxDrawdownPercent;
                       }
                     } catch {}
+
+                    // Para 1 CSV: usar SEMPRE os valores reais da API (Performance Metrics)
+                    const isSingleFile = (files?.length === 1) || ((fileResults && Object.keys(fileResults).length === 1));
+                    const pm = backtestResult?.["Performance Metrics"] as Record<string, number> | undefined;
+                    const ddAmountFromPM = pm ? Number(pm["Max Drawdown ($)"]) : undefined;
+                    // Percentual exibido no dashboard deve seguir a legenda (DD / 100000 * 100)
+                    const ddPercentFromPMLegend = ddAmountFromPM !== undefined ? (ddAmountFromPM / 100000) * 100 : (pm ? Number(pm["Max Drawdown (%)"]) : undefined);
+
+                    const ddAmountFinal = isSingleFile
+                      ? ddAmountFromPM
+                      : (ddAmountFromConsolidation ?? dailyMain?.drawdown_maximo ?? baseMetrics?.maxDrawdownAmount);
+
+                    const ddPercentFinal = isSingleFile
+                      ? ddPercentFromPMLegend
+                      : (ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown);
 
                     // Sharpe Ratio TOTAL padronizado (mesma lógica do Metrics/Daily):
                     const computeDailySharpe = (allTrades: typeof trades) => {
@@ -2171,19 +2186,15 @@ useEffect(() => {
 
                     // Padronização: usar Sharpe Ratio e Fator de Recuperação da Análise Diária
                     // e Drawdown consolidado (R$ e %) quando disponível
-                    // Percentual do DD para o dashboard deve seguir a mesma lógica da legenda
-                    // Legenda exibe (DD / 100000) * 100
-                    const ddPercentForDashboard =
-                      ddAmountFromConsolidation !== undefined
-                        ? (Number(ddAmountFromConsolidation) / 100000) * 100
-                        : (ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown);
+                    // Percentual do DD para o dashboard
+                    const ddPercentForDashboard = ddPercentFinal;
 
                     const metricsToUse = {
                       ...baseMetrics,
                       sharpeRatio: (computedSharpe !== undefined ? computedSharpe : (dailyMain?.sharpe_ratio)) ?? baseMetrics?.sharpeRatio,
                       recoveryFactor: dailyMain?.fator_recuperacao ?? baseMetrics?.recoveryFactor,
                       // DD consolidado: usar cálculo direto (idêntico à legenda). Se indisponível, cair para Análise Diária e depois para Performance Metrics
-                      maxDrawdownAmount: ddAmountFromConsolidation ?? dailyMain?.drawdown_maximo ?? baseMetrics?.maxDrawdownAmount,
+                      maxDrawdownAmount: ddAmountFinal,
                       maxDrawdown: ddPercentForDashboard,
                     } as typeof baseMetrics & {
                       sharpeRatio?: number;
