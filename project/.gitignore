@@ -1,0 +1,37 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node/Frontend (project/)
+project/node_modules/
+project/.vite/
+project/dist/
+project/build/
+project/.next/
+project/*.log
+project/npm-debug.log*
+project/yarn-debug.log*
+project/yarn-error.log*
+project/pnpm-debug.log*
+
+# Env (NUNCA commitar segredos)
+.env
+.env.*
+project/.env
+project/.env.*
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage / Reports
+coverage/
+project/coverage/
+
+# Python
+python-freela/venv/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.ipynb_checkpoints/
