@@ -1,30 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Shield, 
   Code2, 
   Activity, 
   BookOpen, 
   ShoppingCart, 
-  Users, 
   Upload, 
   Bot, 
-  TrendingUp, 
   BarChart2, 
-  Zap, 
   Share2,
   ChevronDown,
   ImageIcon,
   Lightbulb,
-  ArrowRight,
-  Calendar,
-  Clock,
-  DollarSign,
-  PieChart,
-  Layers,
-  FileSpreadsheet,
-  CheckCircle,
-  AlertCircle
+  PieChart
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { useAuthStore } from '../stores/authStore';
@@ -32,7 +20,26 @@ import { useRobotStore } from '../stores/robotStore';
 import { supabase } from '../lib/supabase';
 
 // Componente TutorialCard
-const TutorialCard = ({ tutorial }: { tutorial: any }) => {
+interface TutorialStep {
+  title: string;
+  description: string;
+  imageDescription?: string;
+  tips?: string;
+  code?: string;
+}
+
+interface TutorialItem {
+  title: string;
+  duration: string;
+  level: 'Fácil' | 'Médio' | 'Difícil';
+  description: string;
+  icon: JSX.Element;
+  actionText?: string;
+  actionUrl?: string;
+  steps?: TutorialStep[];
+}
+
+const TutorialCard = ({ tutorial }: { tutorial: TutorialItem }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   return (
@@ -78,14 +85,14 @@ const TutorialCard = ({ tutorial }: { tutorial: any }) => {
       {isExpanded && (
         <div className="border-t border-gray-600/50">
           <div className="p-6 space-y-6">
-            {tutorial.steps?.map((step: any, stepIndex: number) => (
+            {(tutorial.steps ?? []).map((step: TutorialStep, stepIndex: number) => (
               <div key={stepIndex} className="flex space-x-4">
                 {/* Número do Passo */}
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                     {stepIndex + 1}
                   </div>
-                  {stepIndex < tutorial.steps.length - 1 && (
+                  {stepIndex < ((tutorial.steps ?? []).length) - 1 && (
                     <div className="w-0.5 h-8 bg-gray-600 mx-auto mt-2"></div>
                   )}
                 </div>
@@ -158,16 +165,26 @@ const TutorialCard = ({ tutorial }: { tutorial: any }) => {
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
-  const { profile, loadProfile } = useAuthStore();
-  const { robots, loadRobots, robotLimit } = useRobotStore();
+  const { loadProfile } = useAuthStore();
+  const { robots, loadRobots } = useRobotStore();
   const [activeSection, setActiveSection] = useState('analyses');
   const [showAllPosts, setShowAllPosts] = useState(false);
-  const [savedAnalyses, setSavedAnalyses] = useState<any[]>([]);
+  interface SavedAnalysisItem {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    profitFactor: number;
+    winRate: number;
+    drawdown: number;
+    totalTrades: number;
+  }
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysisItem[]>([]);
   const [loadingAnalyses, setLoadingAnalyses] = useState(false);
   const [loadingRobots, setLoadingRobots] = useState(false);
 
   // Mock data para tutoriais
-  const mockTutorials = [
+  const mockTutorials: TutorialItem[] = [
     {
       title: 'Como fazer upload de CSV',
       duration: '8 min',
@@ -343,7 +360,7 @@ export const DashboardPage = () => {
   ];
 
   // Carregar análises salvas
-  const loadSavedAnalyses = async () => {
+  const loadSavedAnalyses = useCallback(async () => {
     try {
       setLoadingAnalyses(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -358,7 +375,7 @@ export const DashboardPage = () => {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const analyses = data.map(item => {
+        const analyses: SavedAnalysisItem[] = data.map(item => {
           const analysisData = item.analysis_data || {};
           return {
             id: item.id,
@@ -379,10 +396,10 @@ export const DashboardPage = () => {
     } finally {
       setLoadingAnalyses(false);
     }
-  };
+  }, []);
 
   // Carregar robôs
-  const loadUserRobots = async () => {
+  const loadUserRobots = useCallback(async () => {
     try {
       setLoadingRobots(true);
       await loadRobots();
@@ -391,14 +408,14 @@ export const DashboardPage = () => {
     } finally {
       setLoadingRobots(false);
     }
-  };
+  }, [loadRobots]);
 
   useEffect(() => {
     loadProfile();
     loadSavedAnalyses();
     loadUserRobots();
     setActiveSection('analyses');
-  }, []);
+  }, [loadProfile, loadSavedAnalyses, loadUserRobots]);
 
   return (
     <div className="min-h-screen bg-[#1E1E1E] text-white">
@@ -457,7 +474,7 @@ export const DashboardPage = () => {
             </div>
           </button>
 
-          {/* Feed de Postagens */}
+          {/* Feed de Postagens - botão comentado
           <button
             onClick={() => setActiveSection('feed')}
             className={`group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
@@ -478,8 +495,9 @@ export const DashboardPage = () => {
               <p className="text-xs text-gray-300">Postagens</p>
             </div>
           </button>
+          */}
 
-          {/* Tutoriais */}
+          {/* Tutoriais - botão comentado
           <button
             onClick={() => setActiveSection('tutorials')}
             className={`group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
@@ -500,8 +518,9 @@ export const DashboardPage = () => {
               <p className="text-xs text-gray-300">Aprenda</p>
             </div>
           </button>
+          */}
 
-          {/* Marketplace */}
+          {/* Marketplace - botão comentado
           <button
             onClick={() => setActiveSection('marketplace')}
             className={`group relative overflow-hidden rounded-2xl p-6 transition-all duration-300 ${
@@ -522,6 +541,7 @@ export const DashboardPage = () => {
               <p className="text-xs text-gray-300">Comprar</p>
             </div>
           </button>
+          */}
         </div>
 
         {/* Conteúdo das Seções */}
