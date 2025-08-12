@@ -1058,6 +1058,10 @@ const [fileResults, setFileResults] = useState<{[key: string]: BacktestResult}>(
     setFrozenConsolidatedData(null);
     setFrozenAnalysisResult(null);
     setFrozenDrata(null);
+
+    // ✅ EXIBIR FORMULÁRIO DE UPLOAD NOVAMENTE
+    setShowUploadForm(true);
+    setShowChat(false);
   };
 
   
