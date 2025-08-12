@@ -745,15 +745,27 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
     // Prefixar o cabeçalho selecionado ao contexto (sempre)
     contextMessage = `${finalHeader}\n` + contextMessage;
 
-    // Enxugar instruções para evitar estouro de tokens
+    // Instrução base (inclui as 4 ferramentas/opções)
+    const basePrompt = [
+      "[FERRAMENTAS DISPONÍVEIS]",
+      "1) Análise Completa (estratégia individual)",
+      "2) Análise de Portfólio (múltiplas estratégias)",
+      "3) Análise de Correlação (por resultado e por direção)",
+      "4) Risco de Ruína (teste de estresse e robustez)",
+      "",
+      "REGRAS: Sempre basear conclusões nas métricas do contexto JSON; não extrapolar sem dados; encerrar com recomendações objetivas (3–6 itens)."
+    ].join("\n");
+
+    // Instrução curta adaptada ao modo solicitado
     const instructionContent = `${finalHeader}\n` + (
       analysisMode === "portfolio"
         ? "Analise o portfólio com base apenas nas métricas fornecidas (Sharpe combinado, drawdown consolidado, profit factor, correlação/diversificação e contribuição por estratégia). Termine com diagnóstico e 3–6 recomendações objetivas."
         : "Analise a estratégia individual com base apenas nas métricas fornecidas (Sharpe, profit factor, drawdown em R$ e %, taxa de acerto, payoff e tamanho de amostra). Termine com diagnóstico e 3–6 recomendações objetivas."
     );
 
-    // Retornar somente instruções curtas + contexto para reduzir tokens
+    // Retornar instrução base + instrução resumida do modo + contexto com dados
     return [
+      { role: "user", content: basePrompt },
       { role: "user", content: instructionContent },
       { role: "user", content: contextMessage },
     ];
@@ -1322,8 +1334,8 @@ Editar
       return;
     }
 
-    // Add user message to chat
-    addMessage("user", prompt.prompt);
+    // Exibir no chat um título claro da ação (não o texto de prompt antigo)
+    addMessage("user", prompt.header || prompt.label || "Análise");
     // Não adicionar resumo imediato aqui para evitar mensagens duplicadas
     setIsTyping(true);
     setIsAnalyzing(true);

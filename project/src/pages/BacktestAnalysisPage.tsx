@@ -2167,7 +2167,7 @@ useEffect(() => {
                       ? ddPercentFromPMLegend
                       : (ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown);
 
-                    // Sharpe Ratio TOTAL padronizado (mesma lógica do Metrics/Daily):
+                    // Sharpe Ratio TOTAL padronizado (retorno diário normalizado e anualizado):
                     const computeDailySharpe = (allTrades: typeof trades) => {
                       if (!allTrades || allTrades.length === 0) return undefined;
                       const dailyMap = new Map<string, number>();
@@ -2176,14 +2176,17 @@ useEffect(() => {
                         const current = dailyMap.get(dateKey) || 0;
                         dailyMap.set(dateKey, current + (t.pnl || 0));
                       });
-                      const returns = Array.from(dailyMap.values());
+                      // Normalizar por capital investido para obter retorno percentual diário
+                      const invested = 100000; // mesmo capital da legenda
+                      const returns = Array.from(dailyMap.values()).map(v => invested > 0 ? v / invested : 0);
                       if (returns.length === 0) return undefined;
                       const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
                       const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / returns.length;
                       const stdDev = Math.sqrt(variance);
-                      const riskFreeDaily = 0.12 / 365; // mesmo RF utilizado em Metrics
+                      const riskFreeDaily = 0.12 / 252; // RF anual ~12% -> diário em 252 pregões
                       if (stdDev <= 0) return 0;
-                      return (mean - riskFreeDaily) / stdDev;
+                      // Anualizar Sharpe
+                      return ((mean - riskFreeDaily) / stdDev) * Math.sqrt(252);
                     };
                     const computedSharpe = computeDailySharpe(Array.isArray(trades) ? trades : []);
 

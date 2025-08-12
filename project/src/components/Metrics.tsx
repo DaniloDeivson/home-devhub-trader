@@ -166,35 +166,30 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         const payoffDiarioCalculado = calcularPayoffDiario(allTrades);
         
-        // ✅ CORREÇÃO: Calcular Sharpe Ratio localmente
+        // ✅ CORREÇÃO: Calcular Sharpe Ratio localmente (padronizado com Dashboard)
         const calcularSharpeRatio = (trades: unknown[]) => {
           if (trades.length === 0) return 0;
-          
-          // Calcular retornos diários
+
+          // Calcular retornos diários normalizados por capital e anualizar
+          const invested = 100000; // mesma base usada no Dashboard
           const dailyReturns = new Map<string, number>();
-          
+
           trades.forEach((trade) => {
             const tradeData = trade as Record<string, unknown>;
             const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
-            const pnl = tradeData.pnl as number || 0;
-            
+            const pnl = (tradeData.pnl as number) || 0;
             const current = dailyReturns.get(date) || 0;
             dailyReturns.set(date, current + pnl);
           });
-          
-          const returns = Array.from(dailyReturns.values());
+
+          const returns = Array.from(dailyReturns.values()).map(v => invested > 0 ? v / invested : 0);
           if (returns.length === 0) return 0;
-          
-          // Calcular retorno médio
-          const meanReturn = returns.reduce((sum: number, ret: number) => sum + ret, 0) / returns.length;
-          
-          // Calcular desvio padrão
-          const variance = returns.reduce((sum: number, ret: number) => sum + Math.pow(ret - meanReturn, 2), 0) / returns.length;
+
+          const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+          const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
           const stdDev = Math.sqrt(variance);
-          
-          // Sharpe Ratio = (Retorno Médio - Taxa Livre de Risco) / Desvio Padrão
-          const riskFreeRate = 0.12 / 365; // CDI diário (12% ao ano / 365 dias)
-          return stdDev > 0 ? (meanReturn - riskFreeRate) / stdDev : 0;
+          const rfDaily = 0.12 / 252;
+          return stdDev > 0 ? ((mean - rfDaily) / stdDev) * Math.sqrt(252) : 0;
         };
         
         // ✅ ALTERAÇÃO: Fator de Recuperação TOTAL = Net Profit total / Max DD consolidado
@@ -482,35 +477,29 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         const payoffDiarioCalculado = calcularPayoffDiario(tradesData.trades || []);
         
-        // ✅ CORREÇÃO: Calcular Sharpe Ratio e Fator de Recuperação localmente para CSV único
+        // ✅ CORREÇÃO: Calcular Sharpe Ratio e Fator de Recuperação localmente para CSV único (padronizado com Dashboard)
         const calcularSharpeRatio = (trades: unknown[]) => {
           if (trades.length === 0) return 0;
-          
-          // Calcular retornos diários
+
+          const invested = 100000; // mesma base usada no Dashboard
           const dailyReturns = new Map<string, number>();
-          
+
           trades.forEach((trade) => {
             const tradeData = trade as Record<string, unknown>;
             const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
-            const pnl = tradeData.pnl as number || 0;
-            
+            const pnl = (tradeData.pnl as number) || 0;
             const current = dailyReturns.get(date) || 0;
             dailyReturns.set(date, current + pnl);
           });
-          
-          const returns = Array.from(dailyReturns.values());
+
+          const returns = Array.from(dailyReturns.values()).map(v => invested > 0 ? v / invested : 0);
           if (returns.length === 0) return 0;
-          
-          // Calcular retorno médio
-          const meanReturn = returns.reduce((sum: number, ret: number) => sum + ret, 0) / returns.length;
-          
-          // Calcular desvio padrão
-          const variance = returns.reduce((sum: number, ret: number) => sum + Math.pow(ret - meanReturn, 2), 0) / returns.length;
+
+          const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+          const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
           const stdDev = Math.sqrt(variance);
-          
-          // Sharpe Ratio = (Retorno Médio - Taxa Livre de Risco) / Desvio Padrão
-          const riskFreeRate = 0.12 / 365; // CDI diário (12% ao ano / 365 dias)
-          return stdDev > 0 ? (meanReturn - riskFreeRate) / stdDev : 0;
+          const rfDaily = 0.12 / 252;
+          return stdDev > 0 ? ((mean - rfDaily) / stdDev) * Math.sqrt(252) : 0;
         };
         
         const calcularFatorRecuperacaoSingle = (trades: unknown[]) => {
