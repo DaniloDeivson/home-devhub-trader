@@ -14,6 +14,8 @@ interface AIResponseChatProps {
   onMetricsReceived?: (metrics: unknown) => void;
   backtestData?: unknown;
   fileResults?: Record<string, unknown>;
+  emotionalProfile?: unknown;
+  correlationData?: unknown;
 }
 
 interface Message {
@@ -29,6 +31,7 @@ interface QuickPrompt {
   tokens: number;
   icon: React.ReactNode;
   analysisMode?: "single" | "portfolio";
+  header?: string;
 }
 
 export function AIResponseChat({
@@ -40,7 +43,9 @@ export function AIResponseChat({
   analysisResult,
   onMetricsReceived,
   backtestData,
-  fileResults
+  fileResults,
+  emotionalProfile,
+  correlationData
 }: AIResponseChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -59,9 +64,13 @@ export function AIResponseChat({
   const PYTHON_API_URL = buildApiUrl('/chat');
 
   // Determinar quantidade de arquivos/estratégias disponíveis
-  const numFiles = (fileResults && Object.keys(fileResults).length) || (backtestData ? 1 : 0);
-  const canSingle = !!backtestData && !isAnalyzing && numFiles === 1;
-  const canPortfolio = !!backtestData && !isAnalyzing && numFiles >= 2;
+  // const numFiles = (fileResults && Object.keys(fileResults).length) || (backtestData ? 1 : 0);
+  // Mantidas para possíveis usos em outras lógicas:
+  // const canSingle = !!backtestData && !isAnalyzing && (numFiles === 1);
+  // const canPortfolio = !!backtestData && !isAnalyzing && (numFiles >= 2);
+  // Novas flags: permitem rodar independentemente da contagem de arquivos
+  const canAnalyzeComplete = !!backtestData && !isAnalyzing;
+  const canAnalyzePortfolioIA = !!backtestData && !isAnalyzing;
 
   // Removed the useEffect for scrollToBottom to prevent automatic scrolling
 
@@ -153,6 +162,7 @@ export function AIResponseChat({
       tryKeys(ar, ['profitFactor','Profit Factor']) ??
       tryKeys(consolidatedApi, ['profitFactor','Profit Factor']) ??
       tryKeys(consolidatedCalc, ['profitFactor']) ??
+      tryKeys(pm, ['Profit Factor']) ??
       (calcLocal?.profitFactor);
 
     const winRatePct =
@@ -164,12 +174,14 @@ export function AIResponseChat({
       tryKeys(ar, ['maxDrawdownPct','Max Drawdown (%)']) ??
       tryKeys(consolidatedApi, ['maxDDPct','Max Drawdown (%)']) ??
       tryKeys(consolidatedCalc, ['maxDDPctPeak']) ??
+      tryKeys(pm, ['Max Drawdown (%)']) ??
       (calcLocal?.maxDDPctPeak);
 
     const netProfit =
       tryKeys(ar, ['netProfit','Net Profit']) ??
       tryKeys(consolidatedApi, ['netProfit','Net Profit']) ??
       tryKeys(consolidatedCalc, ['netProfit']) ??
+      tryKeys(pm, ['Net Profit']) ??
       (calcLocal?.netProfit);
 
     // Se nada foi encontrado, não adicionar mensagem com N/A
@@ -203,10 +215,11 @@ export function AIResponseChat({
   // Gera um resumo numérico rápido a partir do contexto disponível
   // buildSummaryFromContext removido para evitar duplicidade de mensagens automáticas
 
-  const prepareMessagesWithContext = (userMessage: string, analysisMode: "single" | "portfolio" = "single") => {
+  const prepareMessagesWithContext = (userMessage: string, analysisMode: "single" | "portfolio" = "single", headerOverride?: string) => {
     // Preparar o contexto dos dados de backtest
     let contextMessage = "";
     const selectedHeader = analysisMode === "portfolio" ? "[2 OU MAIS ESTRATÉGIAS]" : "[Estratégia Individual]";
+    const finalHeader = headerOverride || selectedHeader;
 
     if (backtestData) {
       const bd = backtestData as Record<string, unknown>;
@@ -246,12 +259,13 @@ export function AIResponseChat({
 
       const calcFromTrades = (trades: Array<Record<string, unknown>>) => {
         if (!Array.isArray(trades) || trades.length === 0) return undefined;
-        let grossProfit = 0;
-        let grossLossAbs = 0;
         let net = 0;
         let cum = 0;
         let peak = 0;
         let maxDD = 0;
+        let winSum = 0, winCount = 0, lossSumAbs = 0, lossCount = 0;
+        let maxConsecutiveWins = 0, maxConsecutiveLosses = 0;
+        let currentStreak = 0; // positive wins, negative losses
         const getTime = (t: Record<string, unknown>): number => {
           const candidateKeys = ["entry_date", "date", "exit_date"] as const;
           let raw: unknown = undefined;
@@ -272,33 +286,410 @@ export function AIResponseChat({
         ordered.forEach(t => {
           const pnl = extractPnl(t) ?? 0;
           net += pnl;
-          if (pnl > 0) grossProfit += pnl; else if (pnl < 0) grossLossAbs += Math.abs(pnl);
+          if (pnl > 0) {
+            winSum += pnl; winCount += 1;
+            currentStreak = currentStreak >= 0 ? currentStreak + 1 : 1;
+            if (currentStreak > maxConsecutiveWins) maxConsecutiveWins = currentStreak;
+          } else if (pnl < 0) {
+            lossSumAbs += Math.abs(pnl); lossCount += 1;
+            currentStreak = currentStreak <= 0 ? currentStreak - 1 : -1;
+            if (Math.abs(currentStreak) > maxConsecutiveLosses) maxConsecutiveLosses = Math.abs(currentStreak);
+          } else {
+            currentStreak = 0;
+          }
           cum += pnl;
           if (cum > peak) peak = cum;
           const dd = peak - cum;
           if (dd > maxDD) maxDD = dd;
         });
-        const pf = grossLossAbs > 0 ? grossProfit / grossLossAbs : (grossProfit > 0 ? 999 : 0);
+        const profitFactor = lossSumAbs > 0 ? winSum / lossSumAbs : (winSum > 0 ? 999 : 0);
+        const payoff = (winCount > 0 && lossCount > 0)
+          ? (winSum / winCount) / (lossSumAbs / lossCount)
+          : 0;
+        const recoveryFactor = maxDD > 0 ? net / maxDD : 0;
         const ddPctPeak = peak > 0 ? (maxDD / peak) * 100 : 0;
-        // Evitar retornar zeros não informativos: se tudo zerado, considerar cálculo inválido
-        const allZero = grossProfit === 0 && grossLossAbs === 0 && net === 0 && maxDD === 0;
+        // Evitar retornar zeros não informativos
+        const allZero = net === 0 && maxDD === 0 && winSum === 0 && lossSumAbs === 0;
         if (ordered.length > 0 && allZero) return undefined;
-        return { profitFactor: pf, netProfit: net, grossProfit, grossLossAbs, maxDD, maxDDPctPeak: ddPctPeak, totalTrades: ordered.length };
+        return {
+          profitFactor,
+          payoff,
+          recoveryFactor,
+          maxConsecutiveLosses,
+          maxConsecutiveWins,
+          maxDD,
+          maxDDPctPeak: ddPctPeak,
+          totalTrades: ordered.length
+        };
       };
 
       const extractPerfApi = (p: Record<string, unknown>) => ({
         profitFactor: parseNumberLike(p["Profit Factor"]),
-        winRatePct: parseNumberLike(p["Win Rate (%)"]),
-        netProfit: parseNumberLike(p["Net Profit"]),
-        maxDD: parseNumberLike(p["Max Drawdown ($)"]),
-        maxDDPct: parseNumberLike(p["Max Drawdown (%)"]),
-        sharpe: parseNumberLike(p["Sharpe Ratio"]),
+        payoff: parseNumberLike(p["Payoff"]),
+        recoveryFactor: parseNumberLike(p["Recovery Factor"]),
+        maxConsecutiveLosses: parseNumberLike(p["Max Consecutive Losses"]),
+        maxConsecutiveWins: parseNumberLike(p["Max Consecutive Wins"]),
         totalTrades: parseNumberLike(p["Total Trades"]),
       });
 
       const consolidated_api = extractPerfApi(pm);
       const bdTradesRaw = bdObj["trades"];
       const consolidated_calc = calcFromTrades(Array.isArray(bdTradesRaw) ? (bdTradesRaw as Array<Record<string, unknown>>) : []);
+
+      // ===== Resumos adicionais (objetivos) =====
+      const trades: Array<Record<string, unknown>> = Array.isArray(bdTradesRaw) ? (bdTradesRaw as Array<Record<string, unknown>>) : [];
+
+      // Perfil emocional (a partir de prop emocional ou do próprio backtestData)
+      const emoSrc: unknown = emotionalProfile ?? bdObj['emotionalAnalysis'] ?? bdObj['emocional'];
+      const emoRaw: Record<string, unknown> = (emoSrc && typeof emoSrc === 'object') ? (emoSrc as Record<string, unknown>) : {};
+      const rc = emoRaw['resumo_comparativo'];
+      const emoResumo: Record<string, unknown> = (rc && typeof rc === 'object') ? (rc as Record<string, unknown>) : emoRaw;
+      const emoDiscOp = parseNumberLike(emoResumo['disciplina_operacao']) ?? parseNumberLike(emoRaw['stopDisciplineIndex']);
+      const emoDiscDia = parseNumberLike(emoResumo['disciplina_dia']) ?? parseNumberLike(emoRaw['dailyLossDisciplineIndex']);
+      const emoDiscAlav = parseNumberLike(emoResumo['disciplina_alavancagem']) ?? parseNumberLike(emoRaw['leverageDisciplineIndex']);
+      const emoProbFuria = parseNumberLike(emoResumo['probabilidade_furia']) ?? parseNumberLike(emoRaw['furyProbability']);
+      const emoIndices: number[] = [];
+      if (typeof emoDiscOp === 'number') emoIndices.push(emoDiscOp);
+      if (typeof emoDiscDia === 'number') emoIndices.push(emoDiscDia);
+      if (typeof emoDiscAlav === 'number') emoIndices.push(emoDiscAlav);
+      if (typeof emoProbFuria === 'number') emoIndices.push(100 - emoProbFuria);
+      const emoIndiceGeral = emoIndices.length > 0 ? emoIndices.reduce((a, b) => a + b, 0) / emoIndices.length : undefined;
+      const emotional_profile = (emoIndices.length > 0) ? {
+        disciplina_stop: emoDiscOp,
+        disciplina_dia: emoDiscDia,
+        disciplina_alavancagem: emoDiscAlav,
+        prob_furia: emoProbFuria,
+        indice_emocional: emoIndiceGeral ? Math.round(emoIndiceGeral * 10) / 10 : undefined
+      } : undefined;
+
+      // Duração dos trades (resumo breve)
+      const summarizeDuration = (trs: Array<Record<string, unknown>>) => {
+        if (!Array.isArray(trs) || trs.length === 0) return undefined;
+        const toDate = (v: unknown) => {
+          const d = new Date(String(v ?? ''));
+          const ts = d.getTime();
+          return Number.isFinite(ts) ? ts : NaN;
+        };
+        const durations: number[] = trs.map(t => {
+          const tt = t as Record<string, unknown>;
+          const entry = toDate(tt['entry_date'] ?? tt['date'] ?? tt['Abertura']);
+          const exit = toDate(tt['exit_date'] ?? tt['exit_time'] ?? tt['Data'] ?? tt['datetime']);
+          if (!Number.isFinite(entry) || !Number.isFinite(exit)) return 0;
+          return Math.max(0, (exit - entry) / 3_600_000); // hours
+        }).filter(x => Number.isFinite(x));
+        if (durations.length === 0) return undefined;
+        const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+        const sorted = [...durations].sort((a, b) => a - b);
+        const med = sorted[Math.floor(sorted.length / 2)];
+        const max = Math.max(...durations);
+        const fmt = (h: number) => {
+          const H = Math.floor(h);
+          const M = Math.floor((h - H) * 60);
+          return `${H}h ${M}m`;
+        };
+        return {
+          media: fmt(avg),
+          mediana: fmt(med),
+          maxima: fmt(max)
+        };
+      };
+      const trade_duration_summary = summarizeDuration(trades);
+
+      // Resultado por duração (faixas) com métricas
+      const durationRanges = [
+        { label: '< 15min', min: 0, max: 0.25 },
+        { label: '15-30min', min: 0.25, max: 0.5 },
+        { label: '30min - 1h', min: 0.5, max: 1 },
+        { label: '1h - 2h', min: 1, max: 2 },
+        { label: '2h - 4h', min: 2, max: 4 },
+        { label: '4h - 9h', min: 4, max: 9 },
+        { label: '9h - 24h', min: 9, max: 24 },
+        { label: '24h - 72h', min: 24, max: 72 },
+        { label: '72h - 168h', min: 72, max: 168 },
+        { label: '> 168h', min: 168, max: Infinity }
+      ];
+      const computeDurationBreakdown = (trs: Array<Record<string, unknown>>) => {
+        if (!Array.isArray(trs) || trs.length === 0) return undefined;
+        const toDate = (v: unknown) => {
+          const d = new Date(String(v ?? ''));
+          const ts = d.getTime();
+          return Number.isFinite(ts) ? ts : NaN;
+        };
+        const tradesWithDuration = trs.map((t) => {
+          const tt = t as Record<string, unknown>;
+          const entry = toDate(tt['entry_date'] ?? tt['date'] ?? tt['Abertura']);
+          const exit = toDate(tt['exit_date'] ?? tt['exit_time'] ?? tt['Data'] ?? tt['datetime']);
+          const durationHours = (Number.isFinite(entry) && Number.isFinite(exit)) ? Math.max(0, (exit - entry) / 3_600_000) : 0;
+          return { t: tt, durationHours };
+        });
+        const breakdown = durationRanges.map((range) => {
+          const bucket = tradesWithDuration.filter((x) => x.durationHours >= range.min && x.durationHours < range.max);
+          if (bucket.length === 0) return undefined;
+          const pnls = bucket.map((x) => extractPnl(x.t) ?? 0);
+          const total = pnls.reduce((a, b) => a + b, 0);
+          const wins = pnls.filter((p) => p > 0);
+          const losses = pnls.filter((p) => p < 0).map((p) => Math.abs(p));
+          const grossProfit = wins.reduce((a, b) => a + b, 0);
+          const grossLoss = losses.reduce((a, b) => a + b, 0);
+          const winRate = (wins.length / pnls.length) * 100;
+          const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
+          const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+          const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+          const payoff = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? 999 : 0);
+          return {
+            faixa: range.label,
+            trades: pnls.length,
+            resultado: Math.round(total * 100) / 100,
+            winRate: Math.round(winRate * 10) / 10,
+            profitFactor: Math.round(profitFactor * 100) / 100,
+            payoff: Math.round(payoff * 100) / 100,
+          };
+        }).filter(Boolean) as Array<{ faixa: string; trades: number; resultado: number; winRate: number; profitFactor: number; payoff: number }>;
+        return breakdown.length > 0 ? breakdown : undefined;
+      };
+      const trade_duration_breakdown = computeDurationBreakdown(trades);
+
+      // Dimensionamento de posição (resumo breve)
+      const extractPositionSize = (t: Record<string, unknown>): number => {
+        const parseNum = (v: unknown): number => {
+          if (typeof v === 'number' && isFinite(v)) return v;
+          if (typeof v === 'string') {
+            const match = v.replace(/[R$]|\s+/g, '').match(/-?[0-9]+([.,][0-9]+)?/);
+            if (!match) return 0;
+            const n = Number(match[0].replace(',', '.'));
+            return isNaN(n) ? 0 : n;
+          }
+          return 0;
+        };
+        const keys = [
+          'qty_buy','quantity_buy','Qtd Compra','qtd_compra','quantidade_compra','quantity_compra',
+          'quantity_total','qtd_total','quantidade_total','quantity','qty','position_size','size','volume'
+        ];
+        for (const k of keys) {
+          if (k in t) {
+            const n = Math.abs(parseNum((t as Record<string, unknown>)[k]));
+            if (n > 0) return n;
+          }
+        }
+        return 1;
+      };
+      const positions = trades.map(extractPositionSize).filter(n => Number.isFinite(n) && n > 0);
+      let position_sizing_summary: { pos_media?: number; mediana?: number; maxima?: number; pequenas_pct?: number } | undefined = undefined;
+      if (positions.length > 0) {
+        const avgPos = positions.reduce((a, b) => a + b, 0) / positions.length;
+        const sortedPos = [...positions].sort((a, b) => a - b);
+        const medPos = sortedPos[Math.floor(sortedPos.length / 2)];
+        const maxPos = Math.max(...positions);
+        const smallPct = (positions.filter(p => p <= 2).length / positions.length) * 100;
+        position_sizing_summary = {
+          pos_media: Math.round(avgPos),
+          mediana: Math.round(medPos),
+          maxima: Math.round(maxPos),
+          pequenas_pct: Math.round(smallPct * 10) / 10
+        };
+      }
+
+      // Eventos especiais (resumo muito breve) - utiliza apenas alguns eventos comuns
+      const SPECIAL_EVENTS_MINI: Record<string, string[]> = {
+        'Payroll EUA': ['2023-01-06','2023-02-03','2023-03-03','2023-04-07','2023-05-05','2023-06-02','2023-07-07','2023-08-04','2023-09-01','2023-10-06','2023-11-03','2023-12-01','2024-01-05','2024-02-02','2024-03-01','2024-04-05','2024-05-03','2024-06-07','2024-07-05','2024-08-02'],
+        'FOMC (Fed)': ['2023-02-01','2023-03-22','2023-05-03','2023-06-14','2023-07-26','2023-09-20','2023-11-01','2023-12-13','2024-03-20','2024-06-12','2024-09-18'],
+        'Super Quartas (Fed + Copom)': ['2023-03-22','2023-06-14','2023-12-13','2024-03-20','2024-09-18']
+      };
+      const normalizeDate = (v: unknown): string | null => {
+        if (!v) return null;
+        const s = String(v);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        if (s.includes('T')) return s.split('T')[0];
+        // try parse
+        const d = new Date(s);
+        return Number.isFinite(d.getTime()) ? d.toISOString().slice(0,10) : null;
+      };
+      let special_events_summary: Array<{ evento: string; trades: number; winRate: number; profitFactor: number; resultado: number }> | undefined = undefined;
+      if (trades.length > 0) {
+        const result: Array<{ evento: string; trades: number; winRate: number; profitFactor: number; resultado: number }> = [];
+        for (const [evt, dates] of Object.entries(SPECIAL_EVENTS_MINI)) {
+          const setDates = new Set(dates);
+          const evtTrades = trades.filter(t => {
+            const tt = t as Record<string, unknown>;
+            const dt = normalizeDate(tt['entry_date'] ?? tt['date'] ?? tt['Abertura'] ?? tt['datetime']);
+            return dt ? setDates.has(dt) : false;
+          });
+          if (evtTrades.length === 0) continue;
+          let profit = 0, lossAbs = 0, wins = 0;
+          evtTrades.forEach(t => {
+            const p = extractPnl(t) ?? 0;
+            if (p > 0) { profit += p; wins += 1; }
+            else if (p < 0) { lossAbs += Math.abs(p); }
+          });
+          const totalRes = profit - lossAbs;
+          const pf = lossAbs > 0 ? profit / lossAbs : (profit > 0 ? 99.99 : 0);
+          const winRate = (wins / evtTrades.length) * 100;
+          result.push({ evento: evt, trades: evtTrades.length, winRate: Math.round(winRate * 10) / 10, profitFactor: Math.round(pf * 100) / 100, resultado: Math.round(totalRes * 100) / 100 });
+        }
+        if (result.length > 0) special_events_summary = result;
+      }
+
+      // Correlação (apenas para portfólio) – Por Direção
+      let correlation_direction_summary: { correlacao_positiva?: number; correlacao_negativa?: number; diversificacao?: number; sem_correlacao?: number } | undefined = undefined;
+      if (analysisMode === 'portfolio') {
+        const corrRaw: unknown = correlationData ?? bdObj['dateDirectionCorrelation'];
+        const corrRoot: Record<string, unknown> = (corrRaw && typeof corrRaw === 'object') ? (corrRaw as Record<string, unknown>) : {};
+        const corrDir = corrRoot['correlacao_data_direcao'] as Record<string, unknown> | undefined;
+        const resumo = (corrDir && typeof corrDir === 'object') ? (corrDir['resumo'] as Record<string, unknown> | undefined) : undefined;
+        if (resumo) {
+          const pos = parseNumberLike((resumo as Record<string, unknown>)["pct_correlacao_positiva"]) ?? 0;
+          const neg = parseNumberLike((resumo as Record<string, unknown>)["pct_correlacao_negativa"]) ?? 0;
+          const div = parseNumberLike((resumo as Record<string, unknown>)["pct_diversificacao"]) ?? 0;
+          const none = Math.max(0, 100 - (pos + neg + div));
+          correlation_direction_summary = {
+            correlacao_positiva: Math.round(pos * 10) / 10,
+            correlacao_negativa: Math.round(neg * 10) / 10,
+            diversificacao: Math.round(div * 10) / 10,
+            sem_correlacao: Math.round(none * 10) / 10
+          };
+        }
+      }
+
+      // Matriz de correlação (Coluna x Linha) por direção, e pares comparados (quando possível)
+      let correlation_matrix_direction: { labels: string[]; matrix: number[][] } | undefined = undefined;
+      let correlation_pairs_from_matrix: Array<{ row: string; col: string; value: number }> | undefined = undefined;
+      if (analysisMode === 'portfolio') {
+        // Tentar construir a partir de fileResults (mais robusto e independente do backend)
+        if (fileResults && Object.keys(fileResults).length >= 2) {
+          const strategyNames = Object.keys(fileResults);
+          // Construir mapa por data -> estrategia -> flags de COMPRA/VENDA (1 ou -1); 0 ambíguo/nenhum
+          type DirFlags = { buy: boolean; sell: boolean };
+          const byDateFlags: Record<string, Record<string, DirFlags>> = {};
+          strategyNames.forEach((name) => {
+            const res = (fileResults as Record<string, unknown>)[name] as Record<string, unknown> | undefined;
+            const trades = Array.isArray(res?.trades) ? res.trades : [];
+            const localMap = new Map<string, { buy: boolean; sell: boolean }>();
+            (trades as Array<Record<string, unknown>>).forEach((t) => {
+              const tt = t as Record<string, unknown>;
+              const rawDate = (tt['entry_date'] ?? tt['date'] ?? tt['exit_date'] ?? tt['datetime']) as (string | number | Date | undefined);
+              const d = rawDate !== undefined ? new Date(rawDate) : new Date(0);
+              const dateKey = Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : undefined;
+              const dirRaw = String(tt['direction'] ?? tt['direcao'] ?? tt['side'] ?? '').toUpperCase();
+              const dir = dirRaw.includes('LONG') || dirRaw.includes('COMPRA') ? 'BUY' : (dirRaw.includes('SHORT') || dirRaw.includes('VENDA') ? 'SELL' : '');
+              if (!dateKey || !dir) return;
+              const cur = localMap.get(dateKey) || { buy: false, sell: false };
+              if (dir === 'BUY') cur.buy = true; else if (dir === 'SELL') cur.sell = true;
+              localMap.set(dateKey, cur);
+            });
+            // Fundir no byDateFlags
+            localMap.forEach((flags, dateKey) => {
+              if (!byDateFlags[dateKey]) byDateFlags[dateKey] = {};
+              byDateFlags[dateKey][name] = flags;
+            });
+          });
+          // Indicador direcional por data/estratégia: +1 só COMPRA, -1 só VENDA, 0 (ambíguo/nenhum)
+          const indicatorByDate: Record<string, Record<string, number>> = {};
+          Object.entries(byDateFlags).forEach(([dateKey, map]) => {
+            indicatorByDate[dateKey] = {};
+            strategyNames.forEach((nome) => {
+              const flags = map[nome];
+              if (!flags) { indicatorByDate[dateKey][nome] = 0; return; }
+              indicatorByDate[dateKey][nome] = flags.buy && !flags.sell ? 1 : (!flags.buy && flags.sell ? -1 : 0);
+            });
+          });
+          // Matriz média de (signA * signB) nas datas em que ao menos um operou (ignora 0,0)
+          const matrix: number[][] = Array.from({ length: strategyNames.length }, () => Array(strategyNames.length).fill(0));
+          const days = Object.values(indicatorByDate);
+          for (let i = 0; i < strategyNames.length; i++) {
+            for (let j = 0; j < strategyNames.length; j++) {
+              if (i === j) { matrix[i][j] = 1; continue; }
+              const aName = strategyNames[i];
+              const bName = strategyNames[j];
+              let sum = 0; let count = 0;
+              days.forEach((daily) => {
+                const sa = Number(daily[aName] || 0);
+                const sb = Number(daily[bName] || 0);
+                if (sa !== 0 || sb !== 0) { sum += sa * sb; count += 1; }
+              });
+              matrix[i][j] = count > 0 ? (sum / count) : 0;
+            }
+          }
+          correlation_matrix_direction = { labels: strategyNames, matrix };
+          // Pairs list para fácil leitura (Coluna x Linha)
+          const pairs: Array<{ row: string; col: string; value: number }> = [];
+          for (let r = 0; r < strategyNames.length; r++) {
+            for (let c = 0; c < strategyNames.length; c++) {
+              if (r === c) continue;
+              pairs.push({ row: strategyNames[r], col: strategyNames[c], value: Math.max(-1, Math.min(1, matrix[r][c])) });
+            }
+          }
+          // Ordenar por intensidade de correlação (desc abs)
+          correlation_pairs_from_matrix = pairs.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 30);
+        }
+      }
+
+      // Resultado por horário (entrada) – 0..23
+      const result_by_hour = (() => {
+        if (!Array.isArray(trades) || trades.length === 0) return undefined;
+        const toDate = (v: unknown) => {
+          const d = new Date(String(v ?? ''));
+          const ts = d.getTime();
+          return Number.isFinite(ts) ? new Date(ts) : null;
+        };
+        const hourMap = new Map<number, number[]>();
+        trades.forEach((tr) => {
+          const tt = tr as Record<string, unknown>;
+          const d = toDate(tt['entry_date'] ?? tt['date'] ?? tt['Abertura'] ?? tt['datetime']);
+          if (!d) return;
+          const h = d.getHours();
+          const pnl = extractPnl(tt) ?? 0;
+          const arr = hourMap.get(h) || [];
+          arr.push(pnl);
+          hourMap.set(h, arr);
+        });
+        const rows: Array<{ hora: number; trades: number; resultado: number; winRate: number; profitFactor: number }> = [];
+        hourMap.forEach((vals, h) => {
+          const total = vals.reduce((a, b) => a + b, 0);
+          const wins = vals.filter((p) => p > 0);
+          const losses = vals.filter((p) => p < 0).map((p) => Math.abs(p));
+          const winRate = (wins.length / vals.length) * 100;
+          const profitFactor = (losses.reduce((a, b) => a + b, 0) > 0)
+            ? (wins.reduce((a, b) => a + b, 0) / losses.reduce((a, b) => a + b, 0))
+            : (wins.length > 0 ? 999 : 0);
+          rows.push({ hora: h, trades: vals.length, resultado: Math.round(total * 100) / 100, winRate: Math.round(winRate * 10) / 10, profitFactor: Math.round(profitFactor * 100) / 100 });
+        });
+        rows.sort((a, b) => a.hora - b.hora);
+        return rows.length > 0 ? rows : undefined;
+      })();
+
+      // Análise diária: usar Day of Week Analysis da API, e fallback para agregação por dia da semana
+      const dayOfWeekApiRaw = bdObj['Day of Week Analysis'];
+      const day_of_week_api = (dayOfWeekApiRaw && typeof dayOfWeekApiRaw === 'object') ? (dayOfWeekApiRaw as Record<string, unknown>) : undefined;
+      const day_of_week_computed = (() => {
+        if (day_of_week_api) return undefined;
+        if (!Array.isArray(trades) || trades.length === 0) return undefined;
+        const map = new Map<number, number[]>();
+        trades.forEach((tr) => {
+          const tt = tr as Record<string, unknown>;
+          const d = new Date(String(tt['entry_date'] ?? tt['date'] ?? tt['Abertura'] ?? tt['datetime'] ?? ''));
+          const ts = d.getTime();
+          if (!Number.isFinite(ts)) return;
+          const dow = d.getDay(); // 0..6
+          const pnl = extractPnl(tt) ?? 0;
+          const arr = map.get(dow) || [];
+          arr.push(pnl);
+          map.set(dow, arr);
+        });
+        if (map.size === 0) return undefined;
+        const out: Array<{ diaSemana: number; trades: number; resultado: number; winRate: number; profitFactor: number }> = [];
+        map.forEach((vals, dow) => {
+          const total = vals.reduce((a, b) => a + b, 0);
+          const wins = vals.filter((p) => p > 0);
+          const losses = vals.filter((p) => p < 0).map((p) => Math.abs(p));
+          const winRate = (wins.length / vals.length) * 100;
+          const pf = (losses.reduce((a, b) => a + b, 0) > 0)
+            ? (wins.reduce((a, b) => a + b, 0) / losses.reduce((a, b) => a + b, 0))
+            : (wins.length > 0 ? 999 : 0);
+          out.push({ diaSemana: dow, trades: vals.length, resultado: Math.round(total * 100) / 100, winRate: Math.round(winRate * 10) / 10, profitFactor: Math.round(pf * 100) / 100 });
+        });
+        out.sort((a, b) => a.diaSemana - b.diaSemana);
+        return out;
+      })();
 
       const strategies = fileResults && Object.keys(fileResults).length > 0
         ? Object.entries(fileResults).map(([name, res]) => {
@@ -310,28 +701,34 @@ export function AIResponseChat({
             const trs: Array<Record<string, unknown>> = Array.isArray(trsRaw) ? (trsRaw as Array<Record<string, unknown>>) : [];
             const api = extractPerfApi(rp);
             const calc = calcFromTrades(trs);
-            // Fallback automático: se calc vier indefinido/zerado, usar dados reais da API
-            const calcIsInvalid = !calc || (
-              calc.totalTrades > 0 &&
-              (calc.netProfit === 0 && calc.grossProfit === 0 && calc.grossLossAbs === 0 && calc.maxDD === 0)
-            );
-            const gpApi = parseNumberLike(rp["Gross Profit"]);
-            const glApi = parseNumberLike(rp["Gross Loss"]);
-            const calcFromApi = calcIsInvalid
-              ? {
-                  profitFactor: parseNumberLike(rp["Profit Factor"]),
-                  netProfit: parseNumberLike(rp["Net Profit"]),
-                  grossProfit: gpApi,
-                  grossLossAbs: typeof glApi === 'number' ? Math.abs(glApi) : undefined,
-                  maxDD: parseNumberLike(rp["Max Drawdown ($)"]),
-                  maxDDPctPeak: parseNumberLike(rp["Max Drawdown (%)"]), // usar % do API como proxy
-                  totalTrades: parseNumberLike(rp["Total Trades"]),
-                }
-              : calc;
+            const calcFromApi = calc ?? {
+              profitFactor: parseNumberLike(rp["Profit Factor"]),
+              payoff: parseNumberLike(rp["Payoff"]),
+              recoveryFactor: parseNumberLike(rp["Recovery Factor"]),
+              maxConsecutiveLosses: parseNumberLike(rp["Max Consecutive Losses"]),
+              maxConsecutiveWins: parseNumberLike(rp["Max Consecutive Wins"]),
+              totalTrades: parseNumberLike(rp["Total Trades"]),
+            };
             return { name, api, calc: calcFromApi };
            })
         : [];
-      const contextData = { consolidated_api, consolidated_calc, strategies };
+      const contextData = {
+        consolidated_api,
+        consolidated_calc,
+        strategies,
+        // novos resumos objetivos
+        emotional_profile,
+        trade_duration_summary,
+        trade_duration_breakdown,
+        position_sizing_summary,
+        special_events_summary,
+        correlation_direction_summary,
+        correlation_matrix_direction,
+        correlation_pairs_from_matrix,
+        result_by_hour,
+        day_of_week_api,
+        day_of_week_computed
+      };
 
       contextMessage = `
 CONTEXTO DOS DADOS DE BACKTEST:
@@ -346,10 +743,10 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
     }
 
     // Prefixar o cabeçalho selecionado ao contexto (sempre)
-    contextMessage = `${selectedHeader}\n` + contextMessage;
+    contextMessage = `${finalHeader}\n` + contextMessage;
 
     // Enxugar instruções para evitar estouro de tokens
-    const instructionContent = `${selectedHeader}\n` + (
+    const instructionContent = `${finalHeader}\n` + (
       analysisMode === "portfolio"
         ? "Analise o portfólio com base apenas nas métricas fornecidas (Sharpe combinado, drawdown consolidado, profit factor, correlação/diversificação e contribuição por estratégia). Termine com diagnóstico e 3–6 recomendações objetivas."
         : "Analise a estratégia individual com base apenas nas métricas fornecidas (Sharpe, profit factor, drawdown em R$ e %, taxa de acerto, payoff e tamanho de amostra). Termine com diagnóstico e 3–6 recomendações objetivas."
@@ -363,11 +760,11 @@ Por favor, analise os dados fornecidos e responda à pergunta do usuário com ba
 
     // Preparar array de mensagens para enviar à API
     // Enviar apenas instrução + contexto atual (sem histórico) para reduzir tokens
-    const messagesToSend = [
+      const messagesToSend = [
       {
         role: "user",
         content:
-          `${selectedHeader}\n` + `
+          `${finalHeader}\n` + `
 // Este JSON representa uma única estratégia, robô ou sistema de trading (CSV) isolado, extraído de um único arquivo CSV.
 // Ele contém dados completos de performance da estratégia, já organizados em formato analítico, e prontos para interpretação técnica.
 // As informações incluídas abrangem tanto métricas agregadas (como Sharpe Ratio, Payoff, Profit Factor, Drawdown), quanto recortes temporais (resultados por dia da semana, por mês e por hora), além de indicadores operacionais (frequência de trades, duração média, taxa de acerto, entre outros).
@@ -573,7 +970,7 @@ Editar
 // ✅ Seu papel é interpretar cada estratégia no seu próprio contexto técnico, mas também como parte de uma composição de portfólio — considerando interações, redundâncias e riscos sobrepostos
 
 
-// [OBJETIVO PRINCIPAL DA ANÁLISE]
+// [Risco de Ruína]
 // Sua tarefa é realizar uma análise quantitativa com foco em:
 // - Robustez do portfólio como um todo
 // - Consistência estatística e estabilidade temporal da composição
@@ -823,7 +1220,7 @@ Editar
 // JSON com os dados será enviado abaixo deste prompt.
 
 
-[ANÁLISE DE CORRELAÇÃO DE PORTFÓLIO]
+[ANÁLISE DE CORRELAÇÃO]
 
 // Este prompt tem como objetivo principal identificar e quantificar a correlação operacional entre 2 ou mais estratégias (CSVs) de trading fornecidas em formato JSON.
 
@@ -935,7 +1332,7 @@ Editar
     try {
       // Prepare messages with context
       const mode: "single" | "portfolio" = prompt.analysisMode ?? (fileResults && Object.keys(fileResults).length >= 2 ? "portfolio" : "single");
-      const messagesToSend = prepareMessagesWithContext(prompt.prompt, mode);
+      const messagesToSend = prepareMessagesWithContext(prompt.prompt, mode, prompt.header);
 
       // Call the API
       // Corrigir endpoint duplicado: buildApiUrl('/chat') já retorna /chat
@@ -1055,18 +1452,19 @@ Editar
           <button
             onClick={() => handleQuickPrompt({
               id: "portfolio-analysis",
-              label: "Análise de Estratégia Individual",
+              label: "Análise Completa",
               prompt: "Analise minha carteira de trading com base nos dados de backtest fornecidos. Identifique pontos fortes, fracos e oportunidades de melhoria.",
               tokens: 500,
               icon: <PieChart className="w-4 h-4" />,
-              analysisMode: "single"
+              analysisMode: "single",
+              header: "Análise Completa"
             })}
-            className={`p-3 rounded-lg text-left transition-colors ${canSingle ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
-            disabled={!canSingle}
+            className={`p-3 rounded-lg text-left transition-colors ${canAnalyzeComplete ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
+            disabled={!canAnalyzeComplete}
           >
             <div className="flex items-center mb-2">
               <PieChart className="w-4 h-4 mr-2" />
-              <span className="font-medium text-sm">Análise de Estratégia Individual</span>
+              <span className="font-medium text-sm">Análise Completa</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">
@@ -1079,18 +1477,19 @@ Editar
           <button
             onClick={() => handleQuickPrompt({
               id: "uncorrelated-portfolio",
-              label: "Análise de Portfólio",
+              label: "Montagem de Portfólio com IA",
               prompt: "Com base nos dados de backtest, monte um portfólio de estratégias para diversificar riscos e maximizar retornos consistentes.",
               tokens: 1000,
               icon: <Layers className="w-4 h-4" />,
-              analysisMode: "portfolio"
+              analysisMode: "portfolio",
+              header: "Análise de Portfólio"
             })}
-            className={`p-3 rounded-lg text-left transition-colors ${canPortfolio ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
-            disabled={!canPortfolio}
+            className={`p-3 rounded-lg text-left transition-colors ${canAnalyzePortfolioIA ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
+            disabled={!canAnalyzePortfolioIA}
           >
             <div className="flex items-center mb-2">
               <Layers className="w-4 h-4 mr-2" />
-              <span className="font-medium text-sm">Análise de Portfólio</span>
+              <span className="font-medium text-sm">Montagem de Portfólio com IA</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">
@@ -1103,18 +1502,19 @@ Editar
           <button
             onClick={() => handleQuickPrompt({
               id: "risk-return-portfolio",
-              label: "Portfólio Risco-Retorno",
+              label: "Análise de Correlação",
               prompt: "Crie um portfólio otimizado focando na relação risco-retorno ideal com base nos dados de performance das estratégias analisadas.",
               tokens: 1000,
               icon: <TrendingUp className="w-4 h-4" />,
-              analysisMode: "portfolio"
+              analysisMode: "portfolio",
+              header: "Análise de Correlação"
             })}
-            className={`p-3 rounded-lg text-left transition-colors ${canPortfolio ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
-            disabled={!canPortfolio}
+            className={`p-3 rounded-lg text-left transition-colors ${canAnalyzePortfolioIA ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
+            disabled={!canAnalyzePortfolioIA}
           >
             <div className="flex items-center mb-2">
               <TrendingUp className="w-4 h-4 mr-2" />
-              <span className="font-medium text-sm">Portfólio Risco-Retorno</span>
+              <span className="font-medium text-sm">Análise de Correlação</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">
@@ -1127,18 +1527,19 @@ Editar
           <button
             onClick={() => handleQuickPrompt({
               id: "consistency-portfolio",
-              label: "Portfólio Consistência",
+              label: "Risco de Ruína",
               prompt: "Monte um portfólio priorizando consistência e estabilidade de retornos, minimizando drawdowns e volatilidade excessiva.",
               tokens: 1000,
               icon: <Shield className="w-4 h-4" />,
-              analysisMode: "portfolio"
+              analysisMode: "portfolio",
+              header: "Risco de Ruina"
             })}
-            className={`p-3 rounded-lg text-left transition-colors ${canPortfolio ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
-            disabled={!canPortfolio}
+            className={`p-3 rounded-lg text-left transition-colors ${canAnalyzePortfolioIA ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}
+            disabled={!canAnalyzePortfolioIA}
           >
             <div className="flex items-center mb-2">
               <Shield className="w-4 h-4 mr-2" />
-              <span className="font-medium text-sm">Portfólio Consistência</span>
+              <span className="font-medium text-sm">Risco de Ruína</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">

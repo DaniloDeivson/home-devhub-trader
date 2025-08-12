@@ -962,6 +962,10 @@ Relatório gerado em: ${new Date().toLocaleString()}
                   error={error}
                   setError={setError}
                   analysisResult={analysisResult}
+                  backtestData={null}
+                  fileResults={undefined}
+                  emotionalProfile={undefined}
+                  correlationData={undefined}
                 />
               </div>
             )}

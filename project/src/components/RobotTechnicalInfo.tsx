@@ -83,11 +83,10 @@ Código do robô:
 ${code}
 \`\`\`
 
-Forneça as seguintes métricas em formato de texto:
+ Forneça as seguintes métricas em formato de texto:
 - Profit Factor (estimativa)
 - Win Rate (estimativa em %)
 - Payoff (estimativa)
-- Max Drawdown (estimativa em %)
 - Sharpe Ratio (estimativa)
 - Total Trades (estimativa)
 - Average Trade (estimativa)
@@ -191,8 +190,7 @@ Forneça uma análise estruturada com seções claras para cada métrica.
     const payoffMatch = text.match(/payoff\s*:?\s*([-\d.]+)/i);
     if (payoffMatch) result.payoff = parseFloat(payoffMatch[1]);
 
-    const maxDrawdownMatch = text.match(/max\s*drawdown\s*:?\s*([-\d.]+)%?/i);
-    if (maxDrawdownMatch) result.maxDrawdown = parseFloat(maxDrawdownMatch[1]);
+    // Max Drawdown removido do envio/extração
 
     const sharpeRatioMatch = text.match(/sharpe\s*ratio\s*:?\s*([-\d.]+)/i);
     if (sharpeRatioMatch) result.sharpeRatio = parseFloat(sharpeRatioMatch[1]);
@@ -360,7 +358,6 @@ Forneça uma análise estruturada com seções claras para cada métrica.
 - Payoff: ${metrics.payoff.toFixed(2)}
 - Win Rate: ${metrics.winRate.toFixed(2)}%
 - Total Trades: ${metrics.totalTrades}
-- Max Drawdown: ${metrics.maxDrawdown.toFixed(2)}%
 - Max Consecutive Losses: ${metrics.maxConsecutiveLosses}
 - Sharpe Ratio: ${metrics.sharpeRatio.toFixed(2)}
 - Recovery Factor: ${metrics.recoveryFactor.toFixed(2)}
@@ -548,7 +545,7 @@ Relatório gerado em: ${new Date().toLocaleString()}
               <Award className="w-4 h-4 text-yellow-500 mr-2" />
               Métricas de Performance
             </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="bg-gray-700 p-3 rounded-lg">
                 <p className="text-xs text-gray-400 mb-1">Fator de Lucro</p>
                 <p
@@ -582,17 +579,7 @@ Relatório gerado em: ${new Date().toLocaleString()}
                   {formatMetric(metrics.payoff)}
                 </p>
               </div>
-              <div className="bg-gray-700 p-3 rounded-lg">
-                <p className="text-xs text-gray-400 mb-1">Drawdown Máx.</p>
-                <p
-                  className={`text-lg font-bold ${getMetricColor(
-                    "maxDrawdown",
-                    metrics.maxDrawdown
-                  )}`}
-                >
-                  {formatMetric(metrics.maxDrawdown, true)}
-                </p>
-              </div>
+              {/* Drawdown Máx. removido do envio/exibição */}
             </div>
           </div>
 

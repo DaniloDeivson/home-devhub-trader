@@ -48,7 +48,8 @@ export function EquityCurveSection({
   // consolidatedMetrics
 }: EquityCurveSectionProps) {
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
-  const [timeRange, setTimeRange] = useState<'trade' | 'daily'>('daily');
+  // Para CSV único, default para 'trade' para garantir dados mesmo sem série diária
+  const [timeRange, setTimeRange] = useState<'trade' | 'daily'>(() => 'trade');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
   const investedCapital = useSettingsStore((s) => s.investedCapital);
   const setInvestedCapital = useSettingsStore((s) => s.setInvestedCapital);
@@ -375,6 +376,41 @@ export function EquityCurveSection({
       console.log('📅 Range de datas válidas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
       console.log('📅 Total de datas únicas válidas:', sortedDates.length);
       
+      // CSV único no consolidado: retornar diretamente a série da própria estratégia
+      if (strategiesList.length === 1) {
+        const only = filteredFileResults[strategiesList[0]];
+        const eqAny = (only?.["Equity Curve Data"] as unknown) || (only as unknown as Record<string, unknown>)?.['equity_curve_data'];
+        const equity = (eqAny || {}) as { trade_by_trade?: EquityCurvePoint[]; daily?: EquityCurvePoint[] };
+        if (equity) {
+          let selectedData: EquityCurvePoint[] = [] as EquityCurvePoint[];
+          switch (timeRange) {
+            case 'trade':
+              selectedData = equity.trade_by_trade || [];
+              break;
+            case 'daily':
+              selectedData = equity.daily || [];
+              break;
+            default:
+              selectedData = equity.daily || [];
+          }
+          if (selectedData.length > 0) {
+            const processed = (selectedData as EquityCurvePoint[]).map((item) => ({
+              ...item,
+              saldo: Number(item.saldo ?? item.resultado ?? 0),
+              valor: Number(item.valor ?? 0),
+              resultado: Number(item.resultado ?? 0),
+              drawdown: Number(item.drawdown ?? 0),
+              drawdownPercent: Number(item.drawdownPercent ?? 0),
+              peak: Number(item.peak ?? 0),
+              trades: Number(item.trades ?? 0),
+              strategy: strategiesList[0]
+            }));
+            console.log('✅ CSV ÚNICO (consolidado=true): série direta retornada:', processed.length, 'pontos');
+            return processed;
+          }
+        }
+      }
+
       // Consolidar de acordo com a granularidade selecionada
       if (timeRange === 'daily') {
         // Alinhar exatamente à mesma lógica de consolidação usada no consolidado global
@@ -393,6 +429,14 @@ export function EquityCurveSection({
           });
         });
         const sorted = Array.from(dailyResultByDate.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
+        // Fallback: se não houver trades para formar a série diária, use os dados diários já processados das estratégias
+        if (sorted.length === 0 && allData.length > 0) {
+          const processedDaily = [...allData]
+            .filter(p => !!p.date || !!p.fullDate)
+            .sort((a, b) => new Date((a.date || a.fullDate) as string).getTime() - new Date((b.date || b.fullDate) as string).getTime());
+          console.log('⚠️ Sem trades para consolidar diário; retornando série diária processada diretamente das estratégias:', processedDaily.length, 'pontos');
+          return processedDaily;
+        }
         let cumsum = 0;
         let peak = 0;
         let maxDD = 0;
@@ -562,16 +606,91 @@ export function EquityCurveSection({
     console.log('⚠️ Nenhum dado direto encontrado; tentando usar dados de Equity Curve do CSV (se houver)');
     const eq = data?.["Equity Curve Data"];
     const selectedData = eq ? (timeRange === 'trade' ? (eq.trade_by_trade || []) : (eq.daily || [])) : [];
-    return (selectedData as EquityCurvePoint[]).map((item) => ({
-      ...item,
-      saldo: Number(item.saldo ?? item.resultado ?? 0),
-      valor: Number(item.valor ?? 0),
-      resultado: Number(item.resultado ?? 0),
-      drawdown: Number(item.drawdown ?? 0),
-      drawdownPercent: Number(item.drawdownPercent ?? 0),
-      peak: Number(item.peak ?? 0),
-      trades: Number(item.trades ?? 0)
-    }));
+    if (selectedData && selectedData.length > 0) {
+      return (selectedData as EquityCurvePoint[]).map((item) => ({
+        ...item,
+        saldo: Number(item.saldo ?? item.resultado ?? 0),
+        valor: Number(item.valor ?? 0),
+        resultado: Number(item.resultado ?? 0),
+        drawdown: Number(item.drawdown ?? 0),
+        drawdownPercent: Number(item.drawdownPercent ?? 0),
+        peak: Number(item.peak ?? 0),
+        trades: Number(item.trades ?? 0)
+      }));
+    }
+
+    // Fallback final: construir dados de equity a partir dos trades (CSV único)
+    const buildFromTrades = (tradeList: Trade[] | undefined): EquityCurvePoint[] => {
+      if (!Array.isArray(tradeList) || tradeList.length === 0) return [];
+      // Ordenar por data de entrada
+      const ordered = [...tradeList].sort((a, b) => {
+        const ta = new Date((a.entry_date as unknown as string) ?? (a as unknown as Record<string, unknown>)['date'] ?? 0 as number).getTime();
+        const tb = new Date((b.entry_date as unknown as string) ?? (b as unknown as Record<string, unknown>)['date'] ?? 0 as number).getTime();
+        return ta - tb;
+      });
+      if (timeRange === 'trade') {
+        let cum = 0;
+        let peak = 0;
+        return ordered.map((t, idx) => {
+          const pnlRaw = (t as unknown as Record<string, unknown>)['pnl'];
+          const pnl = typeof pnlRaw === 'number' ? pnlRaw : Number(pnlRaw ?? 0);
+          cum += pnl;
+          if (cum > peak) peak = cum;
+          const dd = Math.max(0, peak - cum);
+          return {
+            ...(t as unknown as Record<string, unknown>),
+            saldo: cum,
+            resultado: pnl,
+            drawdown: dd,
+            drawdownPercent: 0,
+            peak,
+            trades: idx + 1,
+          } as unknown as EquityCurvePoint;
+        });
+      } else {
+        // daily: somar PnL por data
+        const dailyMap = new Map<string, number>();
+        ordered.forEach((t) => {
+          const entryDate = (t.entry_date as unknown as string) ?? (t as unknown as Record<string, unknown>)['date'] as (string | undefined);
+          const key = new Date(entryDate ?? 0).toISOString().slice(0, 10);
+          const pnlRaw = (t as unknown as Record<string, unknown>)['pnl'];
+          const pnl = typeof pnlRaw === 'number' ? pnlRaw : Number(pnlRaw ?? 0);
+          dailyMap.set(key, (dailyMap.get(key) || 0) + pnl);
+        });
+        const days = Array.from(dailyMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        let cum = 0;
+        let peak = 0;
+        return days.map(([date, pnl]) => {
+          cum += pnl;
+          if (cum > peak) peak = cum;
+          const dd = Math.max(0, peak - cum);
+          return {
+            data: date as unknown as string,
+            saldo: cum,
+            resultado: pnl,
+            drawdown: dd,
+            drawdownPercent: 0,
+            peak,
+            trades: 0,
+          } as unknown as EquityCurvePoint;
+        });
+      }
+    };
+
+    // Tenta a partir de data.trades
+    const builtFromData = buildFromTrades((data as unknown as { trades?: Trade[] } | null)?.trades);
+    if (builtFromData.length > 0) return builtFromData;
+
+    // Tenta a partir de fileResults quando há apenas um CSV
+    const frKeys = fileResults ? Object.keys(fileResults) : [];
+    if (frKeys.length === 1) {
+      const only = fileResults![frKeys[0]] as unknown as { trades?: Trade[] };
+      const builtFromFR = buildFromTrades(only?.trades);
+      if (builtFromFR.length > 0) return builtFromFR;
+    }
+
+    // Sem dados suficientes
+    return [] as EquityCurvePoint[];
   }, [data, timeRange, selectedAsset, fileResults, showConsolidated, selectedFiles, chartType, selectedStrategy, files.length, getFilteredFileResults]);
 
   // Calcular média móvel

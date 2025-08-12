@@ -50,7 +50,7 @@ interface PositionSizingData {
   averagePosition: number;
   medianPosition: number;
   maxPosition: number;
-  maxSetupPerDay: number;
+  avgDailyTurnover: number; // Giro médio diário
   resultByPosition: PositionRangeStats[];
   unit: UnitType;
   totalVolume: number;
@@ -128,43 +128,98 @@ export function PositionSizingSection({
       return 0;
     };
 
-    // Helper: try a comprehensive set of keys and fallbacks; then scan any likely key
+    // Helper: tamanho da posição com prioridade (sem somar lados, sem duplicar)
+    // 1) Preferir campos de compra (qty_buy e variações, incluindo "Qtd Compra")
+    // 2) Fallback para totais (quantity_total e variações)
+    // 3) Fallback leve: variações genéricas de quantidade/tamanho (apenas o primeiro valor > 0)
     const extractPositionSize = (trade: BacktestTrade): number => {
-      const priorityKeys = [
-        'quantity_total', 'quantity_compra', 'quantity_venda',
-        'quantity_buy', 'quantity_sell',
-        'qty_buy', 'qty_sell', 'quantity', 'qty',
-        'position_size', 'size', 'volume',
-        // common alternatives
-        'contracts', 'contratos', 'qtd_contratos', 'quantidade_contratos',
-        'qtd_total', 'quantidade_total', 'quantidade',
-        'tamanho_posicao', 'tamanho', 'lot', 'lote', 'position'
+      // 1) Chaves explícitas de compra
+      const explicitBuyKeys = [
+        'qty_buy', 'quantity_buy', 'Qtd Compra', 'QtdCompra',
+        'qtd_compra', 'quantidade_compra', 'quantidade compra', 'qtd compra',
+        'quantity_compra'
       ];
-
-      for (const key of priorityKeys) {
+      for (const key of explicitBuyKeys) {
         if (key in trade) {
-          const v = parseNumeric(trade[key]);
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
           if (v > 0) return v;
         }
       }
 
-      // If not found, try to infer from any numeric-like field name
-      let best = 0;
-      Object.keys(trade).forEach((key) => {
-        if (/qty|quant|contrat|size|posi|vol/i.test(key)) {
-          const v = parseNumeric(trade[key]);
-          if (v > best) best = v;
+      // 1b) Busca por regex de compra (caso a chave venha com variações)
+      for (const key of Object.keys(trade)) {
+        if (/qty.*buy|quantity.*buy|qtd[ _-]*compra|quantidade[ _-]*compra/i.test(key)) {
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
+          if (v > 0) return v;
         }
-      });
+      }
 
-      // As a last resort, if both buy/sell quantities exist, take the max
-      const maxSide = Math.max(
-        parseNumeric('qty_buy' in trade ? trade['qty_buy'] : 'quantity_buy' in trade ? trade['quantity_buy'] : undefined),
-        parseNumeric('qty_sell' in trade ? trade['qty_sell'] : 'quantity_sell' in trade ? trade['quantity_sell'] : undefined)
-      );
-      best = Math.max(best, maxSide);
+      // 2) Nested scan em 1 nível para chaves de compra
+      for (const [, v] of Object.entries(trade)) {
+        if (v && typeof v === 'object') {
+          const nested = v as Record<string, unknown>;
+          for (const key of explicitBuyKeys) {
+            if (key in nested) {
+              const val = parseNumeric(nested[key]);
+              if (val > 0) return val;
+            }
+          }
+          // Regex de compra nas chaves aninhadas
+          for (const nk of Object.keys(nested)) {
+            if (/qty.*buy|quantity.*buy|qtd[ _-]*compra|quantidade[ _-]*compra/i.test(nk)) {
+              const val = parseNumeric(nested[nk]);
+              if (val > 0) return val;
+            }
+          }
+        }
+      }
 
-      return best > 0 ? best : 0;
+      // 3) Fallback para totais
+      const totalKeys = [
+        'quantity_total', 'qtd_total', 'quantidade_total', 'quantity', 'qty'
+      ];
+      for (const key of totalKeys) {
+        if (key in trade) {
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
+          if (v > 0) return v;
+        }
+      }
+
+      // 3b) Totais aninhados (1 nível)
+      for (const [, v] of Object.entries(trade)) {
+        if (v && typeof v === 'object') {
+          const nested = v as Record<string, unknown>;
+          for (const key of totalKeys) {
+            if (key in nested) {
+              const val = parseNumeric(nested[key]);
+              if (val > 0) return val;
+            }
+          }
+        }
+      }
+
+      // 4) Fallback genérico (pegar o primeiro campo que pareça quantidade > 0)
+      for (const key of Object.keys(trade)) {
+        if (/^((?!sell|venda).)*(qty|quant|contrat|size|position|volume)/i.test(key)) {
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
+          if (v > 0) return v;
+        }
+      }
+      // 4b) Genérico aninhado (1 nível)
+      for (const [, v] of Object.entries(trade)) {
+        if (v && typeof v === 'object') {
+          const nested = v as Record<string, unknown>;
+          for (const nk of Object.keys(nested)) {
+            if (/^((?!sell|venda).)*(qty|quant|contrat|size|position|volume)/i.test(nk)) {
+              const val = parseNumeric(nested[nk]);
+              if (val > 0) return val;
+            }
+          }
+        }
+      }
+
+      // 5) Último recurso: assumir 1 unidade quando não há campo de quantidade
+      return 1;
     };
 
     // Helper: robust PnL extractor (handles numbers, strings and alternative keys)
@@ -216,7 +271,7 @@ export function PositionSizingSection({
         averagePosition: 0,
         medianPosition: 0,
         maxPosition: 0,
-        maxSetupPerDay: 0,
+        avgDailyTurnover: 0,
         resultByPosition: [],
         unit: 'contratos',
         totalVolume: 0,
@@ -243,15 +298,51 @@ export function PositionSizingSection({
     const medianPosition = sortedPositions[Math.floor(sortedPositions.length / 2)];
     const maxPosition = Math.max(...positions);
 
-    // Calculate max contracts per day
+    // Calculate Giro médio diário (qty_buy * 2 por dia, média entre dias). Fallback: Posição Média * 2
+    const dailyBuyByDate: { [key: string]: number } = {};
+    const makeDateKey = (value: unknown): string | null => {
+      if (!value) return null;
+      const d = new Date(String(value));
+      if (!Number.isFinite(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const extractQtyBuy = (trade: BacktestTrade): number => {
+      const buyKeys = [
+        'qty_buy', 'quantity_buy', 'Qtd Compra', 'QtdCompra',
+        'qtd_compra', 'quantidade_compra', 'quantidade compra', 'qtd compra',
+        'quantity_compra'
+      ];
+      for (const key of buyKeys) {
+        if (key in trade) {
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
+          if (v > 0) return v;
+        }
+      }
+      // Regex fallback
+      for (const key of Object.keys(trade)) {
+        if (/qty.*buy|quantity.*buy|qtd[ _-]*compra|quantidade[ _-]*compra/i.test(key)) {
+          const v = parseNumeric((trade as Record<string, unknown>)[key]);
+          if (v > 0) return v;
+        }
+      }
+      return 0;
+    };
     const tradesByDate: { [key: string]: number } = {};
     positionSizes.forEach((trade: TradeWithPositionSize) => {
-      if (trade.entry_date) {
-        const date = new Date(trade.entry_date).toDateString();
-        tradesByDate[date] = (tradesByDate[date] || 0) + trade.positionSize;
-      }
+      const dateKey = makeDateKey(trade.entry_date || (trade as unknown as Record<string, unknown>)['date']);
+      if (!dateKey) return;
+      tradesByDate[dateKey] = (tradesByDate[dateKey] || 0) + trade.positionSize;
     });
-    const maxSetupPerDay = Object.keys(tradesByDate).length > 0 ? Math.max(...Object.values(tradesByDate)) : 0;
+    filteredTrades.forEach((trade: BacktestTrade) => {
+      const dateKey = makeDateKey(trade.entry_date || (trade as unknown as Record<string, unknown>)['date'] || (trade as unknown as Record<string, unknown>)['Abertura'] || (trade as unknown as Record<string, unknown>)['datetime']);
+      if (!dateKey) return;
+      dailyBuyByDate[dateKey] = (dailyBuyByDate[dateKey] || 0) + extractQtyBuy(trade);
+    });
+    const dailyTurnoverValuesRaw: number[] = Object.values(dailyBuyByDate).map(v => v * 2);
+    const dailyTurnoverValues = dailyTurnoverValuesRaw.filter(v => v > 0);
+    const avgDailyTurnover = dailyTurnoverValues.length > 0
+      ? dailyTurnoverValues.reduce((a, b) => a + b, 0) / dailyTurnoverValues.length
+      : (averagePosition * 2);
 
     // Group trades by position ranges - more detailed for small positions
     const positionRanges = [
@@ -321,7 +412,7 @@ export function PositionSizingSection({
       averagePosition: Math.round(averagePosition),
       medianPosition: Math.round(medianPosition),
       maxPosition: Math.round(maxPosition),
-      maxSetupPerDay: Math.round(maxSetupPerDay),
+      avgDailyTurnover: Math.round(avgDailyTurnover),
       resultByPosition,
       unit,
       // Additional parameters
@@ -382,7 +473,7 @@ export function PositionSizingSection({
             <div className="bg-gray-700 p-3 rounded-lg">
               <p className="text-sm text-gray-400 mb-1">Giro médio diário</p>
               <p className="text-xl font-bold">
-                {positionSizingData.maxSetupPerDay.toLocaleString('pt-BR')} {positionSizingData.unit}
+                {positionSizingData.avgDailyTurnover.toLocaleString('pt-BR')} {positionSizingData.unit}
               </p>
             </div>
           </div>
@@ -411,7 +502,7 @@ export function PositionSizingSection({
             <div className="bg-gray-700 p-3 rounded-lg">
               <p className="text-sm text-gray-400 mb-1">Giro médio diário</p>
               <p className="text-xl font-bold">
-                {positionSizingData.maxSetupPerDay.toLocaleString('pt-BR')} {positionSizingData.unit}
+                {positionSizingData.avgDailyTurnover.toLocaleString('pt-BR')} {positionSizingData.unit}
               </p>
             </div>
           </div>

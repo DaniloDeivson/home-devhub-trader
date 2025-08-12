@@ -1925,6 +1925,8 @@ useEffect(() => {
                   onMetricsReceived={handleMetricsReceived}
                   backtestData={backtestResult}
                   fileResults={fileResults}
+                  emotionalProfile={frozenEmocional || emocional}
+                  correlationData={(frozenDrata || drata)?.dateDirectionCorrelation}
                 />
               </div>
             </div>
