@@ -4,6 +4,7 @@ import {
   ArrowLeft, Download, Save, FolderOpen, RefreshCw, AlertTriangle, Check, X
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useAuthStore } from '../stores/authStore';
 import { MetricsDashboard } from '../components/MetricsDashboard';
 import { AIResponseChat } from '../components/AIResponseChat';
@@ -174,6 +175,7 @@ interface SavedAnalysis {
 
 export function BacktestAnalysisPage() {
   const navigate = useNavigate();
+  const investedCapital = useSettingsStore((s) => s.investedCapital) || 100000;
   const { profile, updateTokenBalance } = useAuthStore();
   const [file, setFile] = useState<File | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -1790,9 +1792,9 @@ useEffect(() => {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => navigate('/robots')}
+              onClick={() => { setShowUploadForm(true); setShowChat(false); }}
               className="p-2 hover:bg-gray-800 rounded-full transition-colors"
-              title="Voltar para robôs"
+              title="Voltar para Backtest"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -2171,28 +2173,46 @@ useEffect(() => {
                       ? ddPercentFromPMLegend
                       : (ddPctFromConsolidation ?? dailyMain?.drawdown_maximo_pct ?? baseMetrics?.maxDrawdown);
 
-                    // Sharpe Ratio TOTAL padronizado (retorno diário normalizado e anualizado):
-                    const computeDailySharpe = (allTrades: typeof trades) => {
+                    // Novo Sharpe baseado em tempo (meses):
+                    // (Resultado Líquido - (Resultado Líquido * taxa_mensal * n_meses)) / DD_absoluto
+                    const computeTimeSharpe = (allTrades: typeof trades, netProfit?: number, ddAbs?: number) => {
                       if (!allTrades || allTrades.length === 0) return undefined;
-                      const dailyMap = new Map<string, number>();
-                      allTrades.forEach(t => {
-                        const dateKey = new Date(t.entry_date).toISOString().split('T')[0];
-                        const current = dailyMap.get(dateKey) || 0;
-                        dailyMap.set(dateKey, current + (t.pnl || 0));
-                      });
-                      // Normalizar por capital investido para obter retorno percentual diário
-                      const invested = 100000; // mesmo capital da legenda
-                      const returns = Array.from(dailyMap.values()).map(v => invested > 0 ? v / invested : 0);
-                      if (returns.length === 0) return undefined;
-                      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
-                      const variance = returns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / returns.length;
-                      const stdDev = Math.sqrt(variance);
-                      const riskFreeDaily = 0.12 / 252; // RF anual ~12% -> diário em 252 pregões
-                      if (stdDev <= 0) return 0;
-                      // Anualizar Sharpe
-                      return ((mean - riskFreeDaily) / stdDev) * Math.sqrt(252);
+                      // Determinar período em meses (pelo menos 1)
+                      const sorted = [...allTrades].sort((a, b) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime());
+                      const start = new Date(sorted[0].entry_date);
+                      const last = sorted[sorted.length - 1];
+                      const end = new Date((last.exit_date || last.entry_date));
+                      const ms = Math.max(1, end.getTime() - start.getTime());
+                      const months = Math.max(1, Math.floor(ms / (1000 * 60 * 60 * 24 * 30.4375)));
+                      const monthlyRatePercent = 1; // 1% a.m. (ajustável futuramente via settings)
+                      // Net Profit: preferir Performance Metrics; fallback somatório de trades
+                      let net = typeof netProfit === 'number' && isFinite(netProfit)
+                        ? netProfit
+                        : allTrades.reduce((acc, t) => acc + (t.pnl || 0), 0);
+                      const interestCost = net * (monthlyRatePercent / 100) * months;
+                      const adjusted = net - interestCost;
+                      const dd = typeof ddAbs === 'number' && isFinite(ddAbs) ? ddAbs : 0;
+                      if (dd <= 0) return 0;
+                      return adjusted / dd;
                     };
-                    const computedSharpe = computeDailySharpe(Array.isArray(trades) ? trades : []);
+                    // Padronizar entradas para Sharpe: usar sempre soma do PnL das trades e DD absoluto calculado das trades
+                    const allTradesForSharpe = Array.isArray(trades) ? [...trades] : [];
+                    const netProfitForSharpe = allTradesForSharpe.reduce((sum, t) => sum + (t.pnl || 0), 0);
+                    const ddAbsForSharpe = (() => {
+                      if (allTradesForSharpe.length === 0) return 0;
+                      const ordered = allTradesForSharpe
+                        .map(t => ({ date: new Date(t.entry_date), pnl: t.pnl || 0 }))
+                        .sort((a, b) => a.date.getTime() - b.date.getTime());
+                      let peak = 0; let running = 0; let maxDD = 0;
+                      ordered.forEach(({ pnl }) => {
+                        running += pnl;
+                        if (running > peak) peak = running;
+                        const dd = peak - running;
+                        if (dd > maxDD) maxDD = dd;
+                      });
+                      return maxDD;
+                    })();
+                    const computedSharpe = computeTimeSharpe(allTradesForSharpe, netProfitForSharpe, ddAbsForSharpe);
 
                     // Padronização: usar Sharpe Ratio e Fator de Recuperação da Análise Diária
                     // e Drawdown consolidado (R$ e %) quando disponível
@@ -2201,9 +2221,10 @@ useEffect(() => {
 
                     const metricsToUse = {
                       ...baseMetrics,
-                      sharpeRatio: (computedSharpe !== undefined ? computedSharpe : (dailyMain?.sharpe_ratio)) ?? baseMetrics?.sharpeRatio,
+                      // Sharpe SEM fallback externo: sempre o baseado em tempo calculado localmente
+                      sharpeRatio: (computedSharpe !== undefined ? computedSharpe : 0),
                       recoveryFactor: dailyMain?.fator_recuperacao ?? baseMetrics?.recoveryFactor,
-                      // DD consolidado: usar cálculo direto (idêntico à legenda). Se indisponível, cair para Análise Diária e depois para Performance Metrics
+                      // DD exibido no dashboard mantém a lógica anterior
                       maxDrawdownAmount: ddAmountFinal,
                       maxDrawdown: ddPercentForDashboard,
                     } as typeof baseMetrics & {

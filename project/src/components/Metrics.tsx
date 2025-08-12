@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { buildApiUrl } from '../config/api';
 import { DailyMetrics, TradesData } from '../types/backtest';
+import { useSettingsStore } from '../stores/settingsStore';
 import { calculateDirectConsolidation } from '../utils/directConsolidation';
 
 interface DailyMetricsCardsProps {
@@ -17,6 +18,7 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
   const [metrics, setMetrics] = useState<DailyMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const investedCapital = useSettingsStore((s) => s.investedCapital) || 100000;
 
   useEffect(() => {
     // ✅ CORREÇÃO: Priorizar tradesData (único CSV) sobre fileResults
@@ -166,30 +168,22 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         const payoffDiarioCalculado = calcularPayoffDiario(allTrades);
         
-        // ✅ CORREÇÃO: Calcular Sharpe Ratio localmente (padronizado com Dashboard)
-        const calcularSharpeRatio = (trades: unknown[]) => {
+        // ✅ NOVO: Sharpe baseado em tempo (meses): (Net - Net*juros_mensal*meses) / DD_absoluto
+        const calcularSharpeRatio = (trades: unknown[], netProfit?: number, ddAbsoluto?: number) => {
           if (trades.length === 0) return 0;
-
-          // Calcular retornos diários normalizados por capital e anualizar
-          const invested = 100000; // mesma base usada no Dashboard
-          const dailyReturns = new Map<string, number>();
-
-          trades.forEach((trade) => {
-            const tradeData = trade as Record<string, unknown>;
-            const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
-            const pnl = (tradeData.pnl as number) || 0;
-            const current = dailyReturns.get(date) || 0;
-            dailyReturns.set(date, current + pnl);
-          });
-
-          const returns = Array.from(dailyReturns.values()).map(v => invested > 0 ? v / invested : 0);
-          if (returns.length === 0) return 0;
-
-          const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-          const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
-          const stdDev = Math.sqrt(variance);
-          const rfDaily = 0.12 / 252;
-          return stdDev > 0 ? ((mean - rfDaily) / stdDev) * Math.sqrt(252) : 0;
+          const ordered = [...trades].map(t => t as Record<string, unknown>).sort((a, b) => new Date(String(a.entry_date)).getTime() - new Date(String(b.entry_date)).getTime());
+          const start = new Date(String(ordered[0].entry_date));
+          const last = ordered[ordered.length - 1];
+          const end = new Date(String(last.exit_date || last.entry_date));
+          const ms = Math.max(1, end.getTime() - start.getTime());
+          const months = Math.max(1, Math.floor(ms / (1000 * 60 * 60 * 24 * 30.4375)));
+          const monthlyRatePercent = 1; // 1% a.m.
+          const net = typeof netProfit === 'number' && isFinite(netProfit) ? netProfit : ordered.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0);
+          const interestCost = net * (monthlyRatePercent / 100) * months;
+          const adjusted = net - interestCost;
+          const dd = typeof ddAbsoluto === 'number' && isFinite(ddAbsoluto) ? ddAbsoluto : 0;
+          if (dd <= 0) return 0;
+          return adjusted / dd;
         };
         
         // ✅ ALTERAÇÃO: Fator de Recuperação TOTAL = Net Profit total / Max DD consolidado
@@ -320,7 +314,9 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           };
         };
         
-        const sharpeRatioCalculado = calcularSharpeRatio(allTrades);
+        const ddAbs = consolidatedDD?.maxDrawdownAbsoluto;
+        const netProfitTotal = allTrades.reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+        const sharpeRatioCalculado = calcularSharpeRatio(allTrades, netProfitTotal, ddAbs);
         const fatorRecuperacaoCalculado = calcularFatorRecuperacaoTotal(allTrades, consolidatedDD?.maxDrawdownAbsoluto);
         
         // ✅ NOVO: Calcular Ganhos e Perdas Diários
@@ -477,29 +473,23 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
         
         const payoffDiarioCalculado = calcularPayoffDiario(tradesData.trades || []);
         
-        // ✅ CORREÇÃO: Calcular Sharpe Ratio e Fator de Recuperação localmente para CSV único (padronizado com Dashboard)
-        const calcularSharpeRatio = (trades: unknown[]) => {
+        // ✅ PADRONIZAÇÃO: Sharpe baseado em tempo (meses) também para CSV único
+        // (Net - Net*juros_mensal*meses) / DD_absoluto
+        const calcularSharpeRatio = (trades: unknown[], netProfit?: number, ddAbsoluto?: number) => {
           if (trades.length === 0) return 0;
-
-          const invested = 100000; // mesma base usada no Dashboard
-          const dailyReturns = new Map<string, number>();
-
-          trades.forEach((trade) => {
-            const tradeData = trade as Record<string, unknown>;
-            const date = new Date(tradeData.entry_date as string).toISOString().split('T')[0];
-            const pnl = (tradeData.pnl as number) || 0;
-            const current = dailyReturns.get(date) || 0;
-            dailyReturns.set(date, current + pnl);
-          });
-
-          const returns = Array.from(dailyReturns.values()).map(v => invested > 0 ? v / invested : 0);
-          if (returns.length === 0) return 0;
-
-          const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-          const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
-          const stdDev = Math.sqrt(variance);
-          const rfDaily = 0.12 / 252;
-          return stdDev > 0 ? ((mean - rfDaily) / stdDev) * Math.sqrt(252) : 0;
+          const ordered = [...trades].map(t => t as Record<string, unknown>).sort((a, b) => new Date(String(a.entry_date)).getTime() - new Date(String(b.entry_date)).getTime());
+          const start = new Date(String(ordered[0].entry_date));
+          const last = ordered[ordered.length - 1];
+          const end = new Date(String(last.exit_date || last.entry_date));
+          const ms = Math.max(1, end.getTime() - start.getTime());
+          const months = Math.max(1, Math.floor(ms / (1000 * 60 * 60 * 24 * 30.4375)));
+          const monthlyRatePercent = 1; // 1% a.m.
+          const net = typeof netProfit === 'number' && isFinite(netProfit) ? netProfit : ordered.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0);
+          const interestCost = net * (monthlyRatePercent / 100) * months;
+          const adjusted = net - interestCost;
+          const dd = typeof ddAbsoluto === 'number' && isFinite(ddAbsoluto) ? ddAbsoluto : 0;
+          if (dd <= 0) return 0;
+          return adjusted / dd;
         };
         
         const calcularFatorRecuperacaoSingle = (trades: unknown[]) => {
@@ -642,7 +632,20 @@ export default function DailyMetricsCards({ tradesData, fileResults }: DailyMetr
           };
         };
         
-        const sharpeRatioCalculado = calcularSharpeRatio(tradesData.trades || []);
+        // DD absoluto para CSV único: calcular direto das trades
+        const ddAbsSingle = (() => {
+          let peak = 0; let running = 0; let maxDD = 0;
+          (tradesData.trades || []).forEach((t) => {
+            const pnl = (t as { pnl?: number }).pnl || 0;
+            running += pnl;
+            if (running > peak) peak = running;
+            const dd = peak - running;
+            if (dd > maxDD) maxDD = dd;
+          });
+          return maxDD;
+        })();
+        const netProfitSingle = (tradesData.trades || []).reduce((sum: number, t: unknown) => sum + ((t as { pnl?: number }).pnl || 0), 0);
+        const sharpeRatioCalculado = calcularSharpeRatio(tradesData.trades || [], netProfitSingle, ddAbsSingle);
         const fatorRecuperacaoCalculado = calcularFatorRecuperacaoSingle(tradesData.trades || []);
         
         // ✅ NOVO: Calcular Ganhos e Perdas Diários para CSV único
