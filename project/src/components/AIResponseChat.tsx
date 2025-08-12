@@ -1348,13 +1348,22 @@ Editar
 
       // Call the API
       // Corrigir endpoint duplicado: buildApiUrl('/chat') já retorna /chat
+      // Optional: enviar a chave no header se existir em runtime (localStorage ou variável global)
+      const runtimeKey = (
+        typeof window !== 'undefined'
+          ? (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).__OPENAI_KEY__
+              || (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).OPENAI_KEY
+          : undefined
+      ) || (typeof localStorage !== 'undefined' ? localStorage.getItem('OPENAI_API_KEY') : null);
       const response = await fetch(PYTHON_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(runtimeKey ? { 'x-openai-key': String(runtimeKey), Authorization: `Bearer ${String(runtimeKey)}` } : {}),
         },
         body: JSON.stringify({
           messages: messagesToSend,
+          ...(runtimeKey ? { apiKey: String(runtimeKey) } : {}),
         }),
       });
 

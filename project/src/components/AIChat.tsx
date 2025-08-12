@@ -551,14 +551,25 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
     }
 
     // Enviar para o backend unificado de chat
+    const runtimeKey = (
+      typeof window !== 'undefined'
+        ? (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).__OPENAI_KEY__
+            || (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).OPENAI_KEY
+        : undefined
+    ) || (typeof localStorage !== 'undefined' ? localStorage.getItem('OPENAI_API_KEY') : null);
+
     const response = await fetch(buildApiUrl('/chat'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(runtimeKey ? { 'x-openai-key': String(runtimeKey), Authorization: `Bearer ${String(runtimeKey)}` } : {}),
+      },
       body: JSON.stringify({
         messages: [
           { role: 'user', content: 'You are an expert NTSL trading robot code generator. Always respond with ONLY NTSL code inside a single code block, no explanations.' },
           { role: 'user', content: messageContent }
-        ]
+        ],
+        ...(runtimeKey ? { apiKey: String(runtimeKey) } : {})
       })
     });
 

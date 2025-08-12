@@ -108,9 +108,19 @@ Forneça uma análise estruturada com seções claras para cada métrica.
 `;
 
       // Chamar backend unificado de chat (evita usar OpenAI no frontend)
+      const runtimeKey = (
+        typeof window !== 'undefined'
+          ? (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).__OPENAI_KEY__
+              || (window as unknown as { __OPENAI_KEY__?: string; OPENAI_KEY?: string }).OPENAI_KEY
+          : undefined
+      ) || (typeof localStorage !== 'undefined' ? localStorage.getItem('OPENAI_API_KEY') : null);
+
       const response = await fetch(buildApiUrl("/chat"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(runtimeKey ? { 'x-openai-key': String(runtimeKey), Authorization: `Bearer ${String(runtimeKey)}` } : {}),
+        },
         body: JSON.stringify({
           messages: [
             {
@@ -120,6 +130,7 @@ Forneça uma análise estruturada com seções claras para cada métrica.
             },
             { role: "user", content: prompt },
           ],
+          ...(runtimeKey ? { apiKey: String(runtimeKey) } : {})
         }),
       });
 

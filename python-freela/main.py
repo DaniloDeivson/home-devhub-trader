@@ -2,16 +2,24 @@ from flask import Flask, request, jsonify
 import os
 from flask_cors import CORS
 import openai
+from openai import OpenAI as _OpenAIClient
 from FunMultiCalculos import processar_multiplos_arquivos, processar_multiplos_arquivos_comparativo
 from Correlacao import *
 from FunCalculos import carregar_csv, calcular_performance, calcular_day_of_week, calcular_monthly, processar_backtest_completo, calcular_dados_grafico
 import dotenv
+import os.path as _path
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Tuple
 
+# Carregar variáveis de ambiente de múltiplas localizações para maior robustez
+# 1) .env do diretório atual (python-freela/.env)
 dotenv.load_dotenv()
+# 2) .env explícito neste diretório
+dotenv.load_dotenv(dotenv_path=_path.join(_path.dirname(__file__), '.env'))
+# 3) .env do frontend (project/.env), caso a chave tenha sido colocada lá por engano
+dotenv.load_dotenv(dotenv_path=_path.join(_path.dirname(__file__), '..', 'project', '.env'))
 
 # main.py
 app = Flask(__name__)
@@ -25,7 +33,7 @@ CORS(app, origins=[
     'https://www.devhubtrader.com.br',  # Produção com www
     'http://devhubtrader.com.br',  # Produção sem SSL
     'http://www.devhubtrader.com.br'  # Produção sem SSL com www
-], supports_credentials=True)
+], supports_credentials=True, allow_headers=['Content-Type', 'Authorization', 'x-openai-key'], methods=['GET','POST','OPTIONS'])
 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -69,8 +77,10 @@ class NumpyJSONProvider(JSONProvider):
 # Configurar o provider customizado
 app.json_provider_class = NumpyJSONProvider
 
-# Configuração da chave da API do OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY") 
+# Configuração da chave da API do OpenAI (compat com SDK novo)
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    print("[WARN] OPENAI_API_KEY não encontrado nas variáveis de ambiente. Rotas que usam OpenAI irão falhar até que seja configurado.")
 
 # ============ MIDDLEWARE PARA LOG ============
 @app.before_request
@@ -108,7 +118,8 @@ def health():
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "devhub-backend"
+        "service": "devhub-backend",
+        "openai_key_detected": bool(os.getenv("OPENAI_API_KEY"))
     })
 
 @app.route('/api/test-metrics', methods=['POST'])
@@ -2082,13 +2093,32 @@ def api_correlacao_data_direcao():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    # Debug leve: registrar headers e presença de chave (mascarando valor)
+    try:
+        hdr_key = request.headers.get('x-openai-key') or (request.headers.get('Authorization') or '').replace('Bearer ', '')
+        masked = (hdr_key[:6] + '...' + hdr_key[-4:]) if hdr_key else None
+        print(f"[/chat] headers received: x-openai-key present={bool(request.headers.get('x-openai-key'))}, auth_present={bool(request.headers.get('Authorization'))}, key={masked}")
+        print(f"[/chat] body keys: {list(data.keys())}")
+    except Exception:
+        pass
     messages = data.get('messages', [])
 
     try:
-        # novo formato de chamada, sem usar ChatCompletion
-        resp = openai.chat.completions.create(
-            model="gpt-4",
+        # SDK v1.x requer cliente explícito quando variável de ambiente não está carregada no processo
+        # Prioridades para obter a chave: Header -> Authorization Bearer -> Body -> Env
+        api_key = (
+            request.headers.get('x-openai-key')
+            or (request.headers.get('Authorization') or '').replace('Bearer ', '').strip() or None
+            or (data.get('apiKey') if isinstance(data, dict) else None)
+            or os.getenv("OPENAI_API_KEY")
+        )
+        if not api_key:
+            return jsonify({"error": "OPENAI_API_KEY não disponível. Envie no header 'x-openai-key' ou configure no backend."}), 500
+        client = _OpenAIClient(api_key=api_key)
+        # usar modelo disponível (gpt-4o-mini é mais acessível)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=messages,
             stream=False
         )
