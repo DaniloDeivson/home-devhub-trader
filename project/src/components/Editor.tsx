@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { AlertTriangle, Plus, Search, FileCode2, ChevronRight, ChevronDown } from 'lucide-react';
-import { ntslSnippets } from '../lib/ntslSnippets';
+import { Plus, Search, ChevronRight, ChevronDown } from 'lucide-react';
+// import { ntslSnippets } from '../lib/ntslSnippets';
 import { supabase } from '../lib/supabase';
 
 interface Topic {
@@ -33,14 +33,29 @@ export function Editor({
   versions,
   selectedVersion,
   onVersionSelect,
-  showCreateVersionModal,
+  // showCreateVersionModal,
   setShowCreateVersionModal
 }: EditorProps) {
-  const editorRef = useRef<any>(null);
+  type EditorLike = {
+    layout: () => void;
+    revealLineInCenter: (lineNumber: number) => void;
+    setSelection: (sel: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    }) => void;
+    getPosition: () => { lineNumber: number; column: number };
+    executeEdits: (source: string, edits: Array<{ range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }>) => void;
+    setPosition: (pos: { lineNumber: number; column: number }) => void;
+    trigger: (source: string, handlerId: string, payload?: unknown) => void;
+  } | null;
+
+  const editorRef = useRef<EditorLike>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
-  const [isEditorReady, setIsEditorReady] = useState(false);
+  // const [isEditorReady, setIsEditorReady] = useState(false);
 
   useEffect(() => {
     if (fileId) {
@@ -52,7 +67,7 @@ export function Editor({
           .single();
 
         if (robot?.robot_versions?.length > 0) {
-          const version1 = robot.robot_versions.find(v => v.version_name === 'Versão 1');
+          const version1 = robot.robot_versions.find((v: { version_name: string; code: string }) => v.version_name === 'Versão 1');
           if (version1) {
             onContentChange(version1.code);
           }
@@ -61,27 +76,13 @@ export function Editor({
 
       loadInitialVersion();
     }
-  }, [fileId]);
+  }, [fileId, onContentChange]);
 
-  const handleEditorDidMount = (editor: any) => {
-    editorRef.current = editor;
-    setIsEditorReady(true);
+  const handleEditorDidMount = (editor: unknown) => {
+    editorRef.current = editor as EditorLike;
+    // setIsEditorReady(true);
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {
-      editor.trigger('', 'actions.find');
-    });
-
-    monaco.languages.registerCompletionItemProvider('javascript', {
-      provideCompletionItems: () => ({
-        suggestions: Object.entries(ntslSnippets).map(([name, content]) => ({
-          label: name,
-          kind: monaco.languages.CompletionItemKind.Snippet,
-          insertText: content,
-          documentation: `Snippet: ${name}`,
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-        }))
-      })
-    });
+    // Editor keybindings and JS completion disabled
 
     const resizeObserver = new ResizeObserver(() => {
       if (editorRef.current) {
@@ -137,50 +138,33 @@ export function Editor({
   const handleTopicClick = (topic: string, range: { start: number; end: number }) => {
     if (editorRef.current) {
       editorRef.current.revealLineInCenter(range.start);
-      
       editorRef.current.setSelection({
         startLineNumber: range.start,
         startColumn: 1,
         endLineNumber: range.end,
-        endColumn: 1
+        endColumn: 1,
       });
     }
   };
 
-  const handleSnippetInsert = (snippetContent: string) => {
-    if (editorRef.current) {
-      const position = editorRef.current.getPosition();
-      editorRef.current.executeEdits('', [{
-        range: {
-          startLineNumber: position.lineNumber,
-          startColumn: position.column,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column
-        },
-        text: snippetContent
-      }]);
-    }
-  };
+  // Fragments feature disabled
 
   const handleAddTopic = () => {
     if (editorRef.current) {
       const position = editorRef.current.getPosition();
       const lineNumber = position.lineNumber;
-      
-      editorRef.current.executeEdits('', [{
-        range: {
-          startLineNumber: lineNumber,
-          startColumn: 1,
-          endLineNumber: lineNumber,
-          endColumn: 1
+      editorRef.current.executeEdits('', [
+        {
+          range: {
+            startLineNumber: lineNumber,
+            startColumn: 1,
+            endLineNumber: lineNumber,
+            endColumn: 1,
+          },
+          text: '//#Topic Name\n',
         },
-        text: '//#Topic Name\n'
-      }]);
-      
-      editorRef.current.setPosition({
-        lineNumber: lineNumber,
-        column: 4
-      });
+      ]);
+      editorRef.current.setPosition({ lineNumber, column: 4 });
     }
   };
 
@@ -301,7 +285,7 @@ export function Editor({
           </div>
         </div>
 
-        {/* Code Fragments */}
+        {/* Code Fragments - comentado
         <div>
           <h3 className="text-sm font-medium mb-2">Fragments</h3>
           <div className="space-y-1">
@@ -317,6 +301,7 @@ export function Editor({
             ))}
           </div>
         </div>
+        */}
       </div>
 
       {/* Editor */}
@@ -326,7 +311,7 @@ export function Editor({
           language={language}
           theme="vs-dark"
           value={content}
-          onChange={onContentChange}
+          onChange={(value) => onContentChange(value || '')}
           onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: false },
