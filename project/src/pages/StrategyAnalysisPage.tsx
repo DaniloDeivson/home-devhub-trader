@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { useAuthStore } from "../stores/authStore";
-import { openai } from "../lib/openaiClient";
+// import { openai } from "../lib/openaiClient"; // Do not use OpenAI client in the browser
 import { supabase } from "../lib/supabase";
 import { AIResponseChat } from "../components/AIResponseChat";
 
@@ -625,7 +625,7 @@ NÃO retorne um objeto JSON. Apenas forneça uma análise de texto clara e bem e
         async () => {
           try {
             const completion = await openai.chat.completions.create({
-              model: "gpt-4",
+              model: "gpt-4o-mini",
               messages: [
                 {
                   role: "assistant",

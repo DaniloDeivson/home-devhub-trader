@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useSettingsStore } from '../stores/settingsStore';
 import { ChevronUp, ChevronDown, BarChart, LineChart, DollarSign, Percent } from 'lucide-react';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { calculateDirectConsolidation } from '../utils/directConsolidation';
@@ -49,7 +50,9 @@ export function EquityCurveSection({
   const [chartType, setChartType] = useState<'resultado' | 'drawdown'>('resultado');
   const [timeRange, setTimeRange] = useState<'trade' | 'daily'>('daily');
   const [movingAverage, setMovingAverage] = useState<'9' | '20' | '50' | '200' | '2000' | 'nenhuma'>('20');
-  const [totalInvestment, setTotalInvestment] = useState<string>('100000');
+  const investedCapital = useSettingsStore((s) => s.investedCapital);
+  const setInvestedCapital = useSettingsStore((s) => s.setInvestedCapital);
+  const [totalInvestment, setTotalInvestment] = useState<string>(String(investedCapital));
 
   // ✅ CORREÇÃO: Função centralizada para aplicar filtros
   const getFilteredFileResults = useCallback((): Record<string, FileResult> => {
@@ -167,12 +170,14 @@ export function EquityCurveSection({
         const strategyData = filteredFileResults[fileName];
         if (strategyData && strategyData.trades) {
           strategyData.trades.forEach((trade) => {
+            const when = (trade.exit_date as string) ?? (trade.entry_date as string) ?? (trade.date as string) ?? '1970-01-01';
             allTrades.push({
               ...trade,
               strategy: fileName,
               pnl: Number(trade.pnl) || 0,
-              entry_date: trade.entry_date ?? trade.date ?? '1970-01-01',
-              exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? '1970-01-01'
+              entry_date: trade.entry_date ?? trade.date ?? when,
+              exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? when,
+              date: when
             });
           });
         }
@@ -219,7 +224,7 @@ export function EquityCurveSection({
       }
       
       // 2. Ordenar trades por data de entrada
-      allTrades.sort((a, b) => new Date(a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.entry_date ?? b.date ?? '1970-01-01').getTime());
+      allTrades.sort((a, b) => new Date(a.exit_date ?? a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.exit_date ?? b.entry_date ?? b.date ?? '1970-01-01').getTime());
       console.log('📊 Trades ordenados cronologicamente');
       
       // 3. CALCULAR EQUITY CURVE CONSOLIDADA (METODOLOGIA PYTHON)
@@ -248,9 +253,10 @@ export function EquityCurveSection({
         
         const drawdownPercent = peak > 0 ? (drawdown / peak) * 100 : 0;
         
+        const timeKey = (trade.exit_date as string) ?? (trade.entry_date as string) ?? (trade.date as string) ?? '1970-01-01';
         equityCurve.push({
-          date: trade.entry_date,
-          fullDate: trade.entry_date,
+          date: timeKey,
+          fullDate: timeKey,
           saldo: runningTotal,
           valor: runningTotal,
           resultado: pnl,
@@ -280,8 +286,8 @@ export function EquityCurveSection({
       console.log('🎯 Filtro de ativo:', selectedAsset || 'Todos');
       console.log('📊 Tipo de gráfico:', chartType);
       
-      // ✅ CORREÇÃO: Para modo consolidado, sempre usar cálculo consolidado
-      console.log('🔧 MODO CONSOLIDADO: Usando cálculo consolidado para drawdown');
+      // ✅ CORREÇÃO: Para modo consolidado, usar cálculo consolidado adequado por granularidade
+      console.log('🔧 MODO CONSOLIDADO: Usando cálculo consolidado para', timeRange === 'trade' ? 'trade-by-trade' : 'diário');
       
       // Primeiro, coletar todos os dados e encontrar o range de datas
       const allData: Array<EquityCurvePoint & { strategy?: string }> = [];
@@ -369,120 +375,108 @@ export function EquityCurveSection({
       console.log('📅 Range de datas válidas:', sortedDates[0], 'até', sortedDates[sortedDates.length - 1]);
       console.log('📅 Total de datas únicas válidas:', sortedDates.length);
       
-      // METODOLOGIA PADRONIZADA PYTHON: Replicar exatamente FunCalculos.py
-      console.log('🔧 APLICANDO METODOLOGIA PYTHON - Coletando todos os trades');
-      console.log('📖 Referência: FunCalculos.py linhas 474-476 (cumsum, cummax, equity-peak)');
-      
-      // 1. Coletar todos os trades de todas as estratégias
-      const allTrades: CombinedTrade[] = [];
-      
-      strategiesList.forEach(fileName => {
-        const strategyData = filteredFileResults[fileName];
-        if (strategyData && strategyData.trades) {
-          strategyData.trades.forEach((trade) => {
-            allTrades.push({
-              ...trade,
-              strategy: fileName,
-              pnl: Number(trade.pnl) || 0,
-              entry_date: trade.entry_date ?? trade.date ?? '1970-01-01',
-              exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? '1970-01-01'
-            });
-          });
-        }
-      });
-      
-      console.log(`📊 Total de trades coletados: ${allTrades.length}`);
-      
-      // VALIDAÇÃO: Verificar se há trades suficientes
-      if (allTrades.length === 0) {
-        console.warn('⚠️ Nenhum trade encontrado para processar');
-        // Caso específico para CSV único - verificar se há dados de equity curve
-        if (data && data["Equity Curve Data"]) {
-          console.log('✅ CSV ÚNICO: Usando dados de Equity Curve Data');
-          const equityData = data["Equity Curve Data"];
-          
-          // Selecionar dados baseado no timeRange
-          let selectedData: EquityCurvePoint[] = [] as EquityCurvePoint[];
-          switch (timeRange) {
-            case 'trade':
-              selectedData = equityData.trade_by_trade || [];
-              break;
-            case 'daily':
-              selectedData = equityData.daily || [];
-              break;
-            default:
-              selectedData = equityData.daily || [];
-          }
-          
-          if (selectedData.length > 0) {
-            console.log('✅ Dados de equity curve encontrados:', selectedData.length, 'pontos');
-            return (selectedData as EquityCurvePoint[]).map((item) => ({
-              ...item,
-              saldo: Number(item.saldo ?? item.resultado ?? 0),
-              valor: Number(item.valor ?? 0),
-              resultado: Number(item.resultado ?? 0),
-              drawdown: Number(item.drawdown ?? 0),
-              drawdownPercent: Number(item.drawdownPercent ?? 0),
-              peak: Number(item.peak ?? 0),
-              trades: Number(item.trades ?? 0)
-            }));
-          }
-        }
-        console.warn('⚠️ Nenhum dado válido encontrado');
-        // Sem retorno vazio: continuar o fluxo para caminhos não vazios
-      }
-      
-      // 2. Ordenar trades por data de entrada
-      allTrades.sort((a, b) => new Date(a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.entry_date ?? b.date ?? '1970-01-01').getTime());
-      console.log('📊 Trades ordenados cronologicamente');
-      
-      // 3. CALCULAR EQUITY CURVE CONSOLIDADA (METODOLOGIA PYTHON)
-      console.log('🔧 CALCULANDO EQUITY CURVE CONSOLIDADA');
-      console.log('📖 Referência: FunCalculos.py - cumsum, cummax, equity-peak');
-      
-      let runningTotal = 0;
-      let peak = 0;
-      let maxDrawdown = 0;
-      const equityCurve: Array<EquityCurvePoint & { strategy?: string } > = [];
-      
-      allTrades.forEach((trade, index) => {
-        const pnl = Number(trade.pnl) || 0;
-        runningTotal += pnl;
-        
-        // Atualizar peak
-        if (runningTotal > peak) {
-          peak = runningTotal;
-        }
-        
-        // Calcular drawdown
-        const drawdown = Math.abs(Math.min(0, runningTotal - peak));
-        if (drawdown > maxDrawdown) {
-          maxDrawdown = drawdown;
-        }
-        
-        const drawdownPercent = peak > 0 ? (drawdown / peak) * 100 : 0;
-        
-        equityCurve.push({
-          date: trade.entry_date,
-          fullDate: trade.entry_date,
-            saldo: runningTotal,
-          valor: runningTotal,
-          resultado: pnl,
-          drawdown: drawdown,
-          drawdownPercent: drawdownPercent,
-          peak: peak,
-            trades: index + 1,
-          strategy: 'Consolidado'
+      // Consolidar de acordo com a granularidade selecionada
+      if (timeRange === 'daily') {
+        // Alinhar exatamente à mesma lógica de consolidação usada no consolidado global
+        const consolidated = calculateDirectConsolidation(filteredFileResults, selectedAsset, 'daily');
+        // Reconstruir a série diária para o gráfico a partir de fileResults e do algoritmo de consolidação
+        // 1) Agrupar por dia os PnLs de todos os trades
+        const dailyResultByDate = new Map<string, number>();
+        Object.keys(filteredFileResults).forEach(fileName => {
+          const strategyData = filteredFileResults[fileName];
+          const trades = (strategyData?.trades || []) as Array<{ exit_date?: string; entry_date?: string; date?: string; pnl?: number }>;
+          trades.forEach((t) => {
+            const day = String(((t.exit_date || t.entry_date || t.date || '') as string).toString().split('T')[0]);
+            if (!day) return;
+            const pnl = Number(t.pnl ?? 0) || 0;
+            dailyResultByDate.set(day, (dailyResultByDate.get(day) || 0) + pnl);
           });
         });
-      
-      console.log('✅ Equity curve consolidada calculada:', equityCurve.length, 'pontos');
-      console.log('📊 Exemplo de dados consolidados:', equityCurve[0]);
-      console.log('📊 Último ponto consolidado:', equityCurve[equityCurve.length - 1]);
-      console.log('📊 Máximo drawdown consolidado:', maxDrawdown);
-      console.log('📊 Peak consolidado:', peak);
-      
-      return equityCurve;
+        const sorted = Array.from(dailyResultByDate.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
+        let cumsum = 0;
+        let peak = 0;
+        let maxDD = 0;
+        const series: Array<EquityCurvePoint & { strategy?: string }> = [];
+        sorted.forEach(([day, pnl], idx) => {
+          cumsum += pnl;
+          if (cumsum > peak) peak = cumsum;
+          const ddNow = Math.abs(Math.min(0, cumsum - peak)); // drawdown instantâneo
+          if (ddNow > maxDD) { maxDD = ddNow; } // máximo só para legenda/stats
+          series.push({
+            date: day,
+            fullDate: day,
+            saldo: cumsum,
+            valor: cumsum,
+            resultado: pnl,
+            drawdown: ddNow, // usar drawdown instantâneo no gráfico
+            drawdownPercent: peak > 0 ? (ddNow / peak) * 100 : 0,
+            peak,
+            trades: idx + 1,
+            strategy: 'Consolidado Diário'
+          });
+        });
+        console.log('✅ Equity curve diária (consolidation) calculada:', series.length, 'pontos', '| DD Máximo:', maxDD, '| DD calc util:', consolidated.maxDrawdownAbsoluto);
+        return series;
+      } else {
+        // METODOLOGIA PADRONIZADA PYTHON: consolidar trade a trade pelos trades brutos
+        console.log('🔧 APLICANDO METODOLOGIA PYTHON - Coletando todos os trades');
+        console.log('📖 Referência: FunCalculos.py linhas 474-476 (cumsum, cummax, equity-peak)');
+        const allTrades: CombinedTrade[] = [];
+        strategiesList.forEach(fileName => {
+          const strategyData = filteredFileResults[fileName];
+          if (strategyData && strategyData.trades) {
+            strategyData.trades.forEach((trade) => {
+              const when = (trade.exit_date as string) ?? (trade.entry_date as string) ?? (trade.date as string) ?? '1970-01-01';
+              allTrades.push({
+                ...trade,
+                strategy: fileName,
+                pnl: Number(trade.pnl) || 0,
+                entry_date: trade.entry_date ?? trade.date ?? when,
+                exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? when,
+                date: when
+              });
+            });
+          }
+        });
+        console.log(`📊 Total de trades coletados: ${allTrades.length}`);
+        if (allTrades.length === 0) {
+          console.warn('⚠️ Nenhum trade encontrado para processar (trade-by-trade)');
+          return [] as EquityCurvePoint[];
+        }
+        allTrades.sort((a, b) => new Date(a.exit_date ?? a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.exit_date ?? b.entry_date ?? b.date ?? '1970-01-01').getTime());
+        console.log('📊 Trades ordenados cronologicamente');
+        let runningTotal = 0;
+        let peak = 0;
+        let maxDrawdown = 0;
+        const equityCurve: Array<EquityCurvePoint & { strategy?: string } > = [];
+        allTrades.forEach((trade, index) => {
+          const pnl = Number(trade.pnl) || 0;
+          runningTotal += pnl;
+          if (runningTotal > peak) peak = runningTotal;
+          const drawdown = Math.abs(Math.min(0, runningTotal - peak));
+          if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+          const drawdownPercent = peak > 0 ? (drawdown / peak) * 100 : 0;
+          const timeKey = (trade.exit_date as string) ?? (trade.entry_date as string) ?? (trade.date as string) ?? '1970-01-01';
+          equityCurve.push({
+            date: timeKey,
+            fullDate: timeKey,
+            saldo: runningTotal,
+            valor: runningTotal,
+            resultado: pnl,
+            drawdown,
+            drawdownPercent,
+            peak,
+            trades: index + 1,
+            strategy: 'Consolidado'
+          });
+        });
+        console.log('✅ Equity curve consolidada calculada:', equityCurve.length, 'pontos', '| DD Máximo:', maxDrawdown);
+        console.log('📊 Exemplo de dados consolidados:', equityCurve[0]);
+        console.log('📊 Último ponto consolidado:', equityCurve[equityCurve.length - 1]);
+        console.log('📊 Máximo drawdown consolidado:', maxDrawdown);
+        console.log('📊 Peak consolidado:', peak);
+        return equityCurve;
+      }
     }
     
     // ✅ CORREÇÃO: Caso específico para CSV único - verificar se há dados de equity curve
@@ -1300,7 +1294,7 @@ export function EquityCurveSection({
       
       return (
         <div className="bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg">
-          <p className="text-gray-300 text-sm mb-2">{`Data: ${dataPoint?.fullDate || label}`}</p>
+          <p className="text-gray-300 text-sm mb-2">{timeRange === 'trade' ? `Trade: ${dataPoint?.trades || label}` : `Data: ${dataPoint?.fullDate || label}`}</p>
           {payload.map((entry, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.dataKey === 'saldo' && `Saldo: R$ ${entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
@@ -1422,6 +1416,8 @@ export function EquityCurveSection({
                       const value = e.target.value.replace(/\./g, '');
                       if (/^\d*$/.test(value)) {
                         setTotalInvestment(value);
+                        const numeric = Number(value);
+                        if (Number.isFinite(numeric)) setInvestedCapital(numeric);
                       }
                     }}
                     className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1522,10 +1518,10 @@ export function EquityCurveSection({
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis 
-                        dataKey="date" 
+                        dataKey={timeRange === 'trade' ? 'trades' : 'date'} 
                         stroke="#9CA3AF"
                         fontSize={12}
-                        tickFormatter={formatXAxisLabel}
+                        tickFormatter={(value) => (timeRange === 'trade' ? String(value) : formatXAxisLabel(String(value)))}
                       />
                       <YAxis 
                         stroke="#9CA3AF"
@@ -1567,10 +1563,10 @@ export function EquityCurveSection({
                     <AreaChart data={dataWithMA}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis 
-                        dataKey="date" 
+                        dataKey={timeRange === 'trade' ? 'trades' : 'date'} 
                         stroke="#9CA3AF"
                         fontSize={12}
-                        tickFormatter={formatXAxisLabel}
+                        tickFormatter={(value) => (timeRange === 'trade' ? String(value) : formatXAxisLabel(String(value)))}
                       />
                       <YAxis 
                         stroke="#9CA3AF"

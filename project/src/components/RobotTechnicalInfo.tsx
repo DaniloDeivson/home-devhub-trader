@@ -1,12 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart2,
   TrendingUp,
-  TrendingDown,
-  Percent,
-  DollarSign,
-  Calendar,
-  Clock,
   AlertTriangle,
   Award,
   Zap,
@@ -20,8 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useRobotStore } from "../stores/robotStore";
-import { useAuthStore } from "../stores/authStore";
-import { openai } from "../lib/openaiClient";
+import { buildApiUrl } from "../config/api";
 
 interface RobotTechnicalInfoProps {
   robotId: string;
@@ -53,13 +47,11 @@ export function RobotTechnicalInfo({
   robotId,
   robotName,
 }: RobotTechnicalInfoProps) {
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<TechnicalMetrics | null>(null);
   const [showDetails, setShowDetails] = useState(true);
   const [showMarketConditions, setShowMarketConditions] = useState(true);
   const [showRiskAnalysis, setShowRiskAnalysis] = useState(true);
-  const { profile } = useAuthStore();
   const { versions, loadVersions } = useRobotStore();
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -116,23 +108,28 @@ Baseie suas estimativas na análise do código, considerando os indicadores util
 Forneça uma análise estruturada com seções claras para cada métrica.
 `;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "assistant",
-            content:
-              "Você é um especialista em análise de robôs de trading. Sua tarefa é analisar o código do robô e fornecer métricas técnicas estimadas com base na estratégia implementada.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
+      // Chamar backend unificado de chat (evita usar OpenAI no frontend)
+      const response = await fetch(buildApiUrl("/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "user",
+              content:
+                "Você é um especialista em análise de robôs de trading. Sua tarefa é analisar o código do robô e fornecer métricas técnicas estimadas com base na estratégia implementada.",
+            },
+            { role: "user", content: prompt },
+          ],
+        }),
       });
 
-      const content = completion.choices[0].message.content;
+      if (!response.ok) {
+        throw new Error(`Erro ao chamar API (${response.status})`);
+      }
+
+      const data = await response.json();
+      const content: string | undefined = data?.content ?? data?.message ?? data?.text;
       if (!content) {
         throw new Error("Resposta vazia da API");
       }
@@ -184,34 +181,34 @@ Forneça uma análise estruturada com seções claras para cada métrica.
     };
 
     // Extract metrics using regex
-    const profitFactorMatch = text.match(/profit\s*factor\s*:?\s*([\d\.\-]+)/i);
+    const profitFactorMatch = text.match(/profit\s*factor\s*:?\s*([-\d.]+)/i);
     if (profitFactorMatch)
       result.profitFactor = parseFloat(profitFactorMatch[1]);
 
-    const winRateMatch = text.match(/win\s*rate\s*:?\s*([\d\.\-]+)%?/i);
+    const winRateMatch = text.match(/win\s*rate\s*:?\s*([-\d.]+)%?/i);
     if (winRateMatch) result.winRate = parseFloat(winRateMatch[1]);
 
-    const payoffMatch = text.match(/payoff\s*:?\s*([\d\.\-]+)/i);
+    const payoffMatch = text.match(/payoff\s*:?\s*([-\d.]+)/i);
     if (payoffMatch) result.payoff = parseFloat(payoffMatch[1]);
 
-    const maxDrawdownMatch = text.match(/max\s*drawdown\s*:?\s*([\d\.\-]+)%?/i);
+    const maxDrawdownMatch = text.match(/max\s*drawdown\s*:?\s*([-\d.]+)%?/i);
     if (maxDrawdownMatch) result.maxDrawdown = parseFloat(maxDrawdownMatch[1]);
 
-    const sharpeRatioMatch = text.match(/sharpe\s*ratio\s*:?\s*([\d\.\-]+)/i);
+    const sharpeRatioMatch = text.match(/sharpe\s*ratio\s*:?\s*([-\d.]+)/i);
     if (sharpeRatioMatch) result.sharpeRatio = parseFloat(sharpeRatioMatch[1]);
 
     const totalTradesMatch = text.match(/total\s*trades\s*:?\s*(\d+)/i);
     if (totalTradesMatch) result.totalTrades = parseInt(totalTradesMatch[1]);
 
-    const averageTradeMatch = text.match(/average\s*trade\s*:?\s*([\d\.\-]+)/i);
+    const averageTradeMatch = text.match(/average\s*trade\s*:?\s*([-\d.]+)/i);
     if (averageTradeMatch)
       result.averageTrade = parseFloat(averageTradeMatch[1]);
 
-    const expectancyMatch = text.match(/expectancy\s*:?\s*([\d\.\-]+)/i);
+    const expectancyMatch = text.match(/expectancy\s*:?\s*([-\d.]+)/i);
     if (expectancyMatch) result.expectancy = parseFloat(expectancyMatch[1]);
 
     const recoveryFactorMatch = text.match(
-      /recovery\s*factor\s*:?\s*([\d\.\-]+)/i
+      /recovery\s*factor\s*:?\s*([-\d.]+)/i
     );
     if (recoveryFactorMatch)
       result.recoveryFactor = parseFloat(recoveryFactorMatch[1]);
@@ -223,22 +220,22 @@ Forneça uma análise estruturada com seções claras para cada métrica.
       result.maxConsecutiveLosses = parseInt(maxConsecutiveLossesMatch[1]);
 
     const timeInMarketMatch = text.match(
-      /time\s*in\s*market\s*:?\s*([\d\.\-]+)%?/i
+      /time\s*in\s*market\s*:?\s*([-\d.]+)%?/i
     );
     if (timeInMarketMatch)
       result.timeInMarket = parseFloat(timeInMarketMatch[1]);
 
     const profitabilityMatch = text.match(
-      /profitability\s*:?\s*([\d\.\-]+)%?/i
+      /profitability\s*:?\s*([-\d.]+)%?/i
     );
     if (profitabilityMatch)
       result.profitability = parseFloat(profitabilityMatch[1]);
 
-    const volatilityMatch = text.match(/volatility\s*:?\s*([\d\.\-]+)%?/i);
+    const volatilityMatch = text.match(/volatility\s*:?\s*([-\d.]+)%?/i);
     if (volatilityMatch) result.volatility = parseFloat(volatilityMatch[1]);
 
     const bestTimeframeMatch = text.match(
-      /best\s*timeframe\s*:?\s*([^\n,\.]+)/i
+      /best\s*timeframe\s*:?\s*([^\n,.]+)/i
     );
     if (bestTimeframeMatch) result.bestTimeframe = bestTimeframeMatch[1].trim();
 
@@ -309,7 +306,7 @@ Forneça uma análise estruturada com seções claras para cada métrica.
     }
 
     // Extract risk level
-    const riskLevelMatch = text.match(/risk\s*level\s*:?\s*([^\n,\.]+)/i);
+    const riskLevelMatch = text.match(/risk\s*level\s*:?\s*([^\n,.]+)/i);
     if (riskLevelMatch) result.riskLevel = riskLevelMatch[1].trim();
 
     // Ensure we have at least some data
@@ -363,8 +360,6 @@ Forneça uma análise estruturada com seções claras para cada métrica.
 - Payoff: ${metrics.payoff.toFixed(2)}
 - Win Rate: ${metrics.winRate.toFixed(2)}%
 - Total Trades: ${metrics.totalTrades}
-- Average Win: ${metrics.averageWin.toFixed(2)}
-- Average Loss: ${metrics.averageLoss.toFixed(2)}
 - Max Drawdown: ${metrics.maxDrawdown.toFixed(2)}%
 - Max Consecutive Losses: ${metrics.maxConsecutiveLosses}
 - Sharpe Ratio: ${metrics.sharpeRatio.toFixed(2)}
@@ -481,18 +476,7 @@ Relatório gerado em: ${new Date().toLocaleString()}
     }
   };
 
-  const getRiskLevelColor = (riskLevel: string): string => {
-    switch (riskLevel.toLowerCase()) {
-      case "baixo":
-        return "bg-green-500 bg-opacity-20 text-green-400";
-      case "médio":
-        return "bg-yellow-500 bg-opacity-20 text-yellow-400";
-      case "alto":
-        return "bg-red-500 bg-opacity-20 text-red-400";
-      default:
-        return "bg-gray-500 bg-opacity-20 text-gray-400";
-    }
-  };
+  // (removido getRiskLevelColor não utilizado)
 
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">

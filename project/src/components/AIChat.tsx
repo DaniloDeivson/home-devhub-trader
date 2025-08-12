@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguageStore } from '../stores/languageStore';
 import { useRobotStore } from '../stores/robotStore';
 import { generateUniqueVersionName } from '../utils/robotUtils';
-import { openai } from '../lib/openaiClient';
+// import { openai } from '../lib/openaiClient'; // Not for browser use
+import { buildApiUrl } from '../config/api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -501,13 +502,6 @@ const handleConfirmSendMessage = async () => {
   setVersionCreationError(null);
 
   try {
-    const apiKey = customApiKey || import.meta.env.VITE_OPENAI_API_KEY;
-    const assistantId = import.meta.env.VITE_OPENAI_ASSISTANT_ID;
-
-    if (!apiKey || !assistantId) {
-      throw new Error('Missing API key or Assistant ID');
-    }
-
     // Construir prompt mais específico para garantir que a IA retorne apenas código
     let messageContent = '';
     
@@ -556,45 +550,24 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
 \`\`\``;
     }
 
-    const thread = await openai.beta.threads.create();
-
-    await openai.beta.threads.messages.create(thread.id, {
-      role: 'user',
-      content: messageContent,
+    // Enviar para o backend unificado de chat
+    const response = await fetch(buildApiUrl('/chat'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: 'You are an expert NTSL trading robot code generator. Always respond with ONLY NTSL code inside a single code block, no explanations.' },
+          { role: 'user', content: messageContent }
+        ]
+      })
     });
 
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: assistantId,
-    });
-
-    let response;
-    let attempts = 0;
-    const maxAttempts = 60; // 60 seconds timeout
-    
-    while (attempts < maxAttempts) {
-      const runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      
-      if (runStatus.status === 'completed') {
-        const messages = await openai.beta.threads.messages.list(thread.id);
-        response = messages.data[0].content[0];
-        break;
-      } else if (runStatus.status === 'failed') {
-        throw new Error('Assistant failed to process the request');
-      }
-      
-      attempts++;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    if (attempts >= maxAttempts) {
-      throw new Error('Request timeout: Assistant took too long to respond');
+    if (!response.ok) {
+      throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
     }
 
-    if (!response) {
-      throw new Error('No response from assistant');
-    }
-
-    const fullResponse = response.text.value;
+    const data = await response.json();
+    const fullResponse = data?.content || data?.message || data?.text || '';
     console.log('=== RESPOSTA COMPLETA DA IA ===');
     console.log(fullResponse);
     console.log('=== FIM DA RESPOSTA ===');
@@ -644,13 +617,8 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
     console.log('Tamanho:', extractedCode.length);
     console.log('Primeiros 200 chars:', extractedCode.substring(0, 200));
 
-    // Validação básica do código NTSL
-    const isValidNTSLCode = extractedCode.length > 10 && (
-      extractedCode.includes('input:') ||
-      extractedCode.includes('var:') ||
-      extractedCode.includes('begin') ||
-      extractedCode.includes('end;')
-    );
+    // Validação básica do código NTSL (relaxada para aceitar qualquer bloco de código suficientemente grande)
+    const isValidNTSLCode = extractedCode.length > 10;
 
     if (!isValidNTSLCode) {
       throw new Error('Código NTSL válido não foi encontrado na resposta da IA');
@@ -671,60 +639,13 @@ IMPORTANT: Please respond with ONLY the NTSL code inside a code block. Do not in
     console.log('Aplicando código ao editor...');
     onGenerateCode(extractedCode, description, basicTags);
 
-    // Criar nova versão se temos robotId
-    if (robotId) {
-      try {
-        setVersionCreationStatus('creating');
-        console.log('=== CRIANDO NOVA VERSÃO ===');
-        
-        // Gerar nome simples e único
-        const timestamp = new Date().toLocaleString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }).replace(/[/:]/g, '-').replace(/,/g, '');
-        
-        const versionName = `Versão ${versions.length + 1}-${timestamp}`;
-        
-        console.log('Nome da versão:', versionName);
-        
-        await createVersion(robotId, versionName, extractedCode, description, basicTags);
-        
-        setSelectedVersionName(versionName);
-        setVersionCreationStatus('success');
-        
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: language === 'en' 
-            ? `✅ Code generated and applied successfully! Version "${versionName}" created.`
-            : `✅ Código gerado e aplicado com sucesso! Versão "${versionName}" criada.`
-        }]);
-        
-        console.log('✅ Versão criada com sucesso!');
-        
-      } catch (versionError) {
-        console.error('❌ Erro ao criar versão:', versionError);
-        
-        setVersionCreationStatus('error');
-        setVersionCreationError(versionError.message);
-        
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: language === 'en' 
-            ? `⚠️ Code applied to editor, but failed to save version: ${versionError.message}`
-            : `⚠️ Código aplicado ao editor, mas falhou ao salvar versão: ${versionError.message}`
-        }]);
-      }
-    } else {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: language === 'en' 
-          ? '✅ Code generated and applied to editor successfully.'
-          : '✅ Código gerado e aplicado ao editor com sucesso.'
-      }]);
-    }
+    // Criação de versão é centralizada em EditorPage.handleGenerateCode via onGenerateCode
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: language === 'en' 
+        ? '✅ Code generated and applied to editor successfully.'
+        : '✅ Código gerado e aplicado ao editor com sucesso.'
+    }]);
 
     setTaskCompleted(true);
     setCodeNotFunctional(false);

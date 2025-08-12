@@ -1924,6 +1924,7 @@ useEffect(() => {
                   analysisResult={frozenAnalysisResult || analysisResult}
                   onMetricsReceived={handleMetricsReceived}
                   backtestData={backtestResult}
+                  fileResults={fileResults}
                 />
               </div>
             </div>

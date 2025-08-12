@@ -24,14 +24,14 @@ const convertToMetricsDashboardFormat = (result: Record<string, unknown>) => {
   let fallbackTotalPnL = 0;
 
   if (trades.length > 0) {
-    trades.forEach((trade: Record<string, unknown>) => {
-      const pnl = Number(trade.pnl) || 0;
+  trades.forEach((trade: Record<string, unknown>) => {
+    const pnl = Number(trade.pnl) || 0;
       fallbackTotalPnL += pnl;
-      if (pnl > 0) {
+    if (pnl > 0) {
         fallbackProfitableTrades++;
         fallbackGrossProfit += pnl;
         fallbackMaxWin = Math.max(fallbackMaxWin, pnl);
-      } else if (pnl < 0) {
+    } else if (pnl < 0) {
         fallbackLossTrades++;
         fallbackGrossLoss += Math.abs(pnl);
         fallbackMaxLoss = Math.max(fallbackMaxLoss, Math.abs(pnl));
@@ -209,7 +209,7 @@ export function IndividualResultsSection({
                               <BarChart3 className="w-4 h-4 text-blue-400 mr-1" />
                               <span className="text-xs text-gray-400">Total Trades</span>
                             </div>
-                              <p className="text-lg font-semibold text-white">
+                             <p className="text-lg font-semibold text-white">
                               {metrics?.["Total Trades"] ?? 'N/A'}
                             </p>
                           </div>
@@ -219,7 +219,7 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-green-400 mr-1" />
                               <span className="text-xs text-gray-400">Win Rate</span>
                             </div>
-                              <p className="text-lg font-semibold text-green-400">
+                             <p className="text-lg font-semibold text-green-400">
                               {formatPercentage(Number(metrics?.["Win Rate (%)"]))}
                             </p>
                           </div>
@@ -229,7 +229,7 @@ export function IndividualResultsSection({
                               <TrendingDown className="w-4 h-4 text-red-400 mr-1" />
                               <span className="text-xs text-gray-400">Max Drawdown</span>
                             </div>
-                              <p className="text-lg font-semibold text-red-400">
+                             <p className="text-lg font-semibold text-red-400">
                               {formatCurrency(Number(metrics?.["Max Drawdown ($)"]))}
                             </p>
                           </div>
@@ -249,7 +249,7 @@ export function IndividualResultsSection({
                               <TrendingUp className="w-4 h-4 text-purple-400 mr-1" />
                               <span className="text-xs text-gray-400">Sharpe Ratio</span>
                             </div>
-                              <p className={`text-lg font-semibold ${sr >= 1 ? 'text-green-400' : sr >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                             <p className={`text-lg font-semibold ${sr >= 1 ? 'text-green-400' : sr >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
                               {isNaN(sr) ? 'N/A' : sr.toFixed(2)}
                             </p>
                           </div>

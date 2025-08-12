@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { useAuthStore } from '../stores/authStore';
-import { openai } from '../lib/openaiClient';
+// import { openai } from '../lib/openaiClient';
 import { supabase } from '../lib/supabase';
 import { AIResponseChat } from '../components/AIResponseChat';
 import { MetricsDashboard } from '../components/MetricsDashboard';

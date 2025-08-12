@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSettingsStore } from "../stores/settingsStore";
 import {
   BarChart2,
   ChevronUp,
@@ -187,6 +188,18 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
         : undefined,
   } as const;
 
+  // Drawdown % exibido deve seguir a mesma regra da legenda da Equity Curve
+  // Usar capital investido dinâmico vindo do store compartilhado
+  const investedCapital = useSettingsStore((s) => s.investedCapital) || 100000;
+  const ddPercentDisplay = (() => {
+    const amount = metrics?.maxDrawdownAmount;
+    if (typeof amount === 'number' && isFinite(amount)) {
+      return investedCapital > 0 ? (amount / investedCapital) * 100 : undefined;
+    }
+    const pct = metrics?.maxDrawdown;
+    return typeof pct === 'number' && isFinite(pct) ? pct : undefined;
+  })();
+
   return (
     <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg">
       {/* Header */}
@@ -234,7 +247,7 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
                 {formatMetric(animatedMetrics.maxDrawdownAmount as number, false, true)}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {formatMetric(animatedMetrics.maxDrawdown as number, true)} do capital
+                {formatMetric(ddPercentDisplay as number, true)} do capital
               </p>
             </div>
 
