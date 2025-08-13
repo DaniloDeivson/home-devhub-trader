@@ -56,8 +56,14 @@ export function Editor({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   // const [isEditorReady, setIsEditorReady] = useState(false);
+  const hasInitializedRef = useRef(false);
 
   useEffect(() => {
+    // Se já temos conteúdo inicial, não sobrescrever
+    if (!hasInitializedRef.current && content && content.trim() !== '') {
+      hasInitializedRef.current = true;
+    }
+
     if (fileId) {
       const loadInitialVersion = async () => {
         const { data: robot } = await supabase
@@ -68,8 +74,9 @@ export function Editor({
 
         if (robot?.robot_versions?.length > 0) {
           const version1 = robot.robot_versions.find((v: { version_name: string; code: string }) => v.version_name === 'Versão 1');
-          if (version1) {
+          if (version1 && !hasInitializedRef.current && (!content || content.trim() === '')) {
             onContentChange(version1.code);
+            hasInitializedRef.current = true;
           }
         }
       };
