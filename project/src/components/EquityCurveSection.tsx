@@ -55,6 +55,34 @@ export function EquityCurveSection({
   const setInvestedCapital = useSettingsStore((s) => s.setInvestedCapital);
   const [totalInvestment, setTotalInvestment] = useState<string>(String(investedCapital));
 
+  // Robust extractor for PnL across varying schemas
+  // Use a permissive type but keep function local to reduce lint footprint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getTradePnl = (trade: any): number => {
+    const candidates = [
+      trade?.pnl,
+      trade?.PnL,
+      trade?.net_profit,
+      trade?.resultado,
+      trade?.profit,
+      trade?.result,
+      trade?.netProfit,
+      trade?.lucroLiquido,
+      trade?.lucro,
+      trade?.gain,
+      typeof trade?.loss === 'number' ? -trade.loss : undefined,
+      trade?.['P/L'],
+      trade?.p_l,
+    ];
+    for (const v of candidates) {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (Number.isFinite(n) && n !== 0) return n;
+    }
+    const raw = trade?.pnl;
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   // ✅ CORREÇÃO: Função centralizada para aplicar filtros
   const getFilteredFileResults = useCallback((): Record<string, FileResult> => {
     if (!fileResults) {
@@ -65,11 +93,14 @@ export function EquityCurveSection({
     
     // ✅ CORREÇÃO: Aplicar filtros baseado no modo e seleções
     if (!showConsolidated && selectedFiles.length > 0) {
-      // Modo individual: usar apenas os arquivos selecionados
+      // Modo individual: usar apenas os arquivos selecionados (tolerante a extensão e case)
       filteredResults = {} as Record<string, FileResult>;
-      selectedFiles.forEach(fileName => {
-        if (fileResults[fileName]) {
-          filteredResults[fileName] = fileResults[fileName];
+      const normalize = (s: string) => s.replace(/\.csv$/i, '').trim().toLowerCase();
+      const keys = Object.keys(fileResults);
+      selectedFiles.forEach(sel => {
+        const match = keys.find(k => k === sel || k === `${sel}.csv` || normalize(k) === normalize(sel));
+        if (match && fileResults[match]) {
+          filteredResults[match] = fileResults[match];
         }
       });
     } else if (showConsolidated && selectedStrategy) {
@@ -175,7 +206,7 @@ export function EquityCurveSection({
             allTrades.push({
               ...trade,
               strategy: fileName,
-              pnl: Number(trade.pnl) || 0,
+              pnl: getTradePnl(trade),
               entry_date: trade.entry_date ?? trade.date ?? when,
               exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? when,
               date: when
@@ -208,7 +239,7 @@ export function EquityCurveSection({
             if (selectedData.length > 0) {
               const processed = (selectedData as EquityCurvePoint[]).map((item) => ({
                 ...item,
-                saldo: Number(item.saldo ?? item.resultado ?? 0),
+                saldo: Number(item.saldo ?? item.valor ?? item.resultado ?? 0),
                 valor: Number(item.valor ?? 0),
                 resultado: Number(item.resultado ?? 0),
                 drawdown: Number(item.drawdown ?? 0),
@@ -238,7 +269,7 @@ export function EquityCurveSection({
       const equityCurve: Array<EquityCurvePoint & { strategy?: string }> = [];
       
       allTrades.forEach((trade, index) => {
-        const pnl = Number(trade.pnl) || 0;
+        const pnl = getTradePnl(trade);
         runningTotal += pnl;
         
         // Atualizar peak
@@ -328,7 +359,7 @@ export function EquityCurveSection({
           // Processar dados da estratégia
           const processedData = (selectedData as EquityCurvePoint[]).map((item) => ({
             ...item,
-            saldo: Number(item.saldo ?? item.resultado ?? 0),
+            saldo: Number(item.saldo ?? item.valor ?? item.resultado ?? 0),
             valor: Number(item.valor ?? 0),
             resultado: Number(item.resultado ?? 0),
             drawdown: Number(item.drawdown ?? 0),
@@ -396,7 +427,7 @@ export function EquityCurveSection({
           if (selectedData.length > 0) {
             const processed = (selectedData as EquityCurvePoint[]).map((item) => ({
               ...item,
-              saldo: Number(item.saldo ?? item.resultado ?? 0),
+              saldo: Number(item.saldo ?? item.valor ?? item.resultado ?? 0),
               valor: Number(item.valor ?? 0),
               resultado: Number(item.resultado ?? 0),
               drawdown: Number(item.drawdown ?? 0),
@@ -474,7 +505,7 @@ export function EquityCurveSection({
               allTrades.push({
                 ...trade,
                 strategy: fileName,
-                pnl: Number(trade.pnl) || 0,
+                pnl: getTradePnl(trade),
                 entry_date: trade.entry_date ?? trade.date ?? when,
                 exit_date: trade.exit_date ?? trade.entry_date ?? trade.date ?? when,
                 date: when
@@ -494,7 +525,7 @@ export function EquityCurveSection({
         let maxDrawdown = 0;
         const equityCurve: Array<EquityCurvePoint & { strategy?: string } > = [];
         allTrades.forEach((trade, index) => {
-          const pnl = Number(trade.pnl) || 0;
+          const pnl = getTradePnl(trade);
           runningTotal += pnl;
           if (runningTotal > peak) peak = runningTotal;
           const drawdown = Math.abs(Math.min(0, runningTotal - peak));
@@ -547,7 +578,7 @@ export function EquityCurveSection({
         console.log('✅ Dados de equity curve encontrados:', selectedData.length, 'pontos');
         return (selectedData as EquityCurvePoint[]).map((item) => ({
           ...item,
-          saldo: Number(item.saldo ?? item.resultado ?? 0),
+          saldo: Number(item.saldo ?? item.valor ?? item.resultado ?? 0),
           valor: Number(item.valor ?? 0),
           resultado: Number(item.resultado ?? 0),
           drawdown: Number(item.drawdown ?? 0),
@@ -609,7 +640,7 @@ export function EquityCurveSection({
     if (selectedData && selectedData.length > 0) {
       return (selectedData as EquityCurvePoint[]).map((item) => ({
         ...item,
-        saldo: Number(item.saldo ?? item.resultado ?? 0),
+        saldo: Number(item.saldo ?? item.valor ?? item.resultado ?? 0),
         valor: Number(item.valor ?? 0),
         resultado: Number(item.resultado ?? 0),
         drawdown: Number(item.drawdown ?? 0),
@@ -691,7 +722,7 @@ export function EquityCurveSection({
 
     // Sem dados suficientes
     return [] as EquityCurvePoint[];
-  }, [data, timeRange, selectedAsset, fileResults, showConsolidated, selectedFiles, chartType, selectedStrategy, files.length, getFilteredFileResults]);
+  }, [data, timeRange, selectedAsset, fileResults, showConsolidated, selectedFiles, chartType, selectedStrategy, files.length, getFilteredFileResults, investedCapital]);
 
   // Calcular média móvel
   const dataWithMA = useMemo(() => {
@@ -776,20 +807,20 @@ export function EquityCurveSection({
         });
         
         if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
-          const capitalInicial = 100000; // Valor padrão
+          const capitalInicial = investedCapital; // usar valor dinâmico
           const allTrades = strategyData.trades;
           
           // ✅ CORREÇÃO: Calcular todas as métricas localmente
-          const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
-          const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+          const tradesLucrativos = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) > 0);
+          const tradesPrejuizo = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) < 0);
           
-          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
+          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0));
           const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
           const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
           
           // ✅ CORREÇÃO: Calcular resultado líquido e ROI localmente
-          const resultadoLiquido = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const resultadoLiquido = allTrades.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
           const roi = capitalInicial > 0 ? (resultadoLiquido / capitalInicial) * 100 : 0;
           
           // ✅ CORREÇÃO: Usar DD médio da API em vez de calcular localmente
@@ -800,7 +831,7 @@ export function EquityCurveSection({
           allTrades.sort((a, b) => new Date(a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.entry_date ?? b.date ?? '1970-01-01').getTime());
           
           allTrades.forEach(trade => {
-            const pnl = Number(trade.pnl) || 0;
+            const pnl = (typeof (trade as any).pnl === 'number' ? (trade as any).pnl : Number((trade as any).pnl)) || 0;
             runningTotal += pnl;
             
             if (runningTotal > peak) {
@@ -926,7 +957,7 @@ export function EquityCurveSection({
           console.log('📊 Dados da estratégia:', strategyData);
           const metrics = strategyData?.["Performance Metrics"] as unknown as Record<string, number | undefined> | undefined;
           if (metrics) {
-            const capitalInicial = 100000;
+          const capitalInicial = investedCapital;
             const resultadoLiquido = Number(metrics["Net Profit"]) || 0;
             const drawdownMaximo = Math.abs(Number(metrics["Max Drawdown ($)"]) || 0);
             const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
@@ -969,7 +1000,7 @@ export function EquityCurveSection({
           
           if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
             // ✅ CORREÇÃO: Usar DD Máximo correto do calculateDirectConsolidation
-            const capitalInicial = 100000; // Valor padrão
+            const capitalInicial = investedCapital; // usar valor dinâmico
             const drawdownMaximoPct = capitalInicial > 0 ? (consolidatedDD.maxDrawdownAbsoluto / capitalInicial) * 100 : 0;
             console.log('📊 DD Máximo % calculado:', drawdownMaximoPct.toFixed(2) + '%');
             
@@ -982,16 +1013,16 @@ export function EquityCurveSection({
             });
             
             // Calcular métricas localmente
-            const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
-            const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+            const tradesLucrativos = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) > 0);
+            const tradesPrejuizo = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) < 0);
             
-            const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-            const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+            const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
+            const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0));
             const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
             const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
             
             // ✅ CORREÇÃO: Calcular ROI baseado nos trades consolidados das estratégias selecionadas
-            const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+            const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
             const roi = capitalInicial > 0 ? (resultadoLiquidoConsolidado / capitalInicial) * 100 : 0;
             
             // Calcular drawdown médio
@@ -1002,7 +1033,7 @@ export function EquityCurveSection({
             allTrades.sort((a, b) => new Date(a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.entry_date ?? b.date ?? '1970-01-01').getTime());
             
             allTrades.forEach(trade => {
-              const pnl = Number(trade.pnl) || 0;
+              const pnl = (typeof (trade as any).pnl === 'number' ? (trade as any).pnl : Number((trade as any).pnl)) || 0;
               runningTotal += pnl;
               
               if (runningTotal > peak) {
@@ -1061,7 +1092,7 @@ export function EquityCurveSection({
           if (consolidatedDD && consolidatedDD.maxDrawdownAbsoluto > 0) {
           // ✅ CORREÇÃO: Usar DD Máximo correto do calculateDirectConsolidation
           // O calculateDirectConsolidation já calcula o DD Máximo consolidado cronologicamente
-          const capitalInicial = 100000; // Valor padrão
+          const capitalInicial = investedCapital; // usar valor dinâmico
           const drawdownMaximoPct = capitalInicial > 0 ? (consolidatedDD.maxDrawdownAbsoluto / capitalInicial) * 100 : 0;
           console.log('📊 DD Máximo % calculado:', drawdownMaximoPct.toFixed(2) + '%');
           console.log('  📊 Fórmula: (', consolidatedDD.maxDrawdownAbsoluto, '/', capitalInicial, ') * 100 =', drawdownMaximoPct.toFixed(2) + '%');
@@ -1075,16 +1106,16 @@ export function EquityCurveSection({
           });
           
           // Calcular métricas localmente
-          const tradesLucrativos = allTrades.filter(t => (Number(t.pnl) || 0) > 0);
-          const tradesPrejuizo = allTrades.filter(t => (Number(t.pnl) || 0) < 0);
+          const tradesLucrativos = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) > 0);
+          const tradesPrejuizo = allTrades.filter(t => (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)) < 0);
           
-          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0));
+          const lucroBruto = tradesLucrativos.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
+          const prejuizoBruto = Math.abs(tradesPrejuizo.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0));
           const fatorLucro = prejuizoBruto > 0 ? lucroBruto / prejuizoBruto : 0;
           const winRate = allTrades.length > 0 ? (tradesLucrativos.length / allTrades.length) * 100 : 0;
           
           // ✅ CORREÇÃO: Calcular ROI baseado nos trades consolidados
-          const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+          const resultadoLiquidoConsolidado = allTrades.reduce((sum, t) => sum + (typeof (t as any).pnl === 'number' ? (t as any).pnl : Number((t as any).pnl)), 0);
           const roi = capitalInicial > 0 ? (resultadoLiquidoConsolidado / capitalInicial) * 100 : 0;
           
           // Calcular drawdown médio
@@ -1095,7 +1126,7 @@ export function EquityCurveSection({
           allTrades.sort((a, b) => new Date(a.entry_date ?? a.date ?? '1970-01-01').getTime() - new Date(b.entry_date ?? b.date ?? '1970-01-01').getTime());
           
           allTrades.forEach(trade => {
-            const pnl = Number(trade.pnl) || 0;
+            const pnl = (typeof (trade as any).pnl === 'number' ? (trade as any).pnl : Number((trade as any).pnl)) || 0;
             runningTotal += pnl;
             
             if (runningTotal > peak) {
@@ -1164,7 +1195,7 @@ export function EquityCurveSection({
       
       if (strategyData && strategyData.trades && Array.isArray(strategyData.trades)) {
         // ✅ CORREÇÃO: Calcular todas as métricas localmente baseado nos trades
-        const capitalInicial = 100000; // Valor padrão
+        const capitalInicial = investedCapital; // usar valor dinâmico
         const allTrades = strategyData.trades;
         
         // ✅ CORREÇÃO: Calcular todas as métricas localmente
@@ -1236,7 +1267,7 @@ export function EquityCurveSection({
       } else if (strategyData && strategyData["Performance Metrics"]) {
         // Usar dados de métricas quando não houver trades
         const metrics = strategyData["Performance Metrics"] as Record<string, number>;
-        const capitalInicial = 100000;
+        const capitalInicial = investedCapital;
         const resultadoLiquido = Number(metrics["Net Profit"]) || 0;
         const drawdownMaximo = Math.abs(Number(metrics["Max Drawdown ($)"]) || 0);
         const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;
@@ -1370,7 +1401,7 @@ export function EquityCurveSection({
     console.log('🔧 Sem paths anteriores: utilizando métricas do CSV único (se presente)');
     const metrics = data?.["Performance Metrics"] as Record<string, number> | undefined;
     if (metrics) {
-      const capitalInicial = 100000;
+      const capitalInicial = investedCapital;
       const resultadoLiquido = Number(metrics["Net Profit"]) || 0;
       const drawdownMaximo = Math.abs(Number(metrics["Max Drawdown ($)"]) || 0);
       const drawdownMaximoPct = capitalInicial > 0 ? (drawdownMaximo / capitalInicial) * 100 : 0;

@@ -143,19 +143,7 @@ export function StrategySelector({
     }
   };
 
-  const clearAllFiles = () => {
-    if (!setSelectedFiles) return;
-    setSelectedFiles([]);
-    
-    // ✅ CORREÇÃO: Voltar para modo consolidado quando limpar todos
-    if (setShowConsolidated) {
-      setShowConsolidated(true);
-    }
-    // Limpar filtro de estratégia
-    if (setSelectedStrategy) {
-      setSelectedStrategy(null);
-    }
-  };
+  // Removido: ação de 'Desmarcar Todos' não é mais usada
 
   const handleResetFilters = () => {
     setSelectedStrategy(null);
@@ -233,7 +221,9 @@ export function StrategySelector({
         return '';
       } else if (selectedFiles.length === 1) {
         // Uma estratégia: mostrar o nome da estratégia (sem .csv)
-        const strategyName = selectedFiles[0].replace('.csv', '');
+        const fileName = selectedFiles[0];
+        // Se o nome não existir em availableStrategies, não forçar o select para evitar estado inconsistente
+        const strategyName = fileName.replace('.csv', '');
         return strategyName;
       } else {
         // Múltiplas estratégias: mostrar "Múltiplas estratégias"
@@ -248,7 +238,14 @@ export function StrategySelector({
       // Modo consolidado: mostrar todas as estratégias disponíveis
       return availableStrategies;
     } else {
-      // Modo individual: mostrar apenas as estratégias selecionadas
+      // Modo individual: se apenas 1 CSV, garantir que a opção exista mesmo que não esteja em availableStrategies
+      if (selectedFiles.length === 1) {
+        const single = selectedFiles[0].replace('.csv', '');
+        const opts = new Set<string>([...availableStrategies]);
+        opts.add(single);
+        return Array.from(opts);
+      }
+      // Múltiplos CSVs: listar apenas os selecionados
       return selectedFiles.map(fileName => fileName.replace('.csv', ''));
     }
   };
@@ -385,13 +382,6 @@ export function StrategySelector({
                   className="text-xs text-blue-400 hover:text-blue-300"
                 >
                   Selecionar Todos
-                </button>
-                <span className="text-gray-600">|</span>
-                <button
-                  onClick={clearAllFiles}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  Desmarcar Todos
                 </button>
               </div>
             )}

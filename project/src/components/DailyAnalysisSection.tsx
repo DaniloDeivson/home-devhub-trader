@@ -87,12 +87,37 @@ export function DailyAnalysisSection({
   fileResults
 }: DailyAnalysisSectionProps) {
   // State for showing/hiding sections - set to false by default
-  const [showDayOfWeek, setShowDayOfWeek] = React.useState(false);
-  const [showMonthly, setShowMonthly] = React.useState(false);
-  const [showWeekly, setShowWeekly] = React.useState(false);
-  const [showCalendarView, setShowCalendarView] = React.useState(true);
-  const [showMonthCalendar, setShowMonthCalendar] = React.useState(true);
-  const [showWeekCalendar, setShowWeekCalendar] = React.useState(true);
+  const [showDayOfWeek, setShowDayOfWeek] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showDayOfWeek');
+    return v ? JSON.parse(v) : false;
+  });
+  const [showMonthly, setShowMonthly] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showMonthly');
+    return v ? JSON.parse(v) : false;
+  });
+  const [showWeekly, setShowWeekly] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showWeekly');
+    return v ? JSON.parse(v) : false;
+  });
+  const [showCalendarView, setShowCalendarView] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showCalendarView');
+    return v ? JSON.parse(v) : true;
+  });
+  const [showMonthCalendar, setShowMonthCalendar] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showMonthCalendar');
+    return v ? JSON.parse(v) : true;
+  });
+  const [showWeekCalendar, setShowWeekCalendar] = React.useState<boolean>(() => {
+    const v = localStorage.getItem('da_showWeekCalendar');
+    return v ? JSON.parse(v) : true;
+  });
+
+  React.useEffect(() => { localStorage.setItem('da_showDayOfWeek', JSON.stringify(showDayOfWeek)); }, [showDayOfWeek]);
+  React.useEffect(() => { localStorage.setItem('da_showMonthly', JSON.stringify(showMonthly)); }, [showMonthly]);
+  React.useEffect(() => { localStorage.setItem('da_showWeekly', JSON.stringify(showWeekly)); }, [showWeekly]);
+  React.useEffect(() => { localStorage.setItem('da_showCalendarView', JSON.stringify(showCalendarView)); }, [showCalendarView]);
+  React.useEffect(() => { localStorage.setItem('da_showMonthCalendar', JSON.stringify(showMonthCalendar)); }, [showMonthCalendar]);
+  React.useEffect(() => { localStorage.setItem('da_showWeekCalendar', JSON.stringify(showWeekCalendar)); }, [showWeekCalendar]);
 
   // Guard clause to prevent rendering if backtestResult is null
   if (!backtestResult) return null;
@@ -152,7 +177,7 @@ export function DailyAnalysisSection({
             "sunday": "Sunday"
           };
           
-          const apiKey = dayKeyMap[day];
+          const apiKey = (dayKeyMap as Record<string, string>)[day] ?? day;
           data = dayOfWeekAnalysis.Stats[apiKey];
         }
         
@@ -348,7 +373,7 @@ export function DailyAnalysisSection({
             "december": "December"
           };
           
-          const apiKey = monthKeyMap[month];
+          const apiKey = (monthKeyMap as Record<string, string>)[month] ?? month;
           data = monthlyAnalysis.Stats[apiKey];
         }
         
@@ -610,15 +635,6 @@ export function DailyAnalysisSection({
                 <th className="px-4 py-3 text-center">
                   Fator de Lucro
                 </th>
-                <th className="px-4 py-3 text-center">
-                  Sharpe Ratio
-                </th>
-                <th className="px-4 py-3 text-center">
-                  Média Ganho
-                </th>
-                <th className="px-4 py-3 text-center">
-                  Média Perda
-                </th>
                 <th className="px-4 py-3 text-center rounded-r-lg">
                   Rentabilidade
                 </th>
@@ -641,7 +657,7 @@ export function DailyAnalysisSection({
                     "sunday": "Sunday"
                   };
                   
-                  const apiKey = dayKeyMap[day];
+                  const apiKey = (dayKeyMap as Record<string, string>)[day] ?? day;
                   data = dayOfWeekAnalysis.Stats[apiKey];
                 }
                 
@@ -690,29 +706,6 @@ export function DailyAnalysisSection({
                         }`}
                       >
                         {formatMetric(data["Profit Factor"])}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          (data["Sharpe Ratio"] || 0) >= 1.0
-                            ? "bg-green-900 text-green-300"
-                            : (data["Sharpe Ratio"] || 0) >= 0.5
-                            ? "bg-yellow-900 text-yellow-300"
-                            : "bg-red-900 text-red-300"
-                        }`}
-                      >
-                        {formatMetric(data["Sharpe Ratio"])}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-300">
-                        {formatMetric(data["Average Win"], false, true)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-900 text-red-300">
-                        {formatMetric(data["Average Loss"], false, true)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -920,7 +913,7 @@ export function DailyAnalysisSection({
                               "december": "December"
                             };
                             
-                            const apiKey = monthKeyMap[month];
+                            const apiKey = (monthKeyMap as Record<string, string>)[month] ?? month;
                             data = monthlyAnalysis.Stats[apiKey];
                           }
                           

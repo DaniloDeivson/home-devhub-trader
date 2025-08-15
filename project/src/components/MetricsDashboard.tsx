@@ -80,13 +80,47 @@ interface MetricsDashboardProps {
 export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [animatedMetrics, setAnimatedMetrics] = useState<Record<string, unknown>>({});
+  const m = animatedMetrics as MetricsDashboardProps['metrics'];
 
-  // Sempre usar diretamente os dados da API; apenas aplicar defaults seguros
-  useEffect(() => {
-    const safeMetrics = metrics || ({} as MetricsDashboardProps['metrics']);
-    setAnimatedMetrics({
-      ...safeMetrics,
+  // Util: checa se veio algo útil
+  const hasUsefulMetrics = (m?: MetricsDashboardProps['metrics']): boolean => {
+    if (!m) return false;
+    const keys = Object.keys(m as Record<string, unknown>);
+    if (keys.length === 0) return false;
+    // Se pelo menos um numérico válido existir
+    const numericKeys: Array<keyof MetricsDashboardProps['metrics']> = [
+      'netProfit','maxDrawdownAmount','profitFactor','payoff','winRate','grossProfit','grossLoss','totalTrades'
+    ];
+    return numericKeys.some(k => {
+      const value = m[k];
+      return typeof value === 'number' && isFinite(value);
     });
+  };
+
+  // Carregar persistido (evita reset visual) e atualizar somente quando vier algo útil novo
+  useEffect(() => {
+    if (hasUsefulMetrics(metrics)) {
+      setAnimatedMetrics({ ...(metrics as Record<string, unknown>) });
+      try { localStorage.setItem('md_lastMetrics', JSON.stringify(metrics)); } catch {
+        // ignore persistence errors
+      }
+    } else {
+      // manter valores atuais; se ainda não há nada, tenta restaurar do storage
+      if (!animatedMetrics || Object.keys(animatedMetrics).length === 0) {
+        try {
+          const cached = localStorage.getItem('md_lastMetrics');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && typeof parsed === 'object') {
+              setAnimatedMetrics(parsed);
+            }
+          }
+        } catch {
+          // ignore restore errors
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metrics]);
 
   // ✅ CORREÇÃO: Usar useCallback para funções que não precisam recriar
@@ -166,25 +200,25 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
 
   // Estatísticas derivadas apenas de métricas da API (sem calcular localmente)
   const estatisticasTrades = {
-    totalTrades: metrics?.totalTrades,
-    tradesLucrativos: metrics?.profitableTrades,
-    tradesComPerda: metrics?.lossTrades,
-    ganhoMedio: metrics?.averageWin,
-    perdaMedia: metrics?.averageLoss,
-    maxPerdasConsecutivas: metrics?.maxConsecutiveLosses,
-    maxGanhosConsecutivos: metrics?.maxConsecutiveWins,
+    totalTrades: m?.totalTrades ?? metrics?.totalTrades,
+    tradesLucrativos: m?.profitableTrades ?? metrics?.profitableTrades,
+    tradesComPerda: m?.lossTrades ?? metrics?.lossTrades,
+    ganhoMedio: m?.averageWin ?? metrics?.averageWin,
+    perdaMedia: m?.averageLoss ?? metrics?.averageLoss,
+    maxPerdasConsecutivas: m?.maxConsecutiveLosses ?? metrics?.maxConsecutiveLosses,
+    maxGanhosConsecutivos: m?.maxConsecutiveWins ?? metrics?.maxConsecutiveWins,
   } as const;
 
   const metricasAvancadas = {
-    tradeMedio: metrics?.averageTrade,
-    maiorGanho: metrics?.maiorGanho,
-    maiorPerda: metrics?.maiorPerda,
-    ganhoBruto: metrics?.grossProfit,
-    perdaBruta: metrics?.grossLoss,
-    tradesLucrativosPercent: metrics?.winRate,
+    tradeMedio: m?.averageTrade ?? metrics?.averageTrade,
+    maiorGanho: m?.maiorGanho ?? metrics?.maiorGanho,
+    maiorPerda: m?.maiorPerda ?? metrics?.maiorPerda,
+    ganhoBruto: m?.grossProfit ?? metrics?.grossProfit,
+    perdaBruta: m?.grossLoss ?? metrics?.grossLoss,
+    tradesLucrativosPercent: m?.winRate ?? metrics?.winRate,
     tradesComPerdaPercent:
-      metrics?.winRate !== undefined && metrics?.winRate !== null
-        ? Math.max(0, 100 - Number(metrics?.winRate))
+      (m?.winRate ?? metrics?.winRate) !== undefined && (m?.winRate ?? metrics?.winRate) !== null
+        ? Math.max(0, 100 - Number(m?.winRate ?? metrics?.winRate))
         : undefined,
   } as const;
 
@@ -192,11 +226,11 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
   // Usar capital investido dinâmico vindo do store compartilhado
   const investedCapital = useSettingsStore((s) => s.investedCapital) || 100000;
   const ddPercentDisplay = (() => {
-    const amount = metrics?.maxDrawdownAmount;
+    const amount = m?.maxDrawdownAmount ?? metrics?.maxDrawdownAmount;
     if (typeof amount === 'number' && isFinite(amount)) {
       return investedCapital > 0 ? (amount / investedCapital) * 100 : undefined;
     }
-    const pct = metrics?.maxDrawdown;
+    const pct = m?.maxDrawdown ?? metrics?.maxDrawdown;
     return typeof pct === 'number' && isFinite(pct) ? pct : undefined;
   })();
 
@@ -233,10 +267,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-3xl font-bold ${getMetricColor(
                   "netProfit",
-                  Number(metrics?.netProfit)
+                  Number(m?.netProfit ?? metrics?.netProfit)
                 )}`}
               >
-                {formatMetric(Number(metrics?.netProfit), false, true)}
+                {formatMetric(Number(m?.netProfit ?? metrics?.netProfit), false, true)}
               </p>
             </div>
 
@@ -255,7 +289,7 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
             <div className="bg-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-1">Total de Trades</p>
               <p className="text-3xl font-bold">
-                {metrics?.totalTrades ?? 'N/A'}
+                {m?.totalTrades ?? metrics?.totalTrades ?? 'N/A'}
               </p>
             </div>
 
@@ -265,10 +299,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "profitFactor",
-                  Number(metrics?.profitFactor)
+                  Number(m?.profitFactor ?? metrics?.profitFactor)
                 )}`}
               >
-                {formatMetric(Number(metrics?.profitFactor))}
+                {formatMetric(Number(m?.profitFactor ?? metrics?.profitFactor))}
               </p>
             </div>
 
@@ -278,10 +312,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "payoff",
-                  Number(metrics?.payoff)
+                  Number(m?.payoff ?? metrics?.payoff)
                 )}`}
               >
-                {formatMetric(Number(metrics?.payoff))}
+                {formatMetric(Number(m?.payoff ?? metrics?.payoff))}
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Ganho Médio / Perda Média (Total)
@@ -320,10 +354,10 @@ export function MetricsDashboard({ metrics, showTitle = true }: MetricsDashboard
               <p
                 className={`text-2xl font-bold ${getMetricColor(
                   "winRate",
-                  Number(metrics?.winRate)
+                  Number(m?.winRate ?? metrics?.winRate)
                 )}`}
               >
-                {formatMetric(Number(metrics?.winRate), true)}
+                {formatMetric(Number(m?.winRate ?? metrics?.winRate), true)}
               </p>
             </div>
           </div>

@@ -732,12 +732,7 @@ export function AIResponseChat({
 
       contextMessage = `
 CONTEXTO DOS DADOS DE BACKTEST:
-${JSON.stringify(contextData)}
-
-PERGUNTA DO USUÁRIO: ${userMessage}
-
-Por favor, analise os dados fornecidos e responda à pergunta do usuário com base nas informações reais do backtest. Forneça insights específicos e sugestões práticas para melhorar a estratégia de trading.
-`;
+${JSON.stringify(contextData)}`;
     } else {
       contextMessage = userMessage;
     }
